@@ -22,7 +22,7 @@
   --gold: #f0c040;
   --bubble-out: #6b4fc4;
   --bubble-in: #1e1e38;
-  --sidebar: 280px;
+  --sidebar: 420px;
 }
 
 html, body { height: 100%; overflow: hidden; background: var(--bg); }
@@ -54,23 +54,23 @@ body {
     height: 100%;
   }
   .sidebar-logo {
-    padding: 24px 22px 20px;
-    font-size: 28px;
+    padding: 32px 28px 26px;
+    font-size: 42px;
     font-weight: 800;
     color: var(--purple);
     border-bottom: 1px solid var(--border);
   }
   .sidebar-logo span { color: var(--text); }
 
-  .sidebar-nav { display: flex; flex-direction: column; padding: 12px 0; flex: 1; }
+  .sidebar-nav { display: flex; flex-direction: column; padding: 14px 0; flex: 1; }
   .sidebar-tab {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 16px 22px;
+    gap: 18px;
+    padding: 22px 28px;
     cursor: pointer;
     color: var(--text2);
-    font-size: 20px;
+    font-size: 26px;
     font-weight: 500;
     border: none;
     background: none;
@@ -82,29 +82,29 @@ body {
   }
   .sidebar-tab:hover { background: var(--purple-glow); }
   .sidebar-tab.active { color: var(--purple); background: var(--purple-glow); }
-  .sidebar-tab-icon { font-size: 26px; }
+  .sidebar-tab-icon { font-size: 36px; }
   .sidebar-notif {
-    width: 10px; height: 10px;
+    width: 12px; height: 12px;
     background: var(--purple);
     border-radius: 50%;
     position: absolute;
-    right: 20px;
+    right: 24px;
     display: none;
   }
   .sidebar-notif.show { display: block; }
 
   .sidebar-user {
     border-top: 1px solid var(--border);
-    padding: 18px 22px;
+    padding: 24px 28px;
   }
   .sidebar-connect-btn {
     width: 100%;
     background: var(--purple);
     color: #fff;
     border: none;
-    border-radius: 12px;
-    padding: 14px;
-    font-size: 18px;
+    border-radius: 16px;
+    padding: 20px;
+    font-size: 24px;
     font-weight: 700;
     cursor: pointer;
   }
@@ -112,9 +112,9 @@ body {
   .sidebar-handle-badge {
     background: var(--purple-glow);
     border: 1px solid var(--purple);
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-size: 18px;
+    border-radius: 14px;
+    padding: 16px 20px;
+    font-size: 24px;
     color: var(--purple);
     font-weight: 700;
     overflow: hidden;
