@@ -1314,6 +1314,8 @@ function connectSocket() {
     if (currentChat) socket.emit('join_chat', {wallet, contact_wallet: currentChat.wallet});
   });
   socket.on('new_message', (msg) => {
+    // Already shown optimistically — skip self-echoes
+    if (msg.sender_wallet.toLowerCase() === wallet.toLowerCase()) return;
     const inCurrentChat = currentChat && getRoom(wallet, currentChat.wallet) === getRoom(msg.sender_wallet, wallet);
     if (inCurrentChat) { appendMessage(msg); scrollToBottom(); }
     else {
@@ -1441,8 +1443,10 @@ function sendMessage() {
   const input = document.getElementById('chat-input');
   const content = input.value.trim();
   if (!content || !wallet || !currentChat || !socket) return;
-  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content, type: 'text'});
   input.value = '';
+  appendMessage({sender_wallet: wallet, content, type: 'text', msg_type: 'text', created_at: Math.floor(Date.now()/1000)});
+  scrollToBottom();
+  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content, type: 'text'});
 }
 
 function appendMessage(msg) {
@@ -1659,18 +1663,24 @@ function switchPickerTab(tab) {
 
 function sendEmoji(e) {
   if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  appendMessage({sender_wallet: wallet, content: e, type: 'emoji', msg_type: 'emoji', created_at: Math.floor(Date.now()/1000)});
+  scrollToBottom();
   socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: e, type: 'emoji'});
   closePicker();
 }
 
 function sendSticker(e) {
   if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  appendMessage({sender_wallet: wallet, content: e, type: 'sticker', msg_type: 'sticker', created_at: Math.floor(Date.now()/1000)});
+  scrollToBottom();
   socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: e, type: 'sticker'});
   closePicker();
 }
 
 function sendGif(url) {
   if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  appendMessage({sender_wallet: wallet, content: url, type: 'gif', msg_type: 'gif', created_at: Math.floor(Date.now()/1000)});
+  scrollToBottom();
   socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: url, type: 'gif'});
   closePicker();
 }
@@ -1765,7 +1775,10 @@ async function sendChatPhoto(input) {
       body: JSON.stringify({wallet, image_data: compressed.base64, image_type: compressed.type})
     }).then(r => r.json()).catch(() => ({error: 'Upload failed'}));
     if (resp.error) { showToast(resp.error); input.value = ''; return; }
-    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: String(resp.image_id), type: 'image'});
+    const imageId = String(resp.image_id);
+    appendMessage({sender_wallet: wallet, content: imageId, type: 'image', msg_type: 'image', created_at: Math.floor(Date.now()/1000)});
+    scrollToBottom();
+    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: imageId, type: 'image'});
     closePicker();
   } catch(e) { showToast('Photo upload failed'); }
   input.value = '';
@@ -1791,9 +1804,12 @@ async function sendChatFile(input) {
       body: JSON.stringify({wallet, file_name: file.name, file_data: base64, file_type: file.type || 'application/octet-stream', file_size: file.size})
     }).then(r => r.json()).catch(() => ({error: 'Upload failed'}));
     if (resp.error) { showToast(resp.error); input.value = ''; return; }
+    const fileContent = JSON.stringify({file_id: resp.file_id, file_name: file.name, file_size: file.size, file_type: file.type});
+    appendMessage({sender_wallet: wallet, content: fileContent, type: 'file', msg_type: 'file', created_at: Math.floor(Date.now()/1000)});
+    scrollToBottom();
     socket.emit('send_message', {
       sender_wallet: wallet, recipient_wallet: currentChat.wallet,
-      content: JSON.stringify({file_id: resp.file_id, file_name: file.name, file_size: file.size, file_type: file.type}),
+      content: fileContent,
       type: 'file'
     });
     closePicker();
@@ -1975,11 +1991,14 @@ async function sendLcaiGift() {
       params: [{from: wallet, to: currentChat.wallet, value: valueHex, chainId: '0x23F0'}]
     });
     document.getElementById('lcai-gift-modal').style.display = 'none';
+    const giftContent = JSON.stringify({amount, txHash});
+    appendMessage({sender_wallet: wallet, content: giftContent, type: 'lcai_gift', msg_type: 'lcai_gift', created_at: Math.floor(Date.now()/1000)});
+    scrollToBottom();
     if (socket) {
       socket.emit('send_message', {
         sender_wallet: wallet,
         recipient_wallet: currentChat.wallet,
-        content: JSON.stringify({amount, txHash}),
+        content: giftContent,
         type: 'lcai_gift'
       });
     }
