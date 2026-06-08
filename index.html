@@ -307,7 +307,7 @@ body {
 .msg-bubble-wrap.out { justify-content: flex-end; }
 .msg-bubble-wrap.in { justify-content: flex-start; }
 .msg-bubble {
-  max-width: 72%;
+  max-width: 80%;
   min-width: 0;
   padding: 13px 18px;
   border-radius: 20px;
@@ -329,10 +329,13 @@ body {
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  overflow: hidden;
+  width: 100%;
   padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
 }
 .chat-input {
   flex: 1;
+  min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 26px;
