@@ -1014,7 +1014,7 @@ function renderContacts() {
           <div style="font-size:18px;font-weight:600">${c.handle || shortenWallet(c.wallet)}</div>
           <div style="font-size:14px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
         </div>
-        <div style="color:var(--text2);font-size:22px">›</div>
+        <button onclick="event.stopPropagation();deleteContact('${c.wallet}')" style="background:none;border:none;color:var(--red);font-size:26px;cursor:pointer;padding:8px 12px;margin-left:4px;line-height:1" title="Remove contact">🗑</button>
       </div>`).join('');
   }
 }
@@ -1045,6 +1045,18 @@ async function approveContact(cw) {
   if (!wallet) return;
   await fetch(BACKEND + '/approve-contact', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet,contact_wallet:cw})});
   loadContacts(); showToast('Contact accepted!');
+}
+
+async function deleteContact(contactWallet) {
+  if (!wallet) return;
+  if (!confirm('Remove this contact? This removes them from both sides.')) return;
+  const resp = await fetch(BACKEND + '/delete-contact', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({wallet, contact_wallet: contactWallet})
+  }).then(r => r.json()).catch(() => ({}));
+  if (resp.deleted) { showToast('Contact removed'); loadContacts(); }
+  else showToast(resp.error || 'Something went wrong');
 }
 
 async function openChat(contactWallet, handle) {
