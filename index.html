@@ -656,6 +656,14 @@ body {
 .toggle-switch input:checked + .toggle-slider { background: var(--purple); }
 .toggle-switch input:checked + .toggle-slider:before { transform: translateX(26px); }
 
+/* ── Ringtone picker ── */
+.ringtone-row { cursor: pointer; }
+.ringtone-row:hover, .ringtone-row:active { background: var(--purple-glow); }
+.ringtone-check { color: var(--purple); font-size: 22px; font-weight: 700; margin-left: 8px; flex-shrink: 0; visibility: hidden; }
+.ringtone-check.on { visibility: visible; }
+.preview-btn { background: var(--purple-glow); border: 1px solid var(--purple); border-radius: 10px; color: var(--purple); font-size: 16px; padding: 6px 14px; cursor: pointer; flex-shrink: 0; }
+.preview-btn:active { background: var(--purple); color: #fff; }
+
 /* ── Video call overlays ── */
 #call-incoming-overlay, #call-calling-overlay {
   display: none; position: fixed;
@@ -1018,6 +1026,50 @@ body {
     </div>
     <div style="color:var(--text2);font-size:18px;line-height:1.7;padding:0 4px">
       Push notifications let LightChat ping you when someone messages you and the app is closed. You can turn this off any time.
+    </div>
+
+    <div style="margin-top:28px">
+      <div class="form-label" style="font-size:20px;margin-bottom:14px">📞 Ringtone</div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden">
+        <div class="me-menu-item ringtone-row" onclick="selectRingtone('classic')">
+          <div class="me-menu-icon">📞</div>
+          <div style="flex:1;font-size:22px">Classic</div>
+          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('classic')">▶ Play</button>
+          <div class="ringtone-check on" id="rcheck-classic">✓</div>
+        </div>
+        <div class="me-menu-item ringtone-row" onclick="selectRingtone('chime')">
+          <div class="me-menu-icon">🔔</div>
+          <div style="flex:1;font-size:22px">Chime</div>
+          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('chime')">▶ Play</button>
+          <div class="ringtone-check" id="rcheck-chime">✓</div>
+        </div>
+        <div class="me-menu-item ringtone-row" onclick="selectRingtone('modern')">
+          <div class="me-menu-icon">📳</div>
+          <div style="flex:1;font-size:22px">Modern</div>
+          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('modern')">▶ Play</button>
+          <div class="ringtone-check" id="rcheck-modern">✓</div>
+        </div>
+        <div class="me-menu-item ringtone-row" onclick="selectRingtone('lightchat')">
+          <div class="me-menu-icon">💡</div>
+          <div style="flex:1;font-size:22px">LightChat</div>
+          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('lightchat')">▶ Play</button>
+          <div class="ringtone-check" id="rcheck-lightchat">✓</div>
+        </div>
+        <div class="me-menu-item ringtone-row" onclick="document.getElementById('ringtone-upload').click()">
+          <div class="me-menu-icon">🎵</div>
+          <div style="flex:1">
+            <div style="font-size:22px">Custom Upload</div>
+            <div id="custom-ringtone-name" style="font-size:15px;color:var(--text2);margin-top:3px">Tap to upload MP3 / AAC</div>
+          </div>
+          <div class="ringtone-check" id="rcheck-custom">✓</div>
+        </div>
+        <div class="me-menu-item ringtone-row" onclick="selectRingtone('silent')">
+          <div class="me-menu-icon">🔕</div>
+          <div style="flex:1;font-size:22px">Silent</div>
+          <div class="ringtone-check" id="rcheck-silent">✓</div>
+        </div>
+      </div>
+      <input type="file" id="ringtone-upload" accept="audio/*" style="display:none" onchange="uploadCustomRingtone(this)">
     </div>
   </div>
 </div>
@@ -1780,9 +1832,149 @@ async function sendLcaiGift() {
 }
 
 // ════════════════════════════════
+// RINGTONES
+// ════════════════════════════════
+let ringInterval = null, ringAudioEl = null, callTimeoutId = null;
+
+const RING_INTERVALS = {classic: 4200, chime: 3200, modern: 2400, lightchat: 3000};
+
+function playBuiltinRingOnce(tone) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ctx.currentTime;
+
+    if (tone === 'classic') {
+      [440, 480].forEach(freq => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.setValueAtTime(0.28, now + 0.8);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+        osc.start(now); osc.stop(now + 1.8);
+      });
+
+    } else if (tone === 'chime') {
+      [[523, 0], [659, 0.28], [784, 0.56], [1047, 0.84]].forEach(([freq, delay]) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0, now + delay);
+        gain.gain.linearRampToValueAtTime(0.3, now + delay + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.55);
+        osc.start(now + delay); osc.stop(now + delay + 0.55);
+      });
+
+    } else if (tone === 'modern') {
+      [0, 0.22].forEach(delay => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'square'; osc.frequency.value = 820;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.12, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.18);
+        osc.start(now + delay); osc.stop(now + delay + 0.18);
+      });
+
+    } else if (tone === 'lightchat') {
+      [[523, 0, 0.14], [659, 0.18, 0.14], [784, 0.36, 0.14], [1047, 0.54, 0.5]].forEach(([freq, delay, dur]) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        osc.connect(gain); gain.connect(ctx.destination);
+        gain.gain.setValueAtTime(0.28, now + delay);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+        osc.start(now + delay); osc.stop(now + delay + dur);
+      });
+    }
+
+    // Let the AudioContext close itself after sounds finish
+    setTimeout(() => { try { ctx.close(); } catch(e) {} }, 3000);
+  } catch(e) {}
+}
+
+function startRinging() {
+  stopRinging();
+  const tone = settings.ringtone || 'classic';
+  if (tone === 'silent') return;
+
+  if (tone === 'custom') {
+    const src = localStorage.getItem('lc_custom_ringtone');
+    if (src) {
+      ringAudioEl = new Audio(src);
+      ringAudioEl.loop = true;
+      ringAudioEl.play().catch(() => {});
+    }
+  } else {
+    playBuiltinRingOnce(tone);
+    const interval = RING_INTERVALS[tone] || 4000;
+    ringInterval = setInterval(() => playBuiltinRingOnce(tone), interval);
+  }
+
+  // Auto-timeout: 30 seconds, then treat as no answer
+  callTimeoutId = setTimeout(() => {
+    if (callState === 'calling' || callState === 'receiving') {
+      stopRinging();
+      if (callState === 'calling') { endCall(); showToast('No answer'); }
+      else { declineCall(); }
+    }
+  }, 30000);
+}
+
+function stopRinging() {
+  clearInterval(ringInterval); ringInterval = null;
+  clearTimeout(callTimeoutId); callTimeoutId = null;
+  if (ringAudioEl) { try { ringAudioEl.pause(); ringAudioEl.src = ''; } catch(e) {} ringAudioEl = null; }
+}
+
+function previewRingtone(tone) {
+  if (tone === 'custom') {
+    const src = localStorage.getItem('lc_custom_ringtone');
+    if (src) { const a = new Audio(src); a.play().catch(() => {}); }
+    else showToast('No custom ringtone uploaded yet');
+  } else {
+    playBuiltinRingOnce(tone);
+  }
+}
+
+function selectRingtone(tone) {
+  settings.ringtone = tone;
+  saveSettings();
+  ['classic','chime','modern','lightchat','custom','silent'].forEach(t => {
+    const el = document.getElementById('rcheck-' + t);
+    if (el) el.classList.toggle('on', t === tone);
+  });
+  if (tone !== 'custom') showToast('Ringtone set to ' + tone);
+}
+
+function uploadCustomRingtone(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { showToast('File too large — max 3 MB'); input.value = ''; return; }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    localStorage.setItem('lc_custom_ringtone', e.target.result);
+    document.getElementById('custom-ringtone-name').textContent = file.name;
+    selectRingtone('custom');
+    showToast('Ringtone uploaded: ' + file.name);
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateRingtoneUI() {
+  const tone = settings.ringtone || 'classic';
+  ['classic','chime','modern','lightchat','custom','silent'].forEach(t => {
+    const el = document.getElementById('rcheck-' + t);
+    if (el) el.classList.toggle('on', t === tone);
+  });
+  const customName = localStorage.getItem('lc_custom_ringtone');
+  if (customName) {
+    // just show a generic label since we don't store the name separately
+  }
+}
+
+// ════════════════════════════════
 // SETTINGS
 // ════════════════════════════════
-let settings = {sound: true, pushNotifs: false};
+let settings = {sound: true, pushNotifs: false, ringtone: 'classic'};
 
 function loadSettings() {
   const saved = localStorage.getItem('lc_settings');
@@ -1794,6 +1986,7 @@ function showSettings() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   document.getElementById('setting-sound').checked = settings.sound;
   document.getElementById('setting-push').checked = settings.pushNotifs;
+  updateRingtoneUI();
   document.getElementById('settings-panel').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-panel').classList.remove('open'); }
@@ -1906,6 +2099,10 @@ async function startVideoCall() {
     callState = 'calling';
     document.getElementById('call-calling-name').textContent = currentChat.handle;
     document.getElementById('call-calling-overlay').style.display = 'flex';
+    // Start 30s timeout for caller side
+    callTimeoutId = setTimeout(() => {
+      if (callState === 'calling') { endCall(); showToast('No answer'); }
+    }, 30000);
   } catch(e) {
     showToast('Camera error: ' + (e.message || 'check permissions'));
     cleanupCall();
@@ -1918,12 +2115,13 @@ async function handleCallOffer(data) {
   window._pendingCallOffer = data;
   document.getElementById('call-incoming-name').textContent = data.handle || shortenWallet(data.caller_wallet);
   document.getElementById('call-incoming-overlay').style.display = 'flex';
-  playNotificationSound();
+  startRinging();
 }
 
 async function acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
+  stopRinging();
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
     localStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
@@ -1963,6 +2161,7 @@ async function handleIceCandidate(data) {
 function handleCallEnd() { cleanupCall(); showToast('Call ended'); }
 
 function declineCall() {
+  stopRinging();
   const data = window._pendingCallOffer;
   if (data && socket) socket.emit('call_end', {target_wallet: data.caller_wallet, sender_wallet: wallet});
   window._pendingCallOffer = null;
@@ -1975,6 +2174,7 @@ function endCall() {
 }
 
 function cleanupCall() {
+  stopRinging();
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   if (peerConnection) { peerConnection.close(); peerConnection = null; }
   callState = null; window._pendingCallOffer = null;
