@@ -66,6 +66,16 @@ def init_db():
             created_at INTEGER NOT NULL,
             PRIMARY KEY (wallet, endpoint)
         );
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wallet TEXT NOT NULL,
+            caption TEXT NOT NULL DEFAULT '',
+            image_data TEXT,
+            image_type TEXT,
+            storage_type TEXT NOT NULL DEFAULT 'cloud',
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER
+        );
     ''')
     conn.commit()
     conn.close()
@@ -78,6 +88,7 @@ def cleanup_messages():
         try:
             conn = get_db()
             conn.execute('DELETE FROM messages WHERE expires_at < ?', (int(time.time()),))
+            conn.execute('DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?', (int(time.time()),))
             conn.commit()
             conn.close()
         except Exception:
@@ -364,6 +375,54 @@ def get_contacts(wallet):
            ORDER BY c.created_at DESC''',
         (wallet.lower(),)
     ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/post-memory', methods=['POST'])
+def post_memory():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    caption = data.get('caption', '').strip()
+    image_data = data.get('image_data', '')
+    image_type = data.get('image_type', '')
+    storage_type = data.get('storage_type', 'cloud')
+
+    if not wallet:
+        return jsonify({'error': 'wallet required'}), 400
+    if not caption and not image_data:
+        return jsonify({'error': 'caption or image required'}), 400
+
+    now = int(time.time())
+    expires_at = now + (90 * 24 * 60 * 60) if storage_type == 'cloud' else None
+
+    conn = get_db()
+    cursor = conn.execute(
+        'INSERT INTO memories (wallet, caption, image_data, image_type, storage_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (wallet, caption, image_data or None, image_type or None, storage_type, now, expires_at)
+    )
+    memory_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'id': memory_id, 'posted': True})
+
+@app.route('/memories/<wallet>')
+def get_memories(wallet):
+    w = wallet.lower()
+    now = int(time.time())
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT m.id, m.wallet, m.caption, m.image_data, m.image_type,
+               m.storage_type, m.created_at, m.expires_at, h.handle
+        FROM memories m
+        LEFT JOIN handles h ON h.wallet = m.wallet
+        WHERE m.wallet IN (
+            SELECT contact_wallet FROM contacts WHERE wallet = ? AND status = 'approved'
+            UNION SELECT ?
+        )
+        AND (m.expires_at IS NULL OR m.expires_at > ?)
+        ORDER BY m.created_at DESC
+        LIMIT 50
+    ''', (w, w, now)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
