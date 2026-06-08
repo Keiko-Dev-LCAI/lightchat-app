@@ -432,15 +432,16 @@ body {
 .me-wallet { font-size: 18px; color: var(--text2); margin-top: 6px; word-break: break-all; }
 .me-menu-item {
   display: flex; align-items: center;
-  padding: 26px 28px;
+  padding: 26px 20px;
   border-bottom: 1px solid var(--border);
-  cursor: pointer; gap: 24px;
+  cursor: pointer; gap: 16px;
   font-size: 26px; font-weight: 500;
   transition: background 0.1s;
+  overflow: hidden;
 }
 .me-menu-item:hover, .me-menu-item:active { background: var(--purple-glow); }
-.me-menu-icon { font-size: 34px; width: 44px; text-align: center; }
-.me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; }
+.me-menu-icon { font-size: 34px; width: 40px; text-align: center; flex-shrink: 0; }
+.me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; flex-shrink: 0; }
 
 /* ── LightPay panel ── */
 #lightpay-panel, #invite-panel, #search-panel {
