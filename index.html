@@ -1891,33 +1891,33 @@ async function loadMemories() {
 
 function renderMemoriesFeed(posts) {
   memoriesCache = posts;
-  const feed = document.getElementById(‘memories-feed’);
+  const feed = document.getElementById('memories-feed');
   if (!posts.length) {
-    feed.innerHTML = ‘<div class="empty-state" style="padding:60px 40px"><div class="empty-icon">📸</div><div class="empty-title">No memories yet</div><div class="empty-text">Be the first to post a memory. Your contacts\’ posts will appear here too.</div><button class="empty-cta" onclick="showMemoryPostPanel()">📸 Post a Memory</button></div>’;
+    feed.innerHTML = '<div class="empty-state" style="padding:60px 40px"><div class="empty-icon">📸</div><div class="empty-title">No memories yet</div><div class="empty-text">Be the first to post a memory. Your contacts\' posts will appear here too.</div><button class="empty-cta" onclick="showMemoryPostPanel()">📸 Post a Memory</button></div>';
     return;
   }
   feed.innerHTML = posts.map(m => {
     const daysLeft = m.expires_at ? Math.max(0, Math.round((m.expires_at - Date.now()/1000) / 86400)) : null;
-    const badge = m.storage_type === ‘chain’
-      ? ‘<span style="color:var(--purple);font-weight:600">⛓️ Permanent</span>’
-      : ‘<span style="color:var(--gold);font-weight:600">⏳ ‘ + daysLeft + ‘ days left</span>’;
+    const badge = m.storage_type === 'chain'
+      ? '<span style="color:var(--purple);font-weight:600">⛓️ Permanent</span>'
+      : '<span style="color:var(--gold);font-weight:600">⏳ ' + daysLeft + ' days left</span>';
     const isOwn = m.wallet === wallet;
     const name = m.handle || shortenWallet(m.wallet);
     const timeAgo = getTimeAgo(m.created_at);
-    const dlBtn = m.image_data ? `<button onclick="downloadMemoryPhoto(${m.id})" class="msg-dl-btn" style="font-size:15px;padding:6px 0">⬇️ Save Photo</button>` : ‘’;
+    const dlBtn = m.image_data ? `<button onclick="downloadMemoryPhoto(${m.id})" class="msg-dl-btn" style="font-size:15px;padding:6px 0">⬇️ Save Photo</button>` : '';
     return `<div class="memory-post">
       <div class="memory-post-header">
         <div class="chat-avatar" style="width:48px;height:48px;font-size:20px">${avatarLetter(m.handle)}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:20px;font-weight:700">${name}${isOwn ? ‘ <span style="color:var(--text2);font-size:16px;font-weight:400">(you)</span>’ : ‘’}</div>
+          <div style="font-size:20px;font-weight:700">${name}${isOwn ? ' <span style="color:var(--text2);font-size:16px;font-weight:400">(you)</span>' : ''}</div>
           <div style="font-size:15px;color:var(--text2);margin-top:3px">${timeAgo} &nbsp;·&nbsp; ${badge}</div>
         </div>
       </div>
-      ${m.image_data ? `<img class="memory-image" src="data:${m.image_type};base64,${m.image_data}" alt="memory">` : ‘’}
+      ${m.image_data ? `<img class="memory-image" src="data:${m.image_type};base64,${m.image_data}" alt="memory">` : ''}
       ${dlBtn}
-      ${m.caption ? `<div class="memory-caption">${escapeHtml(m.caption)}</div>` : ‘’}
+      ${m.caption ? `<div class="memory-caption">${escapeHtml(m.caption)}</div>` : ''}
     </div>`;
-  }).join(‘’);
+  }).join('');
 }
 
 function getTimeAgo(ts) {
