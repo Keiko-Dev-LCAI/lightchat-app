@@ -900,6 +900,7 @@ async function onWalletConnected() {
     updateUI();
     connectSocket();
     loadContacts();
+    handleInviteParam();
   } else {
     showHandleModal();
   }
@@ -923,6 +924,7 @@ async function registerHandle() {
   document.getElementById('handle-modal').classList.remove('open');
   updateUI(); connectSocket(); loadContacts();
   showToast('Welcome to LightChat ' + myHandle + '!');
+  handleInviteParam();
 }
 
 function showHandleError(msg) {
@@ -1174,6 +1176,7 @@ window.addEventListener('load', async () => {
       document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
       updateUI();
       loadContacts();
+      handleInviteParam();
     }
   }
   // Also try silent web3 reconnect in background
