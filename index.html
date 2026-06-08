@@ -650,7 +650,7 @@ body {
         <div class="empty-icon">💬</div>
         <div class="empty-title">No chats yet</div>
         <div class="empty-text">Connect your wallet and add contacts to start chatting on the blockchain.</div>
-        <button class="empty-cta" onclick="connectWallet()">🔗 Connect Wallet</button>
+        <button class="empty-cta" id="empty-cta-btn" onclick="emptyCTAClick()">🔗 Connect Wallet</button>
       </div>
       <div id="chat-list" style="display:none"></div>
     </div>
@@ -935,6 +935,14 @@ function updateUI() {
   document.getElementById('me-handle-display').textContent = myHandle || shortenWallet(wallet);
   document.getElementById('me-wallet-display').textContent = wallet;
   document.getElementById('invite-link-box').textContent = APP_URL + '?add=' + wallet;
+  // Update empty state CTA
+  const cta = document.getElementById('empty-cta-btn');
+  if (cta) { cta.textContent = '👥 Add a Contact'; }
+}
+
+function emptyCTAClick() {
+  if (wallet) { switchTab('contacts'); }
+  else { connectWallet(); }
 }
 
 function connectSocket() {
