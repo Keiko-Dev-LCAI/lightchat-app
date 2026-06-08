@@ -704,6 +704,7 @@ body {
           <div>
             <div class="me-handle" id="me-handle-display">Not Connected</div>
             <div class="me-wallet" id="me-wallet-display">Connect your wallet to get started</div>
+            <div style="font-size:15px;color:var(--text2);margin-top:6px" id="me-wallet-label"></div>
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
@@ -861,7 +862,12 @@ body {
   <div class="modal-box">
     <div style="font-size:48px;text-align:center;margin-bottom:14px">🐬</div>
     <div class="modal-title">Welcome to LightChat</div>
-    <div class="modal-sub">Pick your @handle. This is how people find and add you.</div>
+    <div class="modal-sub">Pick your @handle — this is how people find you.</div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px;text-align:center;line-height:1.6">
+      <div style="font-size:16px;color:var(--text2)">🔗 This handle will be tied to</div>
+      <div style="font-size:18px;color:var(--purple);font-weight:700;margin:4px 0" id="modal-wallet-display"></div>
+      <div style="font-size:14px;color:var(--text2)">Different wallet = separate LightChat identity</div>
+    </div>
     <div class="modal-error" id="handle-error"></div>
     <input class="modal-input" id="handle-input" type="text" placeholder="yourhandle" maxlength="20"
       oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
@@ -930,7 +936,10 @@ async function onWalletConnected() {
   }
 }
 
-function showHandleModal() { document.getElementById('handle-modal').classList.add('open'); }
+function showHandleModal() {
+  document.getElementById('modal-wallet-display').textContent = wallet ? shortenWallet(wallet) : '';
+  document.getElementById('handle-modal').classList.add('open');
+}
 
 async function registerHandle() {
   const raw = document.getElementById('handle-input').value.trim();
@@ -964,6 +973,8 @@ function updateUI() {
   document.getElementById('me-handle-display').textContent = myHandle || shortenWallet(wallet);
   document.getElementById('me-wallet-display').textContent = wallet;
   document.getElementById('invite-link-box').textContent = APP_URL + '?add=' + wallet;
+  const lbl = document.getElementById('me-wallet-label');
+  if (lbl) lbl.textContent = myHandle ? '🔗 Handle tied to this wallet' : '⚠️ No handle — others can\'t find you by name';
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
   if (cta) { cta.textContent = '👥 Add a Contact'; }
