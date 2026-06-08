@@ -15,7 +15,9 @@ CORS(app, origins="*")
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lightchat-secret-2026')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-DB_PATH = os.environ.get('DB_PATH', 'lightchat.db')
+_data_dir = os.environ.get('DATA_DIR', '/app/data')
+os.makedirs(_data_dir, exist_ok=True)
+DB_PATH = os.environ.get('DB_PATH', os.path.join(_data_dir, 'lightchat.db'))
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
