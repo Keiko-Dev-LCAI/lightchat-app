@@ -1702,12 +1702,20 @@ function searchGifs(query) {
 // ════════════════════════════════
 function triggerDownload(href, filename) {
   const a = document.createElement('a');
-  a.href = href;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
+  a.href = href; a.download = filename; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
   setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(href); }, 3000);
+}
+
+async function shareOrDownload(blob, filename) {
+  const file = new File([blob], filename, {type: blob.type});
+  // Try native share sheet first — shows "Save to Photos / Gallery" on mobile
+  if (navigator.share && navigator.canShare && navigator.canShare({files: [file]})) {
+    try { await navigator.share({files: [file]}); return; }
+    catch(e) { if (e.name === 'AbortError') return; } // user cancelled
+  }
+  // Fallback: download to Downloads folder
+  triggerDownload(URL.createObjectURL(blob), filename);
 }
 
 function downloadBase64(base64, mimeType, filename) {
@@ -1716,24 +1724,22 @@ function downloadBase64(base64, mimeType, filename) {
     const ab = new ArrayBuffer(byteStr.length);
     const ia = new Uint8Array(ab);
     for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
-    const blob = new Blob([ab], {type: mimeType});
-    const url = URL.createObjectURL(blob);
-    triggerDownload(url, filename);
+    shareOrDownload(new Blob([ab], {type: mimeType}), filename);
   } catch(e) { showToast('Could not save photo'); }
 }
 
 async function downloadFromUrl(url, filename) {
+  showToast('Loading...');
   try {
-    showToast('Saving...');
     const resp = await fetch(url, {mode: 'cors'});
     if (!resp.ok) throw new Error('fetch failed');
     const blob = await resp.blob();
-    const objUrl = URL.createObjectURL(blob);
-    triggerDownload(objUrl, filename);
+    await shareOrDownload(blob, filename);
   } catch(e) {
-    // Fallback: open in new tab — user can long-press to save on mobile
+    if (e.name === 'AbortError') return;
+    // Last resort: open in new tab, long-press to save
     window.open(url, '_blank');
-    showToast('Tap and hold the image to save it');
+    showToast('Tap and hold the image to save');
   }
 }
 
