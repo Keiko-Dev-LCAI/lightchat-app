@@ -795,8 +795,11 @@ body {
   </div>
   <div class="panel-content">
     <div class="form-group">
-      <label class="form-label">Search by @handle</label>
-      <input class="form-input" id="search-handle-input" type="text" placeholder="@handle" oninput="clearSearchResult()">
+      <label class="form-label">Find by handle</label>
+      <div style="display:flex;align-items:center;background:var(--bg);border:2px solid var(--border);border-radius:14px;overflow:hidden">
+        <span style="padding:0 4px 0 20px;font-size:20px;color:var(--purple);font-weight:700;flex-shrink:0">@</span>
+        <input style="flex:1;background:none;border:none;padding:16px 20px 16px 0;color:var(--text);font-size:20px;outline:none;" id="search-handle-input" type="text" placeholder="keiko326" autocorrect="off" autocapitalize="none" oninput="clearSearchResult()">
+      </div>
     </div>
     <button class="primary-btn" onclick="searchHandle()">Search</button>
     <div id="search-result">
