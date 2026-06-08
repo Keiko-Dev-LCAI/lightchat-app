@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LightChat</title>
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+:root {
+  --bg: #0d0d1a;
+  --card: #161628;
+  --border: #2a2a4a;
+  --purple: #9b7fe8;
+  --purple-dark: #7c5fc9;
+  --purple-glow: rgba(155,127,232,0.15);
+  --text: #f0f0ff;
+  --text2: #a0a0c0;
+  --green: #4caf7d;
+  --red: #e05555;
+  --gold: #f0c040;
+  --bubble-out: #6b4fc4;
+  --bubble-in: #1e1e38;
+}
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 18px;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ── Header ── */
+.header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.header-logo { font-size: 22px; font-weight: 700; color: var(--purple); }
+.header-logo span { color: var(--text); }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.connect-btn {
+  background: var(--purple);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 18px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.connect-btn:active { background: var(--purple-dark); }
+.handle-badge {
+  background: var(--purple-glow);
+  border: 1px solid var(--purple);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 15px;
+  color: var(--purple);
+  font-weight: 600;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Main content ── */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Bottom nav ── */
+.bottom-nav {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.nav-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 4px;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text2);
+  font-size: 11px;
+  gap: 3px;
+  transition: color 0.15s;
+}
+.nav-tab.active { color: var(--purple); }
+.nav-tab-icon { font-size: 22px; line-height: 1; }
+
+/* ── Tabs ── */
+.tab { display: none; height: 100%; overflow-y: auto; }
+.tab.active { display: block; }
+
+/* ── Chat list ── */
+.chat-list { padding: 8px 0; }
+.chat-item {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  gap: 14px;
+  transition: background 0.1s;
+}
+.chat-item:active { background: var(--purple-glow); }
+.chat-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+  font-weight: 700;
+  color: #fff;
+}
+.chat-info { flex: 1; min-width: 0; }
+.chat-name { font-size: 17px; font-weight: 600; color: var(--text); }
+.chat-preview { font-size: 14px; color: var(--text2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-time { font-size: 12px; color: var(--text2); flex-shrink: 0; }
+.unread-badge {
+  background: var(--purple);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 12px;
+  padding: 2px 7px;
+  font-weight: 700;
+}
+
+/* ── Chat view ── */
+#chat-view {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  flex-direction: column;
+  z-index: 100;
+  max-width: 480px;
+  margin: 0 auto;
+}
+#chat-view.open { display: flex; }
+.chat-header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--purple);
+  font-size: 26px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+.chat-header-info { flex: 1; }
+.chat-header-name { font-size: 18px; font-weight: 700; }
+.chat-header-wallet { font-size: 13px; color: var(--text2); }
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.msg-bubble-wrap { display: flex; }
+.msg-bubble-wrap.out { justify-content: flex-end; }
+.msg-bubble-wrap.in { justify-content: flex-start; }
+.msg-bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 17px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.msg-bubble.out {
+  background: var(--bubble-out);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.msg-bubble.in {
+  background: var(--bubble-in);
+  color: var(--text);
+  border-bottom-left-radius: 4px;
+  border: 1px solid var(--border);
+}
+.msg-time { font-size: 11px; color: var(--text2); margin-top: 3px; text-align: right; }
+.msg-expiry { font-size: 10px; color: var(--text2); opacity: 0.6; }
+
+.chat-input-bar {
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+}
+.chat-input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 12px 18px;
+  color: var(--text);
+  font-size: 17px;
+  outline: none;
+  -webkit-appearance: none;
+}
+.chat-input::placeholder { color: var(--text2); }
+.send-btn {
+  background: var(--purple);
+  border: none;
+  border-radius: 50%;
+  width: 46px;
+  height: 46px;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.send-btn:active { background: var(--purple-dark); }
+
+/* ── Contacts tab ── */
+.contacts-actions {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.action-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color 0.15s;
+}
+.action-card:active { border-color: var(--purple); }
+.action-icon { font-size: 28px; }
+.action-label { font-size: 17px; font-weight: 600; }
+.action-sub { font-size: 14px; color: var(--text2); margin-top: 2px; }
+
+.contacts-section-title {
+  font-size: 14px;
+  color: var(--text2);
+  padding: 16px 20px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.contact-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.contact-item:active { background: var(--purple-glow); }
+.contact-status-badge {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-left: auto;
+}
+.badge-pending { background: rgba(240,192,64,0.15); color: var(--gold); border: 1px solid var(--gold); }
+.badge-approve { background: var(--purple); color: #fff; cursor: pointer; border: none; border-radius: 10px; padding: 3px 10px; font-size: 12px; font-weight: 600; }
+
+/* ── Memories tab ── */
+.memories-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+}
+.memory-item {
+  background: var(--card);
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+}
+.memory-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+.memories-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.memories-title { font-size: 18px; font-weight: 700; }
+.post-btn {
+  background: var(--purple);
+  border: none;
+  border-radius: 20px;
+  color: #fff;
+  padding: 8px 18px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Me tab ── */
+.me-section {
+  padding: 20px;
+}
+.me-profile-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+.me-avatar {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: var(--purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: #fff;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.me-handle { font-size: 22px; font-weight: 700; color: var(--purple); }
+.me-wallet { font-size: 13px; color: var(--text2); margin-top: 4px; word-break: break-all; }
+.me-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  gap: 16px;
+  font-size: 17px;
+  font-weight: 500;
+}
+.me-menu-item:active { background: var(--purple-glow); }
+.me-menu-icon { font-size: 24px; width: 32px; text-align: center; }
+.me-menu-arrow { margin-left: auto; color: var(--text2); }
+
+/* ── LightPay panel ── */
+#lightpay-panel {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  flex-direction: column;
+  z-index: 200;
+  max-width: 480px;
+  margin: 0 auto;
+}
+#lightpay-panel.open { display: flex; }
+.pay-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 20px;
+}
+.pay-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.pay-card:active { border-color: var(--purple); }
+.pay-card-icon { font-size: 36px; margin-bottom: 8px; }
+.pay-card-label { font-size: 16px; font-weight: 700; }
+.pay-card-sub { font-size: 13px; color: var(--text2); margin-top: 4px; }
+
+/* ── Invite link panel ── */
+#invite-panel {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  flex-direction: column;
+  z-index: 200;
+  max-width: 480px;
+  margin: 0 auto;
+}
+#invite-panel.open { display: flex; }
+
+/* ── Search contact panel ── */
+#search-panel {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  flex-direction: column;
+  z-index: 200;
+  max-width: 480px;
+  margin: 0 auto;
+}
+#search-panel.open { display: flex; }
+
+/* ── Handle setup modal ── */
+#handle-modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#handle-modal.open { display: flex; }
+.modal-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 30px 24px;
+  width: 100%;
+  max-width: 380px;
+}
+.modal-title { font-size: 24px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+.modal-sub { font-size: 16px; color: var(--text2); text-align: center; margin-bottom: 24px; line-height: 1.5; }
+.modal-input {
+  width: 100%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: var(--text);
+  font-size: 20px;
+  outline: none;
+  margin-bottom: 16px;
+  -webkit-appearance: none;
+}
+.modal-input:focus { border-color: var(--purple); }
+.modal-input::placeholder { color: var(--text2); }
+.modal-btn {
+  width: 100%;
+  background: var(--purple);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 16px;
+  cursor: pointer;
+}
+.modal-btn:active { background: var(--purple-dark); }
+.modal-error { color: var(--red); font-size: 15px; text-align: center; margin-bottom: 12px; display: none; }
+
+/* ── Toast ── */
+#toast {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(155,127,232,0.95);
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 24px;
+  font-size: 16px;
+  font-weight: 600;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.3s;
+  white-space: nowrap;
+  pointer-events: none;
+}
+#toast.show { opacity: 1; }
+
+/* ── Empty state ── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 30px;
+  text-align: center;
+  color: var(--text2);
+  gap: 14px;
+}
+.empty-icon { font-size: 56px; }
+.empty-title { font-size: 20px; font-weight: 700; color: var(--text); }
+.empty-text { font-size: 16px; line-height: 1.6; }
+
+/* ── Panel header shared ── */
+.panel-header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.panel-title { font-size: 20px; font-weight: 700; flex: 1; }
+.panel-content { flex: 1; overflow-y: auto; padding: 20px; }
+
+/* ── Forms ── */
+.form-group { margin-bottom: 18px; }
+.form-label { font-size: 15px; color: var(--text2); margin-bottom: 8px; display: block; font-weight: 600; }
+.form-input {
+  width: 100%;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 18px;
+  color: var(--text);
+  font-size: 18px;
+  outline: none;
+  -webkit-appearance: none;
+}
+.form-input:focus { border-color: var(--purple); }
+.form-input::placeholder { color: var(--text2); }
+.primary-btn {
+  width: 100%;
+  background: var(--purple);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  padding: 16px;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.primary-btn:active { background: var(--purple-dark); }
+.invite-box {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 15px;
+  color: var(--purple);
+  word-break: break-all;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+/* ── Notification dot ── */
+.notif-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--purple);
+  border-radius: 50%;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+}
+.nav-tab { position: relative; }
+.notif-dot.show { display: block; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">Light<span>Chat</span></div>
+  <div class="header-right">
+    <button class="connect-btn" id="connect-btn" onclick="connectWallet()">🔗 Connect</button>
+    <div class="handle-badge" id="handle-badge" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Main tabs -->
+<div class="main">
+
+  <!-- Chats tab -->
+  <div class="tab active" id="tab-chats">
+    <div id="chat-list-empty" class="empty-state">
+      <div class="empty-icon">💬</div>
+      <div class="empty-title">No chats yet</div>
+      <div class="empty-text">Connect your wallet and add contacts to start chatting on the blockchain.</div>
+    </div>
+    <div class="chat-list" id="chat-list" style="display:none"></div>
+  </div>
+
+  <!-- Contacts tab -->
+  <div class="tab" id="tab-contacts">
+    <div class="contacts-actions">
+      <div class="action-card" onclick="showInvitePanel()">
+        <div class="action-icon">🔗</div>
+        <div>
+          <div class="action-label">My Invite Link</div>
+          <div class="action-sub">Share so others can add you</div>
+        </div>
+      </div>
+      <div class="action-card" onclick="showSearchPanel()">
+        <div class="action-icon">🔍</div>
+        <div>
+          <div class="action-label">Find by @handle</div>
+          <div class="action-sub">Search for someone to add</div>
+        </div>
+      </div>
+    </div>
+    <div class="contacts-section-title">Pending Requests</div>
+    <div id="pending-list"></div>
+    <div class="contacts-section-title">Contacts</div>
+    <div id="contacts-list">
+      <div class="empty-state" style="padding:30px">
+        <div class="empty-text">No contacts yet. Share your invite link to get started.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Memories tab -->
+  <div class="tab" id="tab-memories">
+    <div class="memories-header">
+      <div class="memories-title">📸 Memories</div>
+      <button class="post-btn" onclick="showToast('On-chain Memories coming soon!')">+ Post</button>
+    </div>
+    <div class="empty-state" style="margin-top:20px">
+      <div class="empty-icon">🌊</div>
+      <div class="empty-title">Memories Feed</div>
+      <div class="empty-text">Share moments with your contacts. Photos and videos stored permanently on Lightchain. Coming in the next update!</div>
+    </div>
+  </div>
+
+  <!-- Me tab -->
+  <div class="tab" id="tab-me">
+    <div class="me-section">
+      <div class="me-profile-card" id="me-profile-card">
+        <div class="me-avatar" id="me-avatar">🐬</div>
+        <div>
+          <div class="me-handle" id="me-handle-display">Not Connected</div>
+          <div class="me-wallet" id="me-wallet-display">Connect your wallet to get started</div>
+        </div>
+      </div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:20px">
+        <div class="me-menu-item" onclick="showLightPay()">
+          <div class="me-menu-icon">💜</div>
+          <div>LightPay</div>
+          <div class="me-menu-arrow">›</div>
+        </div>
+        <div class="me-menu-item" onclick="showInvitePanel()">
+          <div class="me-menu-icon">🔗</div>
+          <div>My Invite Link</div>
+          <div class="me-menu-arrow">›</div>
+        </div>
+        <div class="me-menu-item" onclick="showToast('Stickers coming soon!')">
+          <div class="me-menu-icon">🎭</div>
+          <div>Stickers</div>
+          <div class="me-menu-arrow">›</div>
+        </div>
+        <div class="me-menu-item" onclick="showToast('Settings coming soon!')">
+          <div class="me-menu-icon">⚙️</div>
+          <div>Settings</div>
+          <div class="me-menu-arrow">›</div>
+        </div>
+        <div class="me-menu-item" onclick="showToast('Push notifications coming soon!')">
+          <div class="me-menu-icon">🔔</div>
+          <div>Notifications</div>
+          <div class="me-menu-arrow">›</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;color:var(--text2);font-size:14px;padding:10px 0">
+        LightChat · Built on Lightchain 🌊
+        <br><a href="https://orcamail.ai" target="_blank" style="color:var(--purple);text-decoration:none;margin-top:6px;display:inline-block">📢 Advertise with us</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom nav -->
+<div class="bottom-nav">
+  <button class="nav-tab active" id="nav-chats" onclick="switchTab('chats')">
+    <div class="notif-dot" id="chats-dot"></div>
+    <div class="nav-tab-icon">💬</div>
+    <div>Chats</div>
+  </button>
+  <button class="nav-tab" id="nav-contacts" onclick="switchTab('contacts')">
+    <div class="notif-dot" id="contacts-dot"></div>
+    <div class="nav-tab-icon">👥</div>
+    <div>Contacts</div>
+  </button>
+  <button class="nav-tab" id="nav-memories" onclick="switchTab('memories')">
+    <div class="nav-tab-icon">📸</div>
+    <div>Memories</div>
+  </button>
+  <button class="nav-tab" id="nav-me" onclick="switchTab('me')">
+    <div class="nav-tab-icon">👤</div>
+    <div>Me</div>
+  </button>
+</div>
+
+<!-- ── Chat view (slides over) ── -->
+<div id="chat-view">
+  <div class="chat-header">
+    <button class="back-btn" onclick="closeChat()">‹</button>
+    <div class="chat-header-info">
+      <div class="chat-header-name" id="chat-header-name"></div>
+      <div class="chat-header-wallet" id="chat-header-wallet"></div>
+    </div>
+    <button style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer" onclick="showToast('Video call coming soon!')">📹</button>
+    <button style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;margin-left:4px" onclick="openLightPayTo()">💜</button>
+  </div>
+  <div class="messages-area" id="messages-area">
+    <div style="text-align:center;color:var(--text2);font-size:14px;padding:20px 0">
+      Messages auto-delete after 24 hours 🔒
+    </div>
+  </div>
+  <div class="chat-input-bar">
+    <input class="chat-input" id="chat-input" type="text" placeholder="Message..." maxlength="1000"
+      onkeydown="if(event.key==='Enter')sendMessage()">
+    <button class="send-btn" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<!-- ── Invite Link Panel ── -->
+<div id="invite-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closePanel('invite-panel')">‹</button>
+    <div class="panel-title">My Invite Link</div>
+  </div>
+  <div class="panel-content">
+    <p style="color:var(--text2);font-size:16px;margin-bottom:18px;line-height:1.6">
+      Share this link. When someone clicks it, they can add you as a contact instantly.
+    </p>
+    <div class="invite-box" id="invite-link-box">Connect your wallet first</div>
+    <button class="primary-btn" onclick="copyInviteLink()">📋 Copy Link</button>
+    <div style="margin-top:16px;color:var(--text2);font-size:15px;text-align:center;line-height:1.6">
+      Post it in Discord, text it to a friend — anyone who clicks it gets prompted to add you.
+    </div>
+  </div>
+</div>
+
+<!-- ── Search / Add Contact Panel ── -->
+<div id="search-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closePanel('search-panel')">‹</button>
+    <div class="panel-title">Find Contact</div>
+  </div>
+  <div class="panel-content">
+    <div class="form-group">
+      <label class="form-label">Search by @handle</label>
+      <input class="form-input" id="search-handle-input" type="text" placeholder="@handle" oninput="clearSearchResult()">
+    </div>
+    <button class="primary-btn" onclick="searchHandle()">Search</button>
+    <div id="search-result" style="margin-top:20px;display:none">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px">
+        <div style="font-size:20px;font-weight:700;color:var(--purple)" id="search-result-handle"></div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px;word-break:break-all" id="search-result-wallet"></div>
+        <button class="primary-btn" style="margin-top:14px" onclick="sendContactRequest()">➕ Add Contact</button>
+      </div>
+    </div>
+    <div id="search-not-found" style="display:none;text-align:center;color:var(--text2);padding:20px;font-size:16px">
+      Handle not found. Check the spelling and try again.
+    </div>
+  </div>
+</div>
+
+<!-- ── LightPay Panel ── -->
+<div id="lightpay-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closePanel('lightpay-panel')">‹</button>
+    <div class="panel-title">💜 LightPay</div>
+  </div>
+  <div class="panel-content">
+    <div class="pay-grid">
+      <div class="pay-card" onclick="showToast('Gift feature coming soon!')">
+        <div class="pay-card-icon">💜</div>
+        <div class="pay-card-label">Gift</div>
+        <div class="pay-card-sub">Send LCAI as a purple heart gift</div>
+      </div>
+      <div class="pay-card" onclick="showToast('Split bills coming soon!')">
+        <div class="pay-card-icon">🧾</div>
+        <div class="pay-card-label">Bills</div>
+        <div class="pay-card-sub">Split or request payment</div>
+      </div>
+      <div class="pay-card" onclick="showToast('Purchases coming soon!')">
+        <div class="pay-card-icon">🛍️</div>
+        <div class="pay-card-label">Purchases</div>
+        <div class="pay-card-sub">Pay with LightPay across apps</div>
+      </div>
+      <div class="pay-card" onclick="showToast('Subscriptions coming soon!')">
+        <div class="pay-card-icon">🔄</div>
+        <div class="pay-card-label">Subscriptions</div>
+        <div class="pay-card-sub">Manage all your LCAI subscriptions</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;text-align:center">
+      <div style="font-size:32px;margin-bottom:8px">📱</div>
+      <div style="font-size:16px;font-weight:700;margin-bottom:6px">QR Pay</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.6">Scan a merchant QR code to pay with LCAI in person — coming soon!</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Handle Setup Modal ── -->
+<div id="handle-modal">
+  <div class="modal-box">
+    <div style="font-size:40px;text-align:center;margin-bottom:12px">🐬</div>
+    <div class="modal-title">Welcome to LightChat</div>
+    <div class="modal-sub">Pick your @handle. This is how people find and add you. You can't change it later, so choose wisely!</div>
+    <div class="modal-error" id="handle-error"></div>
+    <input class="modal-input" id="handle-input" type="text" placeholder="yourhandle" maxlength="20"
+      oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
+    <div style="font-size:14px;color:var(--text2);margin-bottom:18px">2–20 characters · letters, numbers, underscores</div>
+    <button class="modal-btn" onclick="registerHandle()">✓ Set My Handle</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ── Config ──
+const BACKEND = 'LIGHTCHAT_BACKEND_URL'; // Replaced after Railway deploy
+const APP_URL = window.location.origin + window.location.pathname.replace('index.html','');
+
+// ── State ──
+let wallet = null;
+let myHandle = null;
+let socket = null;
+let currentChat = null; // { wallet, handle }
+let contacts = [];
+let unreadCounts = {};
+let searchFoundWallet = null;
+
+// ── Wallet Connection ──
+async function connectWallet() {
+  if (!window.ethereum) {
+    showToast('Please open in your wallet browser (Trust Wallet)');
+    return;
+  }
+  try {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send('eth_requestAccounts', []);
+    const signer = provider.getSigner();
+    wallet = (await signer.getAddress()).toLowerCase();
+    onWalletConnected();
+  } catch (e) {
+    showToast('Connection cancelled');
+  }
+}
+
+async function onWalletConnected() {
+  document.getElementById('connect-btn').style.display = 'none';
+  document.getElementById('handle-badge').style.display = 'block';
+
+  // Check if handle exists
+  const resp = await fetch(BACKEND + '/handle/' + wallet).then(r => r.json()).catch(() => ({}));
+  if (resp.handle) {
+    myHandle = resp.handle;
+    updateUI();
+    connectSocket();
+    loadContacts();
+  } else {
+    showHandleModal();
+  }
+}
+
+function showHandleModal() {
+  document.getElementById('handle-modal').classList.add('open');
+  setTimeout(() => document.getElementById('handle-input').focus(), 300);
+}
+
+async function registerHandle() {
+  const raw = document.getElementById('handle-input').value.trim();
+  if (!raw || raw.length < 2) {
+    showHandleError('Must be at least 2 characters');
+    return;
+  }
+  const errEl = document.getElementById('handle-error');
+  errEl.style.display = 'none';
+
+  const resp = await fetch(BACKEND + '/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet, handle: raw })
+  }).then(r => r.json()).catch(() => ({ error: 'Connection failed' }));
+
+  if (resp.error) {
+    showHandleError(resp.error);
+    return;
+  }
+  myHandle = resp.handle;
+  document.getElementById('handle-modal').classList.remove('open');
+  updateUI();
+  connectSocket();
+  loadContacts();
+  showToast('Welcome to LightChat ' + myHandle + '!');
+}
+
+function showHandleError(msg) {
+  const el = document.getElementById('handle-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function updateUI() {
+  const badge = document.getElementById('handle-badge');
+  badge.textContent = myHandle || shortenWallet(wallet);
+
+  // Me tab
+  const letter = (myHandle || 'X').replace('@','').charAt(0).toUpperCase();
+  document.getElementById('me-avatar').textContent = letter;
+  document.getElementById('me-handle-display').textContent = myHandle || shortenWallet(wallet);
+  document.getElementById('me-wallet-display').textContent = wallet;
+
+  // Invite link
+  document.getElementById('invite-link-box').textContent = APP_URL + '?add=' + wallet;
+}
+
+// ── Socket.IO ──
+function connectSocket() {
+  if (socket) socket.disconnect();
+  socket = io(BACKEND, { transports: ['websocket', 'polling'] });
+
+  socket.on('connect', () => {
+    socket.emit('auth', { wallet });
+    if (currentChat) {
+      socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
+    }
+  });
+
+  socket.on('new_message', (msg) => {
+    if (currentChat && getRoom(wallet, currentChat.wallet) === getRoom(msg.sender_wallet, wallet)) {
+      appendMessage(msg);
+      scrollToBottom();
+    } else {
+      // Increment unread
+      const cw = msg.sender_wallet;
+      unreadCounts[cw] = (unreadCounts[cw] || 0) + 1;
+      updateChatList();
+      document.getElementById('chats-dot').classList.add('show');
+    }
+  });
+
+  socket.on('notification', (data) => {
+    showToast('💬 ' + (data.handle || shortenWallet(data.from_wallet)) + ': ' + data.preview);
+  });
+
+  socket.on('contact_request', (data) => {
+    showToast('➕ ' + (data.handle || shortenWallet(data.from_wallet)) + ' wants to add you');
+    document.getElementById('contacts-dot').classList.add('show');
+    loadContacts();
+  });
+
+  socket.on('contact_approved', (data) => {
+    showToast('✅ ' + (data.handle || shortenWallet(data.wallet)) + ' accepted your request');
+    loadContacts();
+  });
+}
+
+// ── Contacts ──
+async function loadContacts() {
+  if (!wallet) return;
+  const data = await fetch(BACKEND + '/contacts/' + wallet).then(r => r.json()).catch(() => []);
+  contacts = data;
+  renderContacts();
+  updateChatList();
+}
+
+function renderContacts() {
+  const pendingEl = document.getElementById('pending-list');
+  const contactsEl = document.getElementById('contacts-list');
+
+  const pending = contacts.filter(c => c.status === 'pending');
+  const approved = contacts.filter(c => c.status === 'approved');
+
+  if (pending.length === 0) {
+    pendingEl.innerHTML = '<div style="padding:10px 20px;color:var(--text2);font-size:15px">No pending requests</div>';
+  } else {
+    pendingEl.innerHTML = pending.map(c => `
+      <div class="contact-item">
+        <div class="chat-avatar" style="width:44px;height:44px;font-size:18px">${avatarLetter(c.handle)}</div>
+        <div style="flex:1">
+          <div style="font-size:16px;font-weight:600">${c.handle || shortenWallet(c.wallet)}</div>
+          <div style="font-size:12px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
+        </div>
+        <button class="badge-approve" onclick="approveContact('${c.wallet}')">✓ Accept</button>
+      </div>
+    `).join('');
+  }
+
+  if (approved.length === 0) {
+    contactsEl.innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-text">No contacts yet. Share your invite link!</div></div>';
+  } else {
+    document.getElementById('contacts-dot').classList.remove('show');
+    contactsEl.innerHTML = approved.map(c => `
+      <div class="contact-item" onclick="openChat('${c.wallet}','${(c.handle||'').replace(/'/g,'\\u0027')}')">
+        <div class="chat-avatar" style="width:44px;height:44px;font-size:18px">${avatarLetter(c.handle)}</div>
+        <div style="flex:1">
+          <div style="font-size:16px;font-weight:600">${c.handle || shortenWallet(c.wallet)}</div>
+          <div style="font-size:12px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
+        </div>
+        <div style="color:var(--text2);font-size:20px">›</div>
+      </div>
+    `).join('');
+  }
+}
+
+function updateChatList() {
+  const approved = contacts.filter(c => c.status === 'approved');
+  const chatList = document.getElementById('chat-list');
+  const empty = document.getElementById('chat-list-empty');
+
+  if (approved.length === 0) {
+    chatList.style.display = 'none';
+    empty.style.display = 'flex';
+    return;
+  }
+
+  chatList.style.display = 'block';
+  empty.style.display = 'none';
+
+  chatList.innerHTML = approved.map(c => {
+    const unread = unreadCounts[c.wallet] || 0;
+    return `
+      <div class="chat-item" onclick="openChat('${c.wallet}','${(c.handle||'').replace(/'/g,'\\u0027')}')">
+        <div class="chat-avatar">${avatarLetter(c.handle)}</div>
+        <div class="chat-info">
+          <div class="chat-name">${c.handle || shortenWallet(c.wallet)}</div>
+          <div class="chat-preview">Tap to chat 💬</div>
+        </div>
+        ${unread > 0 ? '<div class="unread-badge">'+unread+'</div>' : '<div class="chat-time">›</div>'}
+      </div>
+    `;
+  }).join('');
+}
+
+async function approveContact(contactWallet) {
+  if (!wallet) return;
+  await fetch(BACKEND + '/approve-contact', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet, contact_wallet: contactWallet })
+  });
+  loadContacts();
+  showToast('Contact accepted!');
+}
+
+// ── Chat ──
+async function openChat(contactWallet, handle) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  currentChat = { wallet: contactWallet, handle: handle || shortenWallet(contactWallet) };
+  unreadCounts[contactWallet] = 0;
+
+  document.getElementById('chat-header-name').textContent = currentChat.handle;
+  document.getElementById('chat-header-wallet').textContent = shortenWallet(contactWallet);
+  document.getElementById('chat-view').classList.add('open');
+  document.getElementById('messages-area').innerHTML =
+    '<div style="text-align:center;color:var(--text2);font-size:14px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>';
+
+  if (socket) socket.emit('join_chat', { wallet, contact_wallet: contactWallet });
+
+  // Load history
+  const msgs = await fetch(BACKEND + '/messages/' + wallet + '/' + contactWallet).then(r => r.json()).catch(() => []);
+  msgs.forEach(m => appendMessage(m));
+  scrollToBottom();
+  document.getElementById('chat-input').focus();
+  updateChatList();
+}
+
+function closeChat() {
+  document.getElementById('chat-view').classList.remove('open');
+  currentChat = null;
+}
+
+function sendMessage() {
+  const input = document.getElementById('chat-input');
+  const content = input.value.trim();
+  if (!content || !wallet || !currentChat || !socket) return;
+
+  socket.emit('send_message', {
+    sender_wallet: wallet,
+    recipient_wallet: currentChat.wallet,
+    content: content,
+    type: 'text'
+  });
+  input.value = '';
+}
+
+function appendMessage(msg) {
+  const area = document.getElementById('messages-area');
+  const isOut = msg.sender_wallet.toLowerCase() === wallet.toLowerCase();
+  const time = new Date(msg.created_at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-bubble-wrap ' + (isOut ? 'out' : 'in');
+  wrap.innerHTML = `
+    <div>
+      <div class="msg-bubble ${isOut ? 'out' : 'in'}">${escapeHtml(msg.content)}</div>
+      <div class="msg-time">${time}</div>
+    </div>
+  `;
+  area.appendChild(wrap);
+}
+
+function scrollToBottom() {
+  const area = document.getElementById('messages-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+// ── Search ──
+async function searchHandle() {
+  const raw = document.getElementById('search-handle-input').value.trim();
+  if (!raw) return;
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+
+  const resp = await fetch(BACKEND + '/resolve/' + encodeURIComponent(raw.replace('@',''))).then(r => r.json()).catch(() => ({}));
+  const resultEl = document.getElementById('search-result');
+  const notFoundEl = document.getElementById('search-not-found');
+
+  if (resp.wallet) {
+    if (resp.wallet === wallet) {
+      showToast("That's you!");
+      return;
+    }
+    searchFoundWallet = resp.wallet;
+    document.getElementById('search-result-handle').textContent = '@' + raw.replace('@','');
+    document.getElementById('search-result-wallet').textContent = resp.wallet;
+    resultEl.style.display = 'block';
+    notFoundEl.style.display = 'none';
+  } else {
+    resultEl.style.display = 'none';
+    notFoundEl.style.display = 'block';
+    searchFoundWallet = null;
+  }
+}
+
+function clearSearchResult() {
+  document.getElementById('search-result').style.display = 'none';
+  document.getElementById('search-not-found').style.display = 'none';
+  searchFoundWallet = null;
+}
+
+async function sendContactRequest() {
+  if (!wallet || !searchFoundWallet) return;
+  const resp = await fetch(BACKEND + '/contact-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet, contact_wallet: searchFoundWallet })
+  }).then(r => r.json()).catch(() => ({}));
+
+  if (resp.status === 'sent') {
+    showToast('Contact request sent!');
+    closePanel('search-panel');
+  } else if (resp.status === 'already_contacts') {
+    showToast('Already in your contacts');
+  } else {
+    showToast(resp.error || 'Something went wrong');
+  }
+}
+
+// ── Invite link handling ──
+function showInvitePanel() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  const link = APP_URL + '?add=' + wallet;
+  document.getElementById('invite-link-box').textContent = link;
+  document.getElementById('invite-panel').classList.add('open');
+}
+
+function copyInviteLink() {
+  const link = APP_URL + '?add=' + wallet;
+  navigator.clipboard.writeText(link).then(() => showToast('Link copied!')).catch(() => showToast('Tap and hold to copy'));
+}
+
+// Auto-handle incoming invite link
+async function handleInviteParam() {
+  const params = new URLSearchParams(window.location.search);
+  const addWallet = params.get('add');
+  if (addWallet && wallet && addWallet.toLowerCase() !== wallet.toLowerCase()) {
+    if (confirm('Add ' + shortenWallet(addWallet) + ' as a contact on LightChat?')) {
+      const resp = await fetch(BACKEND + '/contact-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, contact_wallet: addWallet.toLowerCase() })
+      }).then(r => r.json()).catch(() => ({}));
+      showToast(resp.status === 'sent' ? 'Request sent!' : (resp.status === 'already_contacts' ? 'Already contacts' : 'Done'));
+    }
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+}
+
+// ── LightPay ──
+function showLightPay() { document.getElementById('lightpay-panel').classList.add('open'); }
+function openLightPayTo() { showToast('Send LCAI gift coming soon! 💜'); }
+
+// ── Panels & tabs ──
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
+
+  if (name === 'chats') document.getElementById('chats-dot').classList.remove('show');
+  if (name === 'contacts') {
+    document.getElementById('contacts-dot').classList.remove('show');
+    if (wallet) loadContacts();
+  }
+}
+
+function showSearchPanel() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  document.getElementById('search-handle-input').value = '';
+  clearSearchResult();
+  document.getElementById('search-panel').classList.add('open');
+}
+
+function closePanel(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── Helpers ──
+function getRoom(w1, w2) {
+  return [w1.toLowerCase(), w2.toLowerCase()].sort().join('_');
+}
+function shortenWallet(w) {
+  if (!w) return '';
+  return w.substring(0,6) + '...' + w.substring(w.length - 4);
+}
+function avatarLetter(handle) {
+  if (!handle) return '🐬';
+  return handle.replace('@','').charAt(0).toUpperCase();
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// ── Init ──
+window.addEventListener('load', async () => {
+  // Pre-fill handle if coming from invite link while already connected
+  if (window.ethereum) {
+    try {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const accounts = await provider.listAccounts();
+      if (accounts.length > 0) {
+        wallet = accounts[0].toLowerCase();
+        onWalletConnected().then(handleInviteParam);
+      }
+    } catch (e) {}
+  }
+});
+</script>
+</body>
+</html>
