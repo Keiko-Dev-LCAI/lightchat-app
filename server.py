@@ -201,6 +201,22 @@ def approve_contact():
     finally:
         conn.close()
 
+@app.route('/delete-contact', methods=['POST'])
+def delete_contact():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower()
+    contact_wallet = data.get('contact_wallet', '').lower()
+    if not wallet or not contact_wallet:
+        return jsonify({'error': 'wallet and contact_wallet required'}), 400
+    conn = get_db()
+    conn.execute(
+        'DELETE FROM contacts WHERE (wallet = ? AND contact_wallet = ?) OR (wallet = ? AND contact_wallet = ?)',
+        (wallet, contact_wallet, contact_wallet, wallet)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'deleted': True})
+
 @app.route('/contacts/<wallet>')
 def get_contacts(wallet):
     conn = get_db()
