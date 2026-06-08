@@ -886,6 +886,9 @@ async function connectWallet() {
 }
 
 async function onWalletConnected() {
+  // Persist wallet address across refreshes
+  localStorage.setItem('lc_wallet', wallet);
+
   document.getElementById('connect-btn') && (document.getElementById('connect-btn').style.display = 'none');
   document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'block');
   document.getElementById('sidebar-connect-btn') && (document.getElementById('sidebar-connect-btn').style.display = 'none');
@@ -1157,10 +1160,31 @@ function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&l
 function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
 
 window.addEventListener('load', async () => {
+  // Try to restore session from localStorage first (instant — no popup)
+  const saved = localStorage.getItem('lc_wallet');
+  if (saved) {
+    wallet = saved;
+    const resp = await fetch(BACKEND + '/handle/' + wallet).then(r => r.json()).catch(() => ({}));
+    if (resp.handle) {
+      myHandle = resp.handle;
+      // Show connected UI immediately
+      document.getElementById('connect-btn') && (document.getElementById('connect-btn').style.display = 'none');
+      document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'block');
+      document.getElementById('sidebar-connect-btn') && (document.getElementById('sidebar-connect-btn').style.display = 'none');
+      document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
+      updateUI();
+      loadContacts();
+    }
+  }
+  // Also try silent web3 reconnect in background
   if (window.ethereum) {
     try {
       const accounts = await new ethers.providers.Web3Provider(window.ethereum).listAccounts();
-      if (accounts.length > 0) { wallet = accounts[0].toLowerCase(); onWalletConnected().then(handleInviteParam); }
+      if (accounts.length > 0) {
+        const addr = accounts[0].toLowerCase();
+        if (addr !== wallet) { wallet = addr; onWalletConnected(); }
+        else { connectSocket(); handleInviteParam(); }
+      }
     } catch(e) {}
   }
 });
