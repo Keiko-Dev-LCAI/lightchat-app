@@ -444,7 +444,7 @@ body {
 .me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; flex-shrink: 0; }
 
 /* ── LightPay panel ── */
-#lightpay-panel, #invite-panel, #search-panel, #settings-panel {
+#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel {
   display: none;
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -452,9 +452,9 @@ body {
   flex-direction: column;
   z-index: 200;
 }
-#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open { display: flex; }
+#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open { display: flex; }
 @media (min-width: 768px) {
-  #lightpay-panel, #invite-panel, #search-panel, #settings-panel {
+  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel {
     left: var(--sidebar);
   }
 }
@@ -607,6 +607,47 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+/* ── Attach button ── */
+.attach-btn { background: none; border: none; color: var(--text2); font-size: 30px; cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; }
+.attach-btn:hover, .attach-btn.active { color: var(--purple); }
+
+/* ── Picker panel ── */
+#picker-panel {
+  display: none; background: var(--card);
+  border-top: 1px solid var(--border);
+  flex-direction: column; height: 300px; flex-shrink: 0; overflow: hidden;
+}
+#picker-panel.open { display: flex; }
+.picker-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.picker-tab-btn { flex: 1; padding: 14px; border: none; background: none; color: var(--text2); font-size: 20px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; }
+.picker-tab-btn.active { color: var(--purple); border-bottom-color: var(--purple); }
+.picker-content { flex: 1; overflow-y: auto; padding: 12px; display: none; }
+.picker-content.active { display: block; }
+.emoji-grid { display: flex; flex-wrap: wrap; gap: 2px; }
+.emoji-btn { background: none; border: none; font-size: 30px; cursor: pointer; padding: 6px; border-radius: 8px; line-height: 1; }
+.emoji-btn:hover, .emoji-btn:active { background: var(--purple-glow); }
+.sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.sticker-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 10px 6px; cursor: pointer; text-align: center; }
+.sticker-btn:hover, .sticker-btn:active { border-color: var(--purple); }
+.sticker-emoji { font-size: 48px; display: block; line-height: 1.1; }
+.sticker-label { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.gif-search-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; color: var(--text); font-size: 18px; outline: none; margin-bottom: 10px; }
+.gif-search-input:focus { border-color: var(--purple); }
+.gif-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.gif-item { border-radius: 8px; overflow: hidden; cursor: pointer; background: var(--border); aspect-ratio: 1; }
+.gif-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ── Memory posts ── */
+.memory-post { background: var(--card); border-bottom: 1px solid var(--border); padding: 20px; }
+.memory-post-header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.memory-image { width: 100%; border-radius: 14px; max-height: 400px; object-fit: cover; display: block; margin-bottom: 12px; }
+.memory-caption { font-size: 20px; line-height: 1.55; color: var(--text); }
+
+/* ── Storage option ── */
+.storage-option { display: block; cursor: pointer; border: 2px solid var(--border); border-radius: 16px; overflow: hidden; transition: border-color 0.15s; }
+.storage-option input { display: none; }
+.storage-option.selected { border-color: var(--purple); background: var(--purple-glow); }
+
 /* ── Toggle switch ── */
 .toggle-switch { position: relative; display: inline-block; width: 58px; height: 32px; flex-shrink: 0; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
@@ -717,12 +758,15 @@ body {
     <div class="tab" id="tab-memories">
       <div class="memories-header">
         <div class="memories-title">📸 Memories</div>
-        <button class="post-btn" onclick="showToast('On-chain Memories coming soon!')">+ Post</button>
+        <button class="post-btn" onclick="showMemoryPostPanel()">+ Post</button>
       </div>
-      <div class="empty-state" style="margin-top:10px">
-        <div class="empty-icon">🌊</div>
-        <div class="empty-title">Memories Feed</div>
-        <div class="empty-text">Share moments with your contacts. Photos and videos stored permanently on Lightchain. Coming in the next update!</div>
+      <div id="memories-feed">
+        <div class="empty-state" style="padding:60px 40px">
+          <div class="empty-icon">📸</div>
+          <div class="empty-title">No memories yet</div>
+          <div class="empty-text">Connect your wallet and post a memory to get started. Your contacts' posts will appear here too.</div>
+          <button class="empty-cta" onclick="showMemoryPostPanel()">📸 Post a Memory</button>
+        </div>
       </div>
     </div>
 
@@ -798,12 +842,32 @@ body {
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
     <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
-    <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showToast('Send LCAI gift coming soon! 💜')">💜</button>
+    <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showGiftModal()">💜</button>
   </div>
   <div class="messages-area" id="messages-area">
     <div style="text-align:center;color:var(--text2);font-size:20px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>
   </div>
+  <!-- ── EMOJI / STICKER / GIF PICKER ── -->
+  <div id="picker-panel">
+    <div class="picker-tabs">
+      <button class="picker-tab-btn active" id="ptab-emoji" onclick="switchPickerTab('emoji')">😊 Emoji</button>
+      <button class="picker-tab-btn" id="ptab-sticker" onclick="switchPickerTab('sticker')">🎭 Stickers</button>
+      <button class="picker-tab-btn" id="ptab-gif" onclick="switchPickerTab('gif')">GIF</button>
+    </div>
+    <div id="picker-emoji" class="picker-content active">
+      <div class="emoji-grid" id="emoji-grid"></div>
+    </div>
+    <div id="picker-sticker" class="picker-content">
+      <div class="sticker-grid" id="sticker-grid"></div>
+    </div>
+    <div id="picker-gif" class="picker-content">
+      <input class="gif-search-input" id="gif-search-input" type="text" placeholder="Search GIFs..." oninput="searchGifs(this.value)">
+      <div class="gif-grid" id="gif-grid"></div>
+    </div>
+  </div>
+
   <div class="chat-input-bar">
+    <button class="attach-btn" id="picker-toggle-btn" onclick="togglePicker()">＋</button>
     <input class="chat-input" id="chat-input" type="text" placeholder="Message..." maxlength="1000"
       onkeydown="if(event.key==='Enter')sendMessage()">
     <button class="send-btn" onclick="sendMessage()">➤</button>
@@ -958,6 +1022,79 @@ body {
   </div>
 </div>
 
+<!-- ── MEMORY POST PANEL ── -->
+<div id="memory-post-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closeMemoryPostPanel()">‹</button>
+    <div class="panel-title">📸 New Memory</div>
+  </div>
+  <div class="panel-content">
+    <!-- Photo picker -->
+    <div style="margin-bottom:18px">
+      <div id="memory-photo-preview" style="display:none;margin-bottom:14px">
+        <img id="memory-photo-img" style="width:100%;border-radius:14px;max-height:280px;object-fit:cover">
+        <button onclick="clearMemoryPhoto()" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text2);padding:8px 18px;font-size:16px;cursor:pointer;width:100%">✕ Remove Photo</button>
+      </div>
+      <button onclick="document.getElementById('memory-photo-input').click()" style="width:100%;border:2px dashed var(--border);border-radius:14px;padding:22px;background:none;color:var(--text2);font-size:18px;cursor:pointer;display:block" id="memory-photo-btn">
+        📷 Add a Photo (optional)
+      </button>
+      <input type="file" id="memory-photo-input" accept="image/*" style="display:none" onchange="previewMemoryPhoto(this)">
+    </div>
+
+    <!-- Caption -->
+    <div class="form-group">
+      <label class="form-label">Caption</label>
+      <textarea id="memory-caption-input" class="form-input" rows="3" placeholder="What's on your mind?" maxlength="500" style="resize:none;line-height:1.5"></textarea>
+    </div>
+
+    <!-- Storage choice -->
+    <div class="form-label" style="margin-bottom:12px">Where to save?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+      <label class="storage-option selected" id="storage-opt-cloud" onclick="selectStorage('cloud')">
+        <input type="radio" name="storage_type" value="cloud" checked>
+        <div style="text-align:center;padding:18px 10px">
+          <div style="font-size:38px">⏳</div>
+          <div style="font-size:18px;font-weight:700;margin-top:6px">Cloud</div>
+          <div style="font-size:14px;color:var(--text2);margin-top:4px">Free</div>
+        </div>
+      </label>
+      <label class="storage-option" id="storage-opt-chain" onclick="selectStorage('chain')">
+        <input type="radio" name="storage_type" value="chain">
+        <div style="text-align:center;padding:18px 10px">
+          <div style="font-size:38px">⛓️</div>
+          <div style="font-size:18px;font-weight:700;margin-top:6px">On-Chain</div>
+          <div style="font-size:14px;color:var(--text2);margin-top:4px">Costs LCAI</div>
+        </div>
+      </label>
+    </div>
+
+    <!-- Storage warning -->
+    <div id="storage-cloud-warning" style="background:rgba(240,192,64,0.12);border:1px solid var(--gold);border-radius:14px;padding:16px 18px;font-size:17px;color:var(--gold);line-height:1.65;margin-bottom:20px">
+      ⏳ <strong>Cloud memories delete automatically after 90 days.</strong> If you want this memory saved forever, choose On-Chain.
+    </div>
+    <div id="storage-chain-warning" style="background:rgba(155,127,232,0.12);border:1px solid var(--purple);border-radius:14px;padding:16px 18px;font-size:17px;color:var(--purple);line-height:1.65;margin-bottom:20px;display:none">
+      ⛓️ <strong>On-chain memories are permanent and can never be deleted.</strong> A small amount of LCAI is required — coming soon!
+    </div>
+
+    <div class="modal-error" id="memory-post-error"></div>
+    <button class="primary-btn" onclick="submitMemoryPost()" id="memory-post-btn">📸 Post Memory</button>
+  </div>
+</div>
+
+<!-- ── LCAI GIFT MODAL ── -->
+<div id="lcai-gift-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:20px">
+  <div class="modal-box">
+    <div style="font-size:56px;text-align:center;margin-bottom:10px">💜</div>
+    <div class="modal-title">Send LCAI Gift</div>
+    <div class="modal-sub">To: <span id="gift-to-handle" style="color:var(--purple);font-weight:700"></span></div>
+    <input class="modal-input" id="gift-amount-input" type="number" placeholder="Amount in LCAI" min="0.01" step="0.01" style="margin-bottom:8px">
+    <div style="font-size:15px;color:var(--text2);text-align:center;margin-bottom:18px">Your Trust Wallet will confirm the transaction</div>
+    <div class="modal-error" id="gift-error"></div>
+    <button class="modal-btn" onclick="sendLcaiGift()">💜 Send Gift</button>
+    <button class="modal-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text2);margin-top:10px" onclick="document.getElementById('lcai-gift-modal').style.display='none'">Cancel</button>
+  </div>
+</div>
+
 <!-- ── VIDEO CALL OVERLAYS ── -->
 <div id="call-incoming-overlay">
   <div style="font-size:80px">📹</div>
@@ -1027,6 +1164,7 @@ async function onWalletConnected() {
     updateUI();
     connectSocket();
     loadContacts();
+    loadMemories();
     handleInviteParam();
   } else {
     showHandleModal();
@@ -1052,7 +1190,7 @@ async function registerHandle() {
   if (resp.error) { showHandleError(resp.error); return; }
   myHandle = resp.handle;
   document.getElementById('handle-modal').classList.remove('open');
-  updateUI(); connectSocket(); loadContacts();
+  updateUI(); connectSocket(); loadContacts(); loadMemories();
   showToast('Welcome to LightChat ' + myHandle + '!');
   handleInviteParam();
 }
@@ -1226,8 +1364,22 @@ function appendMessage(msg) {
   const isOut = msg.sender_wallet.toLowerCase() === wallet.toLowerCase();
   const time = new Date(msg.created_at * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
   const wrap = document.createElement('div');
+  const t = msg.type || msg.msg_type || 'text';
   wrap.className = 'msg-bubble-wrap ' + (isOut ? 'out' : 'in');
-  wrap.innerHTML = '<div><div class="msg-bubble ' + (isOut ? 'out' : 'in') + '">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+
+  if (t === 'emoji') {
+    wrap.innerHTML = '<div><div style="font-size:54px;line-height:1;padding:4px 2px">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+  } else if (t === 'sticker') {
+    wrap.innerHTML = '<div><div style="font-size:80px;line-height:1;padding:6px 2px">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+  } else if (t === 'gif') {
+    wrap.innerHTML = '<div><img src="' + escapeHtml(msg.content) + '" style="max-width:220px;border-radius:14px;display:block" loading="lazy"><div class="msg-time">' + time + '</div></div>';
+  } else if (t === 'lcai_gift') {
+    let g = {}; try { g = JSON.parse(msg.content); } catch(e) {}
+    const rad = isOut ? 'border-bottom-right-radius:5px' : 'border-bottom-left-radius:5px';
+    wrap.innerHTML = '<div><div style="background:linear-gradient(135deg,#6b4fc4,#9b7fe8);padding:22px 28px;border-radius:20px;min-width:190px;text-align:center;' + rad + '"><div style="font-size:52px">💜</div><div style="font-size:22px;font-weight:700;color:#fff;margin:8px 0">' + (g.amount || '?') + ' LCAI</div><div style="font-size:15px;color:rgba(255,255,255,0.8);margin-bottom:10px">' + (isOut ? 'You sent a gift' : 'Sent you a gift') + '</div>' + (g.txHash ? '<a href="https://scan.lightchain.ai/tx/' + g.txHash + '" target="_blank" style="font-size:13px;color:rgba(255,255,255,0.75);text-decoration:underline">View on Lightscan ↗</a>' : '') + '</div><div class="msg-time">' + time + '</div></div>';
+  } else {
+    wrap.innerHTML = '<div><div class="msg-bubble ' + (isOut ? 'out' : 'in') + '">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+  }
   area.appendChild(wrap);
 }
 
@@ -1338,6 +1490,7 @@ function switchTab(name) {
   if (snav) snav.classList.add('active');
   if (name === 'chats') { document.getElementById('chats-dot').classList.remove('show'); document.getElementById('schats-dot') && document.getElementById('schats-dot').classList.remove('show'); }
   if (name === 'contacts' && wallet) { document.getElementById('contacts-dot').classList.remove('show'); document.getElementById('scontacts-dot') && document.getElementById('scontacts-dot').classList.remove('show'); loadContacts(); }
+  if (name === 'memories' && wallet) loadMemories();
 }
 
 function showSearchPanel() { if (!wallet) { showToast('Connect your wallet first'); return; } document.getElementById('search-handle-input').value = ''; clearSearchResult(); document.getElementById('search-panel').classList.add('open'); }
@@ -1348,6 +1501,283 @@ function shortenWallet(w) { if (!w) return ''; return w.substring(0,6) + '...' +
 function avatarLetter(h) { if (!h) return '🐬'; return h.replace('@','').charAt(0).toUpperCase(); }
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
+
+// ════════════════════════════════
+// EMOJI / STICKER / GIF PICKER
+// ════════════════════════════════
+const EMOJI_LIST = [
+  '😀','😂','🤣','😊','😍','🥰','😎','🤩','😭','😤','😡','🤔','🫡','🤗','😮','🥹',
+  '😴','🤮','😬','🫣','🙄','😏','😒','😔','😞','🫠','🥲','😇','🤑','🤠','🥸','🤡',
+  '👍','👎','❤️','🧡','💛','💚','💙','💜','🤍','🖤','💗','💕','🫶','👋','🤝','🙏',
+  '✌️','🤞','🤙','💪','🫂','👀','💯','🔥','✨','⚡','🌟','💫','🎉','🎊','🏆','💎',
+  '🚀','🌈','🌙','⭐','🌊','🎁','🎯','🎵','🎶','🐬','🦁','🐧','🦊','🐸','🐙','🦈',
+  '🍕','🍔','🌮','🍣','🍰','🍺','☕','🧃','💻','📱','🔑','🏠','🚗','✈️','🌍','💰'
+];
+
+const STICKER_LIST = [
+  {e:'😀',l:'Happy'},{e:'😂',l:'LOL'},{e:'😍',l:'Love it'},{e:'🥰',l:'Cute'},
+  {e:'😎',l:'Cool'},{e:'🔥',l:'Fire!'},{e:'💯',l:'100%'},{e:'❤️',l:'Heart'},
+  {e:'💜',l:'Purple'},{e:'🎉',l:'Party!'},{e:'🙏',l:'Please'},{e:'👍',l:'Nice'},
+  {e:'😭',l:'Crying'},{e:'😡',l:'Angry'},{e:'🤔',l:'Hmm...'},{e:'💤',l:'Sleepy'},
+  {e:'🚀',l:'LFG!'},{e:'💎',l:'Diamond'},{e:'🐬',l:'Orca'},{e:'🌊',l:'Wave'}
+];
+
+const GIPHY_KEY = 'dc6zaTOxFJmzC';
+let gifSearchTimer = null;
+
+function initPicker() {
+  // Emoji grid
+  const eg = document.getElementById('emoji-grid');
+  eg.innerHTML = EMOJI_LIST.map(e => `<button class="emoji-btn" onclick="sendEmoji('${e}')">${e}</button>`).join('');
+  // Sticker grid
+  const sg = document.getElementById('sticker-grid');
+  sg.innerHTML = STICKER_LIST.map(s => `<button class="sticker-btn" onclick="sendSticker('${s.e}')"><span class="sticker-emoji">${s.e}</span><div class="sticker-label">${s.l}</div></button>`).join('');
+  // Load trending GIFs
+  loadGifs('');
+}
+
+function togglePicker() {
+  const panel = document.getElementById('picker-panel');
+  const btn = document.getElementById('picker-toggle-btn');
+  if (panel.classList.contains('open')) {
+    panel.classList.remove('open');
+    btn.classList.remove('active');
+  } else {
+    panel.classList.add('open');
+    btn.classList.add('active');
+  }
+}
+
+function closePicker() {
+  document.getElementById('picker-panel').classList.remove('open');
+  document.getElementById('picker-toggle-btn').classList.remove('active');
+}
+
+function switchPickerTab(tab) {
+  ['emoji','sticker','gif'].forEach(t => {
+    document.getElementById('ptab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('picker-' + t).classList.toggle('active', t === tab);
+  });
+  if (tab === 'gif' && !document.getElementById('gif-grid').children.length) loadGifs('');
+}
+
+function sendEmoji(e) {
+  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: e, type: 'emoji'});
+  closePicker();
+}
+
+function sendSticker(e) {
+  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: e, type: 'sticker'});
+  closePicker();
+}
+
+function sendGif(url) {
+  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: url, type: 'gif'});
+  closePicker();
+}
+
+async function loadGifs(query) {
+  const grid = document.getElementById('gif-grid');
+  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text2);font-size:16px">Loading...</div>';
+  try {
+    const endpoint = query
+      ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${encodeURIComponent(query)}&limit=9&rating=g`
+      : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_KEY}&limit=9&rating=g`;
+    const data = await fetch(endpoint).then(r => r.json());
+    if (!data.data || !data.data.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text2)">No GIFs found</div>'; return; }
+    grid.innerHTML = data.data.map(g => {
+      const url = g.images.fixed_height_small ? g.images.fixed_height_small.url : g.images.fixed_height.url;
+      const full = g.images.fixed_height.url;
+      return `<div class="gif-item" onclick="sendGif('${full}')"><img src="${url}" alt="gif" loading="lazy"></div>`;
+    }).join('');
+  } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--red)">Could not load GIFs</div>'; }
+}
+
+function searchGifs(query) {
+  clearTimeout(gifSearchTimer);
+  gifSearchTimer = setTimeout(() => loadGifs(query), 500);
+}
+
+// ════════════════════════════════
+// MEMORIES
+// ════════════════════════════════
+let memoryPhotoData = null, memoryPhotoType = null, selectedStorage = 'cloud';
+
+function showMemoryPostPanel() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  document.getElementById('memory-post-panel').classList.add('open');
+}
+function closeMemoryPostPanel() {
+  document.getElementById('memory-post-panel').classList.remove('open');
+  clearMemoryPhoto();
+  document.getElementById('memory-caption-input').value = '';
+  document.getElementById('memory-post-error').style.display = 'none';
+  selectStorage('cloud');
+}
+
+function selectStorage(type) {
+  selectedStorage = type;
+  document.getElementById('storage-opt-cloud').classList.toggle('selected', type === 'cloud');
+  document.getElementById('storage-opt-chain').classList.toggle('selected', type === 'chain');
+  document.getElementById('storage-cloud-warning').style.display = type === 'cloud' ? 'block' : 'none';
+  document.getElementById('storage-chain-warning').style.display = type === 'chain' ? 'block' : 'none';
+}
+
+async function previewMemoryPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const compressed = await compressImage(file);
+  memoryPhotoData = compressed.base64;
+  memoryPhotoType = compressed.type;
+  document.getElementById('memory-photo-img').src = 'data:' + compressed.type + ';base64,' + compressed.base64;
+  document.getElementById('memory-photo-preview').style.display = 'block';
+  document.getElementById('memory-photo-btn').style.display = 'none';
+}
+
+function clearMemoryPhoto() {
+  memoryPhotoData = null; memoryPhotoType = null;
+  document.getElementById('memory-photo-preview').style.display = 'none';
+  document.getElementById('memory-photo-btn').style.display = 'block';
+  document.getElementById('memory-photo-input').value = '';
+}
+
+async function compressImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        const maxDim = 1200;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+        resolve({ base64: dataUrl.split(',')[1], type: 'image/jpeg' });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function submitMemoryPost() {
+  const caption = document.getElementById('memory-caption-input').value.trim();
+  const errEl = document.getElementById('memory-post-error');
+  if (!caption && !memoryPhotoData) { errEl.textContent = 'Add a photo or caption'; errEl.style.display = 'block'; return; }
+  if (selectedStorage === 'chain') { showToast('On-chain storage coming soon! Posting to Cloud for now.'); }
+
+  const btn = document.getElementById('memory-post-btn');
+  btn.textContent = 'Posting...'; btn.disabled = true;
+  errEl.style.display = 'none';
+
+  const storage = selectedStorage === 'chain' ? 'cloud' : selectedStorage; // chain not ready yet
+
+  const resp = await fetch(BACKEND + '/post-memory', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({wallet, caption, image_data: memoryPhotoData || '', image_type: memoryPhotoType || '', storage_type: storage})
+  }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
+
+  btn.textContent = '📸 Post Memory'; btn.disabled = false;
+
+  if (resp.error) { errEl.textContent = resp.error; errEl.style.display = 'block'; return; }
+  closeMemoryPostPanel();
+  showToast('Memory posted!');
+  loadMemories();
+  switchTab('memories');
+}
+
+async function loadMemories() {
+  if (!wallet) return;
+  const posts = await fetch(BACKEND + '/memories/' + wallet).then(r => r.json()).catch(() => []);
+  renderMemoriesFeed(posts);
+}
+
+function renderMemoriesFeed(posts) {
+  const feed = document.getElementById('memories-feed');
+  if (!posts.length) {
+    feed.innerHTML = '<div class="empty-state" style="padding:60px 40px"><div class="empty-icon">📸</div><div class="empty-title">No memories yet</div><div class="empty-text">Be the first to post a memory. Your contacts’ posts will appear here too.</div><button class="empty-cta" onclick="showMemoryPostPanel()">📸 Post a Memory</button></div>';
+    return;
+  }
+  feed.innerHTML = posts.map(m => {
+    const daysLeft = m.expires_at ? Math.max(0, Math.round((m.expires_at - Date.now()/1000) / 86400)) : null;
+    const badge = m.storage_type === 'chain'
+      ? '<span style="color:var(--purple);font-weight:600">⛓️ Permanent</span>'
+      : '<span style="color:var(--gold);font-weight:600">⏳ ' + daysLeft + ' days left</span>';
+    const isOwn = m.wallet === wallet;
+    const name = m.handle || shortenWallet(m.wallet);
+    const timeAgo = getTimeAgo(m.created_at);
+    return `<div class="memory-post">
+      <div class="memory-post-header">
+        <div class="chat-avatar" style="width:48px;height:48px;font-size:20px">${avatarLetter(m.handle)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:20px;font-weight:700">${name}${isOwn ? ' <span style="color:var(--text2);font-size:16px;font-weight:400">(you)</span>' : ''}</div>
+          <div style="font-size:15px;color:var(--text2);margin-top:3px">${timeAgo} &nbsp;·&nbsp; ${badge}</div>
+        </div>
+      </div>
+      ${m.image_data ? `<img class="memory-image" src="data:${m.image_type};base64,${m.image_data}" alt="memory">` : ''}
+      ${m.caption ? `<div class="memory-caption">${escapeHtml(m.caption)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function getTimeAgo(ts) {
+  const secs = Math.floor(Date.now()/1000 - ts);
+  if (secs < 60) return 'just now';
+  if (secs < 3600) return Math.floor(secs/60) + 'm ago';
+  if (secs < 86400) return Math.floor(secs/3600) + 'h ago';
+  return Math.floor(secs/86400) + 'd ago';
+}
+
+// ════════════════════════════════
+// LCAI GIFT
+// ════════════════════════════════
+function showGiftModal() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  if (!currentChat) { showToast('Open a chat first'); return; }
+  document.getElementById('gift-to-handle').textContent = currentChat.handle;
+  document.getElementById('gift-amount-input').value = '';
+  document.getElementById('gift-error').style.display = 'none';
+  document.getElementById('lcai-gift-modal').style.display = 'flex';
+}
+
+async function sendLcaiGift() {
+  const amountStr = document.getElementById('gift-amount-input').value;
+  const amount = parseFloat(amountStr);
+  const errEl = document.getElementById('gift-error');
+  if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid LCAI amount'; errEl.style.display = 'block'; return; }
+  if (!window.ethereum) { errEl.textContent = 'Wallet not available'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  try {
+    const valueHex = '0x' + BigInt(Math.round(amount * 1e18)).toString(16);
+    const txHash = await window.ethereum.request({
+      method: 'eth_sendTransaction',
+      params: [{from: wallet, to: currentChat.wallet, value: valueHex, chainId: '0x23F0'}]
+    });
+    document.getElementById('lcai-gift-modal').style.display = 'none';
+    if (socket) {
+      socket.emit('send_message', {
+        sender_wallet: wallet,
+        recipient_wallet: currentChat.wallet,
+        content: JSON.stringify({amount, txHash}),
+        type: 'lcai_gift'
+      });
+    }
+    showToast('💜 Gift sent! ' + amount + ' LCAI');
+  } catch(e) {
+    if (e.code === 4001) errEl.textContent = 'Transaction cancelled';
+    else errEl.textContent = 'Transaction failed: ' + (e.message || 'unknown error');
+    errEl.style.display = 'block';
+  }
+}
 
 // ════════════════════════════════
 // SETTINGS
@@ -1569,6 +1999,7 @@ function toggleCamera() {
 window.addEventListener('load', async () => {
   loadSettings();
   registerServiceWorker();
+  initPicker();
   // Try to restore session from localStorage first (instant — no popup)
   const saved = localStorage.getItem('lc_wallet');
   if (saved) {
@@ -1583,6 +2014,7 @@ window.addEventListener('load', async () => {
       document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
       updateUI();
       loadContacts();
+      loadMemories();
       handleInviteParam();
     }
   }
