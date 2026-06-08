@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, join_room, emit
 from flask_cors import CORS
@@ -10,7 +13,7 @@ import threading
 app = Flask(__name__)
 CORS(app, origins="*")
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lightchat-secret-2026')
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 DB_PATH = os.environ.get('DB_PATH', 'lightchat.db')
 
