@@ -9,6 +9,17 @@ import os
 import time
 import re
 import threading
+import json
+
+try:
+    from pywebpush import webpush, WebPushException
+    PUSH_AVAILABLE = True
+except ImportError:
+    PUSH_AVAILABLE = False
+
+VAPID_PUBLIC_KEY = "BARwCZXpnFLr_5wN2AtVFC0TE6_wfOiuq8jS6Gxvf-qt3R0QLUCkxXbQr7a1JYI_MqZmU0JfuLXmPPu8e85lFlI"
+VAPID_PRIVATE_KEY = "tzOJiS8pApHcxCBapYWKk63xle6Zia-Q1Gn4lAGaFsM"
+VAPID_CLAIMS = {"sub": "mailto:noreply@lightchat.app"}
 
 app = Flask(__name__)
 CORS(app, origins="*")
@@ -48,6 +59,13 @@ def init_db():
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            wallet TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            subscription TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (wallet, endpoint)
+        );
     ''')
     conn.commit()
     conn.close()
@@ -79,11 +97,91 @@ def get_handle_for(wallet, conn=None):
         conn.close()
     return row['handle'] if row else wallet[:8] + '...'
 
+def send_push_notification(to_wallet, title, body):
+    if not PUSH_AVAILABLE:
+        return
+    try:
+        conn = get_db()
+        rows = conn.execute(
+            'SELECT subscription FROM push_subscriptions WHERE wallet = ?',
+            (to_wallet.lower(),)
+        ).fetchall()
+        conn.close()
+        payload = json.dumps({'title': title, 'body': body})
+        for row in rows:
+            try:
+                sub = json.loads(row['subscription'])
+                webpush(
+                    subscription_info=sub,
+                    data=payload,
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=VAPID_CLAIMS
+                )
+            except WebPushException as e:
+                # 410 Gone = subscription expired, remove it
+                if '410' in str(e):
+                    try:
+                        sub_data = json.loads(row['subscription'])
+                        endpoint = sub_data.get('endpoint', '')
+                        conn2 = get_db()
+                        conn2.execute(
+                            'DELETE FROM push_subscriptions WHERE wallet = ? AND endpoint = ?',
+                            (to_wallet.lower(), endpoint)
+                        )
+                        conn2.commit()
+                        conn2.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'service': 'LightChat'})
 
+@app.route('/vapid-public-key')
+def vapid_public_key():
+    return jsonify({'publicKey': VAPID_PUBLIC_KEY})
 
+@app.route('/subscribe', methods=['POST'])
+def subscribe():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    subscription = data.get('subscription')
+    if not wallet or not subscription:
+        return jsonify({'error': 'wallet and subscription required'}), 400
+    endpoint = subscription.get('endpoint', '')
+    if not endpoint:
+        return jsonify({'error': 'invalid subscription'}), 400
+    conn = get_db()
+    conn.execute(
+        'INSERT OR REPLACE INTO push_subscriptions (wallet, endpoint, subscription, created_at) VALUES (?, ?, ?, ?)',
+        (wallet, endpoint, json.dumps(subscription), int(time.time()))
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'subscribed': True})
+
+@app.route('/unsubscribe', methods=['POST'])
+def unsubscribe():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    endpoint = data.get('endpoint', '')
+    if not wallet:
+        return jsonify({'error': 'wallet required'}), 400
+    conn = get_db()
+    if endpoint:
+        conn.execute(
+            'DELETE FROM push_subscriptions WHERE wallet = ? AND endpoint = ?',
+            (wallet, endpoint)
+        )
+    else:
+        conn.execute('DELETE FROM push_subscriptions WHERE wallet = ?', (wallet,))
+    conn.commit()
+    conn.close()
+    return jsonify({'unsubscribed': True})
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -344,11 +442,61 @@ def on_send_message(data):
 
     emit('new_message', msg, room=room)
     # Ping recipient's personal room for notification
+    sender_handle = get_handle_for(sender)
     emit('notification', {
         'from_wallet': sender,
-        'handle': get_handle_for(sender),
+        'handle': sender_handle,
         'preview': content[:50]
     }, room=recipient)
+
+    # Send push notification (background, non-blocking)
+    eventlet.spawn(send_push_notification, recipient, sender_handle, content[:80])
+
+# WebRTC signaling
+@socketio.on('call_offer')
+def on_call_offer(data):
+    caller = (data.get('caller_wallet') or '').lower()
+    callee = (data.get('callee_wallet') or '').lower()
+    offer = data.get('offer')
+    if not caller or not callee or not offer:
+        return
+    emit('call_offer', {
+        'caller_wallet': caller,
+        'handle': get_handle_for(caller),
+        'offer': offer
+    }, room=callee)
+
+@socketio.on('call_answer')
+def on_call_answer(data):
+    caller = (data.get('caller_wallet') or '').lower()
+    callee = (data.get('callee_wallet') or '').lower()
+    answer = data.get('answer')
+    if not caller or not callee or not answer:
+        return
+    emit('call_answer', {
+        'callee_wallet': callee,
+        'answer': answer
+    }, room=caller)
+
+@socketio.on('ice_candidate')
+def on_ice_candidate(data):
+    target = (data.get('target_wallet') or '').lower()
+    candidate = data.get('candidate')
+    sender = (data.get('sender_wallet') or '').lower()
+    if not target or not candidate:
+        return
+    emit('ice_candidate', {
+        'sender_wallet': sender,
+        'candidate': candidate
+    }, room=target)
+
+@socketio.on('call_end')
+def on_call_end(data):
+    target = (data.get('target_wallet') or '').lower()
+    sender = (data.get('sender_wallet') or '').lower()
+    if not target:
+        return
+    emit('call_end', {'sender_wallet': sender}, room=target)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))

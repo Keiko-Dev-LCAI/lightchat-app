@@ -444,7 +444,7 @@ body {
 .me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; flex-shrink: 0; }
 
 /* ── LightPay panel ── */
-#lightpay-panel, #invite-panel, #search-panel {
+#lightpay-panel, #invite-panel, #search-panel, #settings-panel {
   display: none;
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -452,9 +452,9 @@ body {
   flex-direction: column;
   z-index: 200;
 }
-#lightpay-panel.open, #invite-panel.open, #search-panel.open { display: flex; }
+#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open { display: flex; }
 @media (min-width: 768px) {
-  #lightpay-panel, #invite-panel, #search-panel {
+  #lightpay-panel, #invite-panel, #search-panel, #settings-panel {
     left: var(--sidebar);
   }
 }
@@ -606,6 +606,28 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* ── Toggle switch ── */
+.toggle-switch { position: relative; display: inline-block; width: 58px; height: 32px; flex-shrink: 0; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border); border-radius: 32px; transition: 0.3s; }
+.toggle-slider:before { position: absolute; content: ''; height: 24px; width: 24px; left: 4px; bottom: 4px; background: white; border-radius: 50%; transition: 0.3s; }
+.toggle-switch input:checked + .toggle-slider { background: var(--purple); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(26px); }
+
+/* ── Video call overlays ── */
+#call-incoming-overlay, #call-calling-overlay {
+  display: none; position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(13,13,26,0.97); z-index: 800;
+  align-items: center; justify-content: center; flex-direction: column; gap: 28px;
+  text-align: center; padding: 40px;
+}
+#call-active-overlay {
+  display: none; position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000; z-index: 800; flex-direction: column;
+}
 </style>
 </head>
 <body>
@@ -731,10 +753,10 @@ body {
           <div class="me-menu-item" onclick="confirmDeleteHandle()">
             <div class="me-menu-icon">🗑</div><div style="color:var(--red)">Delete Handle</div><div class="me-menu-arrow">›</div>
           </div>
-          <div class="me-menu-item" onclick="showToast('Settings coming soon!')">
+          <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">⚙️</div><div>Settings</div><div class="me-menu-arrow">›</div>
           </div>
-          <div class="me-menu-item" onclick="showToast('Push notifications coming soon!')">
+          <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
           </div>
         </div>
@@ -775,7 +797,7 @@ body {
       <div class="chat-header-name" id="chat-header-name"></div>
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
-    <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showToast('Video call coming soon!')">📹</button>
+    <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
     <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showToast('Send LCAI gift coming soon! 💜')">💜</button>
   </div>
   <div class="messages-area" id="messages-area">
@@ -899,6 +921,73 @@ body {
   </div>
 </div>
 
+<!-- ── SETTINGS PANEL ── -->
+<div id="settings-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closeSettings()">‹</button>
+    <div class="panel-title">⚙️ Settings</div>
+  </div>
+  <div class="panel-content">
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
+      <div class="me-menu-item" style="cursor:default">
+        <div class="me-menu-icon">🔊</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:600">Sound</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px">Play a sound on new messages</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="setting-sound" onchange="toggleSetting('sound')">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="me-menu-item" style="cursor:default">
+        <div class="me-menu-icon">🔔</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:600">Push Notifications</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px">Notify when app is in background</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="setting-push" onchange="toggleSetting('pushNotifs')">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div style="color:var(--text2);font-size:18px;line-height:1.7;padding:0 4px">
+      Push notifications let LightChat ping you when someone messages you and the app is closed. You can turn this off any time.
+    </div>
+  </div>
+</div>
+
+<!-- ── VIDEO CALL OVERLAYS ── -->
+<div id="call-incoming-overlay">
+  <div style="font-size:80px">📹</div>
+  <div style="font-size:28px;font-weight:700">Incoming Video Call</div>
+  <div style="font-size:26px;color:var(--purple)" id="call-incoming-name"></div>
+  <div style="display:flex;gap:48px;margin-top:16px">
+    <button onclick="declineCall()" style="width:80px;height:80px;border-radius:50%;background:var(--red);border:none;font-size:34px;cursor:pointer">📵</button>
+    <button onclick="acceptCall()" style="width:80px;height:80px;border-radius:50%;background:var(--green);border:none;font-size:34px;cursor:pointer">📞</button>
+  </div>
+  <div style="color:var(--text2);font-size:18px;margin-top:8px">↙ Decline &nbsp;&nbsp;&nbsp; Accept ↘</div>
+</div>
+
+<div id="call-calling-overlay">
+  <div style="font-size:80px">📹</div>
+  <div style="font-size:28px;font-weight:700">Calling...</div>
+  <div style="font-size:26px;color:var(--purple)" id="call-calling-name"></div>
+  <div style="font-size:18px;color:var(--text2)">Waiting for answer</div>
+  <button onclick="endCall()" style="margin-top:24px;width:80px;height:80px;border-radius:50%;background:var(--red);border:none;font-size:34px;cursor:pointer">📵</button>
+</div>
+
+<div id="call-active-overlay">
+  <video id="remote-video" autoplay playsinline style="flex:1;width:100%;object-fit:cover;background:#111"></video>
+  <video id="local-video" autoplay playsinline muted style="position:absolute;top:20px;right:20px;width:120px;height:160px;border-radius:12px;object-fit:cover;border:2px solid var(--purple);background:#111"></video>
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:32px;display:flex;justify-content:center;gap:28px;background:linear-gradient(transparent,rgba(0,0,0,0.85))">
+    <button id="mute-btn" onclick="toggleMute()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">🎤</button>
+    <button onclick="endCall()" style="width:76px;height:76px;border-radius:50%;background:var(--red);border:none;font-size:30px;cursor:pointer">📵</button>
+    <button id="cam-btn" onclick="toggleCamera()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">📷</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1010,7 +1099,14 @@ function connectSocket() {
       document.getElementById('schats-dot') && document.getElementById('schats-dot').classList.add('show');
     }
   });
-  socket.on('notification', (d) => showToast('💬 ' + (d.handle || shortenWallet(d.from_wallet)) + ': ' + d.preview));
+  socket.on('notification', (d) => {
+    playNotificationSound();
+    showToast('💬 ' + (d.handle || shortenWallet(d.from_wallet)) + ': ' + d.preview);
+  });
+  socket.on('call_offer', handleCallOffer);
+  socket.on('call_answer', handleCallAnswer);
+  socket.on('ice_candidate', d => handleIceCandidate(d));
+  socket.on('call_end', handleCallEnd);
   socket.on('contact_request', (d) => {
     showToast('➕ ' + (d.handle || shortenWallet(d.from_wallet)) + ' wants to add you');
     document.getElementById('contacts-dot').classList.add('show');
@@ -1253,7 +1349,226 @@ function avatarLetter(h) { if (!h) return '🐬'; return h.replace('@','').charA
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
 
+// ════════════════════════════════
+// SETTINGS
+// ════════════════════════════════
+let settings = {sound: true, pushNotifs: false};
+
+function loadSettings() {
+  const saved = localStorage.getItem('lc_settings');
+  if (saved) { try { settings = {...settings, ...JSON.parse(saved)}; } catch(e) {} }
+}
+function saveSettings() { localStorage.setItem('lc_settings', JSON.stringify(settings)); }
+
+function showSettings() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  document.getElementById('setting-sound').checked = settings.sound;
+  document.getElementById('setting-push').checked = settings.pushNotifs;
+  document.getElementById('settings-panel').classList.add('open');
+}
+function closeSettings() { document.getElementById('settings-panel').classList.remove('open'); }
+
+async function toggleSetting(key) {
+  if (key === 'pushNotifs') {
+    if (document.getElementById('setting-push').checked) {
+      await enablePushNotifications();
+    } else {
+      await disablePushNotifications();
+      settings.pushNotifs = false;
+    }
+  } else {
+    settings[key] = document.getElementById('setting-' + key).checked;
+    saveSettings();
+  }
+}
+
+// ════════════════════════════════
+// PUSH NOTIFICATIONS
+// ════════════════════════════════
+let swRegistration = null;
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try { swRegistration = await navigator.serviceWorker.register('./sw.js'); } catch(e) {}
+}
+
+function urlBase64ToUint8Array(b64) {
+  const padding = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+async function enablePushNotifications() {
+  if (!wallet) { showToast('Connect wallet first'); document.getElementById('setting-push').checked = false; return; }
+  if (!('Notification' in window)) { showToast('Notifications not supported in this browser'); document.getElementById('setting-push').checked = false; return; }
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { showToast('Notifications blocked — check browser settings'); document.getElementById('setting-push').checked = false; return; }
+    if (!swRegistration) { showToast('Service worker not ready, try again'); document.getElementById('setting-push').checked = false; return; }
+    const { publicKey } = await fetch(BACKEND + '/vapid-public-key').then(r => r.json());
+    const sub = await swRegistration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey)});
+    await fetch(BACKEND + '/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({wallet, subscription: sub.toJSON()})});
+    settings.pushNotifs = true;
+    saveSettings();
+    showToast('Push notifications enabled!');
+  } catch(e) {
+    showToast('Could not enable notifications');
+    document.getElementById('setting-push').checked = false;
+    settings.pushNotifs = false;
+    saveSettings();
+  }
+}
+
+async function disablePushNotifications() {
+  if (!swRegistration) return;
+  try {
+    const sub = await swRegistration.pushManager.getSubscription();
+    if (sub) {
+      await fetch(BACKEND + '/unsubscribe', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet, endpoint: sub.endpoint})});
+      await sub.unsubscribe();
+    }
+    showToast('Push notifications off');
+  } catch(e) {}
+}
+
+// ════════════════════════════════
+// SOUND
+// ════════════════════════════════
+function playNotificationSound() {
+  if (!settings.sound) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.28, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.28);
+  } catch(e) {}
+}
+
+// ════════════════════════════════
+// WEBRTC VIDEO CALL
+// ════════════════════════════════
+let peerConnection = null, localStream = null, callState = null;
+const ICE_SERVERS = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
+
+async function startVideoCall() {
+  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (callState) { showToast('Already in a call'); return; }
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+    document.getElementById('local-video').srcObject = localStream;
+    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
+    localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+    peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
+    peerConnection.ontrack = e => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('call_offer', {caller_wallet: wallet, callee_wallet: currentChat.wallet, offer});
+    callState = 'calling';
+    document.getElementById('call-calling-name').textContent = currentChat.handle;
+    document.getElementById('call-calling-overlay').style.display = 'flex';
+  } catch(e) {
+    showToast('Camera error: ' + (e.message || 'check permissions'));
+    cleanupCall();
+  }
+}
+
+async function handleCallOffer(data) {
+  if (callState) { if (socket) socket.emit('call_end', {target_wallet: data.caller_wallet, sender_wallet: wallet}); return; }
+  callState = 'receiving';
+  window._pendingCallOffer = data;
+  document.getElementById('call-incoming-name').textContent = data.handle || shortenWallet(data.caller_wallet);
+  document.getElementById('call-incoming-overlay').style.display = 'flex';
+  playNotificationSound();
+}
+
+async function acceptCall() {
+  const data = window._pendingCallOffer;
+  if (!data) return;
+  document.getElementById('call-incoming-overlay').style.display = 'none';
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+    document.getElementById('local-video').srcObject = localStream;
+    document.getElementById('call-active-overlay').style.display = 'flex';
+    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
+    localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+    peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
+    peerConnection.ontrack = e => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('call_answer', {caller_wallet: data.caller_wallet, callee_wallet: wallet, answer});
+    callState = 'active';
+    window._pendingCallOffer = null;
+  } catch(e) {
+    showToast('Camera error: ' + (e.message || 'check permissions'));
+    cleanupCall();
+  }
+}
+
+async function handleCallAnswer(data) {
+  if (!peerConnection) return;
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    callState = 'active';
+    document.getElementById('call-calling-overlay').style.display = 'none';
+    document.getElementById('call-active-overlay').style.display = 'flex';
+  } catch(e) {}
+}
+
+async function handleIceCandidate(data) {
+  if (!peerConnection || !data.candidate) return;
+  try { await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) {}
+}
+
+function handleCallEnd() { cleanupCall(); showToast('Call ended'); }
+
+function declineCall() {
+  const data = window._pendingCallOffer;
+  if (data && socket) socket.emit('call_end', {target_wallet: data.caller_wallet, sender_wallet: wallet});
+  window._pendingCallOffer = null;
+  cleanupCall();
+}
+
+function endCall() {
+  if (currentChat && socket) socket.emit('call_end', {target_wallet: currentChat.wallet, sender_wallet: wallet});
+  cleanupCall();
+}
+
+function cleanupCall() {
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  if (peerConnection) { peerConnection.close(); peerConnection = null; }
+  callState = null; window._pendingCallOffer = null;
+  document.getElementById('call-incoming-overlay').style.display = 'none';
+  document.getElementById('call-calling-overlay').style.display = 'none';
+  document.getElementById('call-active-overlay').style.display = 'none';
+  const lv = document.getElementById('local-video'); if (lv) lv.srcObject = null;
+  const rv = document.getElementById('remote-video'); if (rv) rv.srcObject = null;
+}
+
+function toggleMute() {
+  if (!localStream) return;
+  const t = localStream.getAudioTracks()[0];
+  if (t) { t.enabled = !t.enabled; document.getElementById('mute-btn').textContent = t.enabled ? '🎤' : '🔇'; }
+}
+function toggleCamera() {
+  if (!localStream) return;
+  const t = localStream.getVideoTracks()[0];
+  if (t) { t.enabled = !t.enabled; document.getElementById('cam-btn').textContent = t.enabled ? '📷' : '🚫'; }
+}
+
 window.addEventListener('load', async () => {
+  loadSettings();
+  registerServiceWorker();
   // Try to restore session from localStorage first (instant — no popup)
   const saved = localStorage.getItem('lc_wallet');
   if (saved) {
