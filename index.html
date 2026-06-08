@@ -54,7 +54,7 @@ body {
     height: 100%;
   }
   .sidebar-logo {
-    padding: 32px 28px 26px;
+    padding: 32px 34px 26px;
     font-size: 42px;
     font-weight: 800;
     color: var(--purple);
@@ -67,7 +67,7 @@ body {
     display: flex;
     align-items: center;
     gap: 18px;
-    padding: 22px 28px;
+    padding: 22px 34px;
     cursor: pointer;
     color: var(--text2);
     font-size: 26px;
@@ -95,7 +95,7 @@ body {
 
   .sidebar-user {
     border-top: 1px solid var(--border);
-    padding: 24px 28px;
+    padding: 24px 34px;
   }
   .sidebar-connect-btn {
     width: 100%;
@@ -193,6 +193,7 @@ body {
   border-top: 1px solid var(--border);
   display: flex;
   flex-shrink: 0;
+  min-height: 72px;
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .nav-tab {
@@ -200,18 +201,21 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   padding: 10px 4px 8px;
   cursor: pointer;
   border: none;
   background: none;
   color: var(--text2);
-  font-size: 13px;
-  gap: 3px;
+  font-size: 14px;
+  font-weight: 500;
+  gap: 4px;
   transition: color 0.15s;
   position: relative;
+  min-height: 72px;
 }
 .nav-tab.active { color: var(--purple); }
-.nav-tab-icon { font-size: 26px; line-height: 1; }
+.nav-tab-icon { font-size: 30px; line-height: 1; }
 .notif-dot {
   width: 8px; height: 8px;
   background: var(--purple);
@@ -556,12 +560,20 @@ body {
 .empty-state {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 60px 30px; text-align: center;
-  color: var(--text2); gap: 16px;
+  padding: 80px 40px; text-align: center;
+  color: var(--text2); gap: 20px;
 }
-.empty-icon { font-size: 60px; }
-.empty-title { font-size: 24px; font-weight: 700; color: var(--text); }
-.empty-text { font-size: 19px; line-height: 1.65; max-width: 400px; }
+.empty-icon { font-size: 120px; line-height: 1; }
+.empty-title { font-size: 30px; font-weight: 700; color: var(--text); }
+.empty-text { font-size: 20px; line-height: 1.65; max-width: 420px; }
+.empty-cta {
+  background: var(--purple); color: #fff;
+  border: none; border-radius: 14px;
+  padding: 16px 36px; font-size: 20px;
+  font-weight: 700; cursor: pointer;
+  margin-top: 8px;
+}
+.empty-cta:hover, .empty-cta:active { background: var(--purple-dark); }
 
 /* ── Toast ── */
 #toast {
@@ -638,6 +650,7 @@ body {
         <div class="empty-icon">💬</div>
         <div class="empty-title">No chats yet</div>
         <div class="empty-text">Connect your wallet and add contacts to start chatting on the blockchain.</div>
+        <button class="empty-cta" onclick="connectWallet()">🔗 Connect Wallet</button>
       </div>
       <div id="chat-list" style="display:none"></div>
     </div>
