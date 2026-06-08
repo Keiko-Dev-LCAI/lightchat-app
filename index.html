@@ -230,30 +230,30 @@ body {
 .chat-item {
   display: flex;
   align-items: center;
-  padding: 16px 22px;
+  padding: 22px 28px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
-  gap: 16px;
+  gap: 20px;
   transition: background 0.1s;
 }
 .chat-item:hover, .chat-item:active { background: var(--purple-glow); }
 .chat-avatar {
-  width: 54px; height: 54px;
+  width: 68px; height: 68px;
   border-radius: 50%;
   background: var(--purple);
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px;
+  font-size: 30px;
   flex-shrink: 0;
   font-weight: 700;
   color: #fff;
 }
 .chat-info { flex: 1; min-width: 0; }
-.chat-name { font-size: 20px; font-weight: 600; color: var(--text); }
-.chat-preview { font-size: 17px; color: var(--text2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-name { font-size: 26px; font-weight: 600; color: var(--text); }
+.chat-preview { font-size: 20px; color: var(--text2); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unread-badge {
   background: var(--purple); color: #fff;
-  border-radius: 12px; font-size: 14px;
-  padding: 3px 10px; font-weight: 700;
+  border-radius: 14px; font-size: 17px;
+  padding: 5px 14px; font-weight: 700;
 }
 
 /* ── Chat view ── */
@@ -353,33 +353,33 @@ body {
 .send-btn:hover, .send-btn:active { background: var(--purple-dark); }
 
 /* ── Contacts ── */
-.contacts-actions { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+.contacts-actions { padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; }
 .action-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 18px 20px;
+  border-radius: 18px;
+  padding: 26px 28px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 22px;
   transition: border-color 0.15s;
 }
 .action-card:hover, .action-card:active { border-color: var(--purple); }
-.action-icon { font-size: 32px; }
-.action-label { font-size: 20px; font-weight: 600; }
-.action-sub { font-size: 16px; color: var(--text2); margin-top: 3px; }
+.action-icon { font-size: 46px; }
+.action-label { font-size: 28px; font-weight: 600; }
+.action-sub { font-size: 20px; color: var(--text2); margin-top: 5px; }
 .contacts-section-title {
-  font-size: 16px; color: var(--text2);
-  padding: 16px 22px 6px;
+  font-size: 20px; color: var(--text2);
+  padding: 22px 28px 8px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 600;
 }
 .contact-item {
   display: flex; align-items: center;
-  padding: 14px 22px;
-  gap: 16px;
+  padding: 20px 28px;
+  gap: 20px;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
@@ -387,54 +387,54 @@ body {
 .badge-approve {
   background: var(--purple); color: #fff;
   cursor: pointer; border: none;
-  border-radius: 12px; padding: 8px 14px;
-  font-size: 15px; font-weight: 600;
+  border-radius: 14px; padding: 12px 22px;
+  font-size: 20px; font-weight: 600;
   margin-left: auto;
 }
 
 /* ── Memories ── */
 .memories-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 22px;
+  padding: 26px 28px;
   border-bottom: 1px solid var(--border);
 }
-.memories-title { font-size: 22px; font-weight: 700; }
+.memories-title { font-size: 32px; font-weight: 700; }
 .post-btn {
   background: var(--purple); border: none;
   border-radius: 20px; color: #fff;
-  padding: 10px 22px; font-size: 17px; font-weight: 600; cursor: pointer;
+  padding: 14px 30px; font-size: 22px; font-weight: 600; cursor: pointer;
 }
 
 /* ── Me tab ── */
-.me-section { padding: 22px; }
+.me-section { padding: 28px; }
 .me-profile-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 26px;
-  display: flex; align-items: center; gap: 20px;
-  margin-bottom: 22px;
+  border-radius: 20px;
+  padding: 32px;
+  display: flex; align-items: center; gap: 26px;
+  margin-bottom: 26px;
 }
 .me-avatar {
-  width: 76px; height: 76px;
+  width: 96px; height: 96px;
   border-radius: 50%;
   background: var(--purple);
   display: flex; align-items: center; justify-content: center;
-  font-size: 34px; color: #fff; font-weight: 700; flex-shrink: 0;
+  font-size: 44px; color: #fff; font-weight: 700; flex-shrink: 0;
 }
-.me-handle { font-size: 26px; font-weight: 700; color: var(--purple); }
-.me-wallet { font-size: 15px; color: var(--text2); margin-top: 5px; word-break: break-all; }
+.me-handle { font-size: 32px; font-weight: 700; color: var(--purple); }
+.me-wallet { font-size: 18px; color: var(--text2); margin-top: 6px; word-break: break-all; }
 .me-menu-item {
   display: flex; align-items: center;
-  padding: 20px 22px;
+  padding: 26px 28px;
   border-bottom: 1px solid var(--border);
-  cursor: pointer; gap: 18px;
-  font-size: 20px; font-weight: 500;
+  cursor: pointer; gap: 24px;
+  font-size: 26px; font-weight: 500;
   transition: background 0.1s;
 }
 .me-menu-item:hover, .me-menu-item:active { background: var(--purple-glow); }
-.me-menu-icon { font-size: 26px; width: 34px; text-align: center; }
-.me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 22px; }
+.me-menu-icon { font-size: 34px; width: 44px; text-align: center; }
+.me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; }
 
 /* ── LightPay panel ── */
 #lightpay-panel, #invite-panel, #search-panel {
@@ -677,7 +677,7 @@ body {
       <div id="pending-list"></div>
       <div class="contacts-section-title">Contacts</div>
       <div id="contacts-list">
-        <div class="empty-state" style="padding:30px">
+        <div class="empty-state" style="padding:40px">
           <div class="empty-text">No contacts yet. Share your invite link to get started.</div>
         </div>
       </div>
@@ -723,9 +723,9 @@ body {
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
           </div>
         </div>
-        <div style="text-align:center;color:var(--text2);font-size:16px;padding:10px 0">
+        <div style="text-align:center;color:var(--text2);font-size:20px;padding:10px 0">
           LightChat · Built on Lightchain 🌊<br>
-          <a href="https://orcamail.ai" target="_blank" style="color:var(--purple);text-decoration:none;margin-top:8px;display:inline-block;font-size:17px">📢 Advertise with us</a>
+          <a href="https://orcamail.ai" target="_blank" style="color:var(--purple);text-decoration:none;margin-top:10px;display:inline-block;font-size:22px">📢 Advertise with us</a>
         </div>
       </div>
     </div>
@@ -764,7 +764,7 @@ body {
     <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showToast('Send LCAI gift coming soon! 💜')">💜</button>
   </div>
   <div class="messages-area" id="messages-area">
-    <div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>
+    <div style="text-align:center;color:var(--text2);font-size:20px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>
   </div>
   <div class="chat-input-bar">
     <input class="chat-input" id="chat-input" type="text" placeholder="Message..." maxlength="1000"
