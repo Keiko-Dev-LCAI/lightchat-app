@@ -1700,6 +1700,16 @@ function searchGifs(query) {
 // ════════════════════════════════
 // MEDIA DOWNLOAD HELPERS
 // ════════════════════════════════
+function triggerDownload(href, filename) {
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(href); }, 3000);
+}
+
 function downloadBase64(base64, mimeType, filename) {
   try {
     const byteStr = atob(base64);
@@ -1708,22 +1718,22 @@ function downloadBase64(base64, mimeType, filename) {
     for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i);
     const blob = new Blob([ab], {type: mimeType});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-  } catch(e) { showToast('Could not download photo'); }
+    triggerDownload(url, filename);
+  } catch(e) { showToast('Could not save photo'); }
 }
 
 async function downloadFromUrl(url, filename) {
   try {
-    const resp = await fetch(url);
+    showToast('Saving...');
+    const resp = await fetch(url, {mode: 'cors'});
+    if (!resp.ok) throw new Error('fetch failed');
     const blob = await resp.blob();
     const objUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objUrl; a.download = filename; a.click();
-    setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+    triggerDownload(objUrl, filename);
   } catch(e) {
+    // Fallback: open in new tab — user can long-press to save on mobile
     window.open(url, '_blank');
+    showToast('Tap and hold the image to save it');
   }
 }
 
