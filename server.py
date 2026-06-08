@@ -1,7 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_socketio import SocketIO, join_room, emit
 from flask_cors import CORS
 import sqlite3
@@ -10,6 +10,7 @@ import time
 import re
 import threading
 import json
+import base64
 
 try:
     from pywebpush import webpush, WebPushException
@@ -24,6 +25,7 @@ VAPID_CLAIMS = {"sub": "mailto:noreply@lightchat.app"}
 app = Flask(__name__)
 CORS(app, origins="*")
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lightchat-secret-2026')
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB max request
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 _data_dir = os.environ.get('DATA_DIR', '/app/data')
@@ -76,6 +78,24 @@ def init_db():
             created_at INTEGER NOT NULL,
             expires_at INTEGER
         );
+        CREATE TABLE IF NOT EXISTS chat_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wallet TEXT NOT NULL,
+            image_data TEXT NOT NULL,
+            image_type TEXT NOT NULL DEFAULT 'image/jpeg',
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS chat_files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wallet TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_data TEXT NOT NULL,
+            file_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+            file_size INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
     ''')
     conn.commit()
     conn.close()
@@ -89,6 +109,8 @@ def cleanup_messages():
             conn = get_db()
             conn.execute('DELETE FROM messages WHERE expires_at < ?', (int(time.time()),))
             conn.execute('DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?', (int(time.time()),))
+            conn.execute('DELETE FROM chat_images WHERE expires_at < ?', (int(time.time()),))
+            conn.execute('DELETE FROM chat_files WHERE expires_at < ?', (int(time.time()),))
             conn.commit()
             conn.close()
         except Exception:
@@ -425,6 +447,81 @@ def get_memories(wallet):
     ''', (w, w, now)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+@app.route('/chat-image', methods=['POST'])
+def post_chat_image():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    image_data = data.get('image_data', '')
+    image_type = data.get('image_type', 'image/jpeg')
+    if not wallet or not image_data:
+        return jsonify({'error': 'wallet and image_data required'}), 400
+    now = int(time.time())
+    conn = get_db()
+    cursor = conn.execute(
+        'INSERT INTO chat_images (wallet, image_data, image_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
+        (wallet, image_data, image_type, now, now + 86400)
+    )
+    image_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'image_id': image_id})
+
+@app.route('/chat-image/<int:image_id>')
+def get_chat_image(image_id):
+    conn = get_db()
+    now = int(time.time())
+    row = conn.execute(
+        'SELECT image_data, image_type FROM chat_images WHERE id = ? AND expires_at > ?',
+        (image_id, now)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    img_bytes = base64.b64decode(row['image_data'])
+    resp = make_response(img_bytes)
+    resp.headers['Content-Type'] = row['image_type']
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
+
+@app.route('/chat-file', methods=['POST'])
+def post_chat_file():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    file_name = data.get('file_name', 'file')
+    file_data = data.get('file_data', '')
+    file_type = data.get('file_type', 'application/octet-stream')
+    file_size = data.get('file_size', 0)
+    if not wallet or not file_data:
+        return jsonify({'error': 'wallet and file_data required'}), 400
+    now = int(time.time())
+    conn = get_db()
+    cursor = conn.execute(
+        'INSERT INTO chat_files (wallet, file_name, file_data, file_type, file_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (wallet, file_name, file_data, file_type, file_size, now, now + 86400)
+    )
+    file_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'file_id': file_id})
+
+@app.route('/chat-file/<int:file_id>')
+def get_chat_file(file_id):
+    conn = get_db()
+    now = int(time.time())
+    row = conn.execute(
+        'SELECT file_name, file_data, file_type FROM chat_files WHERE id = ? AND expires_at > ?',
+        (file_id, now)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    file_bytes = base64.b64decode(row['file_data'])
+    resp = make_response(file_bytes)
+    resp.headers['Content-Type'] = row['file_type']
+    safe_name = row['file_name'].replace('"', '\\"')
+    resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+    return resp
 
 @app.route('/messages/<wallet>/<contact_wallet>')
 def get_messages(wallet, contact_wallet):
