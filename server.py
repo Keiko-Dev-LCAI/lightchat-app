@@ -83,6 +83,19 @@ def get_handle_for(wallet, conn=None):
 def health():
     return jsonify({'status': 'ok', 'service': 'LightChat'})
 
+@app.route('/admin/delete-handle', methods=['POST'])
+def admin_delete_handle():
+    data = request.json or {}
+    secret = data.get('secret', '')
+    wallet = data.get('wallet', '').lower().strip()
+    if secret != 'lc-admin-2026' or not wallet:
+        return jsonify({'error': 'unauthorized'}), 403
+    conn = get_db()
+    conn.execute('DELETE FROM handles WHERE wallet = ?', (wallet,))
+    conn.commit()
+    conn.close()
+    return jsonify({'deleted': True, 'wallet': wallet})
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json or {}
