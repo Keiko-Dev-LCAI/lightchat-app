@@ -716,6 +716,12 @@ body {
           <div class="me-menu-item" onclick="showToast('Stickers coming soon!')">
             <div class="me-menu-icon">🎭</div><div>Stickers</div><div class="me-menu-arrow">›</div>
           </div>
+          <div class="me-menu-item" onclick="showChangeHandleModal()">
+            <div class="me-menu-icon">🏷️</div><div>Change Handle</div><div class="me-menu-arrow">›</div>
+          </div>
+          <div class="me-menu-item" onclick="confirmDeleteHandle()">
+            <div class="me-menu-icon">🗑</div><div style="color:var(--red)">Delete Handle</div><div class="me-menu-arrow">›</div>
+          </div>
           <div class="me-menu-item" onclick="showToast('Settings coming soon!')">
             <div class="me-menu-icon">⚙️</div><div>Settings</div><div class="me-menu-arrow">›</div>
           </div>
@@ -861,6 +867,21 @@ body {
       oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
     <div style="font-size:16px;color:var(--text2);margin-bottom:20px">2–20 characters · letters, numbers, underscores</div>
     <button class="modal-btn" onclick="registerHandle()">✓ Set My Handle</button>
+  </div>
+</div>
+
+<!-- ── CHANGE HANDLE MODAL ── -->
+<div id="change-handle-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:20px">
+  <div class="modal-box">
+    <div style="font-size:48px;text-align:center;margin-bottom:14px">🏷️</div>
+    <div class="modal-title">Change Handle</div>
+    <div class="modal-sub" id="change-handle-current">Current: —</div>
+    <div class="modal-error" id="change-handle-error"></div>
+    <input class="modal-input" id="change-handle-input" type="text" placeholder="newhandle" maxlength="20"
+      oninput="this.value=this.value.replace(/[^a-zA-Z0-9_]/g,'')">
+    <div style="font-size:16px;color:var(--text2);margin-bottom:20px">2–20 characters · letters, numbers, underscores</div>
+    <button class="modal-btn" onclick="submitChangeHandle()">✓ Update Handle</button>
+    <button class="modal-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text2);margin-top:10px" onclick="document.getElementById('change-handle-modal').style.display='none'">Cancel</button>
   </div>
 </div>
 
@@ -1153,6 +1174,43 @@ async function handleInviteParam() {
 }
 
 function showLightPay() { document.getElementById('lightpay-panel').classList.add('open'); }
+
+function showChangeHandleModal() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  document.getElementById('change-handle-current').textContent = 'Current: ' + (myHandle || 'none');
+  document.getElementById('change-handle-input').value = (myHandle || '').replace('@', '');
+  document.getElementById('change-handle-error').style.display = 'none';
+  document.getElementById('change-handle-modal').style.display = 'flex';
+}
+
+async function submitChangeHandle() {
+  const raw = document.getElementById('change-handle-input').value.trim();
+  const errEl = document.getElementById('change-handle-error');
+  if (!raw || raw.length < 2) { errEl.textContent = 'Must be at least 2 characters'; errEl.style.display = 'block'; return; }
+  const resp = await fetch(BACKEND + '/change-handle', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({wallet, handle: raw})
+  }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
+  if (resp.error) { errEl.textContent = resp.error; errEl.style.display = 'block'; return; }
+  myHandle = resp.handle;
+  document.getElementById('change-handle-modal').style.display = 'none';
+  updateUI();
+  showToast('Handle updated to ' + myHandle + '!');
+}
+
+async function confirmDeleteHandle() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  if (!confirm('Delete your handle ' + (myHandle || '') + '? Your wallet will have no @handle until you register a new one.')) return;
+  const resp = await fetch(BACKEND + '/delete-handle', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({wallet})
+  }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
+  if (resp.deleted) {
+    myHandle = null;
+    updateUI();
+    showToast('Handle deleted');
+  } else showToast(resp.error || 'Something went wrong');
+}
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

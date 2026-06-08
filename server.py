@@ -201,6 +201,44 @@ def approve_contact():
     finally:
         conn.close()
 
+@app.route('/delete-handle', methods=['POST'])
+def delete_handle():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    if not wallet:
+        return jsonify({'error': 'wallet required'}), 400
+    conn = get_db()
+    conn.execute('DELETE FROM handles WHERE wallet = ?', (wallet,))
+    conn.commit()
+    conn.close()
+    return jsonify({'deleted': True})
+
+@app.route('/change-handle', methods=['POST'])
+def change_handle():
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    handle = data.get('handle', '').strip().lstrip('@')
+
+    if not wallet or not handle:
+        return jsonify({'error': 'wallet and handle required'}), 400
+    if not re.match(r'^[a-zA-Z0-9_]{2,20}$', handle):
+        return jsonify({'error': 'Handle must be 2-20 characters: letters, numbers, underscores only'}), 400
+
+    handle = '@' + handle.lower()
+    conn = get_db()
+    try:
+        existing = conn.execute('SELECT wallet FROM handles WHERE handle = ?', (handle,)).fetchone()
+        if existing and existing['wallet'] != wallet:
+            return jsonify({'error': 'Handle already taken, please choose another'}), 409
+        conn.execute('INSERT OR REPLACE INTO handles (wallet, handle, created_at) VALUES (?, ?, ?)',
+                     (wallet, handle, int(time.time())))
+        conn.commit()
+        return jsonify({'handle': handle, 'updated': True})
+    except sqlite3.IntegrityError:
+        return jsonify({'error': 'Handle already taken, please choose another'}), 409
+    finally:
+        conn.close()
+
 @app.route('/delete-contact', methods=['POST'])
 def delete_contact():
     data = request.json or {}
