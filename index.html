@@ -307,12 +307,13 @@ body {
 .msg-bubble-wrap.out { justify-content: flex-end; }
 .msg-bubble-wrap.in { justify-content: flex-start; }
 .msg-bubble {
-  max-width: 70%;
+  max-width: 75%;
   padding: 13px 18px;
   border-radius: 20px;
   font-size: 20px;
   line-height: 1.45;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .msg-bubble.out { background: var(--bubble-out); color: #fff; border-bottom-right-radius: 5px; }
 .msg-bubble.in { background: var(--bubble-in); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
