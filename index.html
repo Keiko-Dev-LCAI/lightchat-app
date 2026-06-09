@@ -849,6 +849,64 @@ body {
 }
 .create-group-btn:hover, .create-group-btn:active { background: var(--purple-dark); }
 
+/* ── Video message ── */
+.msg-video {
+  max-width: 280px;
+  border-radius: 14px;
+  display: block;
+  background: #000;
+}
+
+/* ── Watch Party overlay ── */
+#watch-party-overlay {
+  display: none; position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000; z-index: 850;
+  flex-direction: column;
+}
+#watch-party-overlay.open { display: flex; }
+.wp-header {
+  background: rgba(13,13,26,0.92);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex; align-items: center; gap: 12px;
+  flex-shrink: 0;
+}
+.wp-title { flex: 1; font-size: 16px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wp-count { background: var(--purple-glow); border: 1px solid var(--purple); border-radius: 12px; padding: 4px 10px; font-size: 13px; color: var(--purple); font-weight: 600; flex-shrink: 0; }
+.wp-leave-btn { background: var(--red); border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 700; padding: 8px 14px; cursor: pointer; flex-shrink: 0; }
+.wp-body { flex: 1; display: flex; min-height: 0; }
+.wp-video-wrap { flex: 1; position: relative; background: #000; display: flex; align-items: center; justify-content: center; }
+#wp-player { width: 100%; height: 100%; }
+.wp-chat-sidebar {
+  width: 170px; min-width: 130px;
+  background: var(--card);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.wp-chat-messages { flex: 1; overflow-y: auto; padding: 8px 6px; display: flex; flex-direction: column; gap: 6px; -webkit-overflow-scrolling: touch; }
+.wp-msg { font-size: 13px; line-height: 1.4; }
+.wp-msg-handle { font-weight: 700; color: var(--purple); }
+.wp-invite-bar {
+  display: none; position: fixed;
+  top: 0; left: 0; right: 0;
+  background: rgba(107,79,196,0.97);
+  color: #fff; padding: 14px 18px;
+  z-index: 860; cursor: pointer;
+  font-size: 17px; font-weight: 600;
+  text-align: center;
+  border-bottom: 2px solid var(--purple);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: slideDown 0.3s ease;
+}
+@keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+.wp-invite-bar.show { display: block; }
+@media (min-width: 768px) {
+  .wp-chat-sidebar { width: 220px; }
+}
+
 /* ── Video call overlays ── */
 #call-incoming-overlay, #call-calling-overlay {
   display: none; position: fixed;
@@ -1135,6 +1193,11 @@ body {
         <button class="primary-btn" onclick="document.getElementById('chat-file-input').click()">📁 Choose File</button>
         <div style="font-size:15px;color:var(--text2);text-align:center">Any file type &nbsp;·&nbsp; Max 10 MB &nbsp;·&nbsp; Deletes after 24 hours</div>
         <input type="file" id="chat-file-input" style="display:none" onchange="sendChatFile(this)">
+        <div style="border-top:1px solid var(--border);margin:4px 0"></div>
+        <button class="primary-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="document.getElementById('chat-video-input').click()">🎥 Send Video</button>
+        <div style="font-size:15px;color:var(--text2);text-align:center">Videos from gallery &nbsp;·&nbsp; Max 50 MB &nbsp;·&nbsp; Deletes after 24 hours</div>
+        <div id="video-size-warning" style="display:none;background:rgba(240,192,64,0.12);border:1px solid var(--gold);border-radius:12px;padding:10px 14px;font-size:14px;color:var(--gold)">⚠️ Video is large — may take a moment to upload</div>
+        <input type="file" id="chat-video-input" accept="video/*" style="display:none" onchange="sendChatVideo(this)">
       </div>
     </div>
   </div>
@@ -1351,14 +1414,15 @@ body {
     <div style="margin-bottom:18px">
       <div id="memory-photo-preview" style="display:none;margin-bottom:14px">
         <img id="memory-photo-img" style="width:100%;border-radius:14px;max-height:280px;object-fit:cover">
-        <button onclick="clearMemoryPhoto()" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text2);padding:8px 18px;font-size:16px;cursor:pointer;width:100%">✕ Remove Photo</button>
+        <video id="memory-video-preview-el" controls playsinline style="display:none;width:100%;border-radius:14px;max-height:280px;background:#000"></video>
+        <button onclick="clearMemoryPhoto()" style="margin-top:8px;background:none;border:1px solid var(--border);border-radius:10px;color:var(--text2);padding:8px 18px;font-size:16px;cursor:pointer;width:100%">✕ Remove Media</button>
       </div>
       <div style="display:flex;gap:10px" id="memory-photo-btn">
         <button onclick="document.getElementById('memory-camera-input').click()" style="flex:1;border:2px dashed var(--border);border-radius:14px;padding:18px;background:none;color:var(--text2);font-size:17px;cursor:pointer">📷 Camera</button>
-        <button onclick="document.getElementById('memory-gallery-input').click()" style="flex:1;border:2px dashed var(--border);border-radius:14px;padding:18px;background:none;color:var(--text2);font-size:17px;cursor:pointer">🖼️ Gallery</button>
+        <button onclick="document.getElementById('memory-gallery-input').click()" style="flex:1;border:2px dashed var(--border);border-radius:14px;padding:18px;background:none;color:var(--text2);font-size:17px;cursor:pointer">🖼️ Gallery / Video</button>
       </div>
       <input type="file" id="memory-camera-input" accept="image/*" capture="environment" style="display:none" onchange="previewMemoryPhoto(this)">
-      <input type="file" id="memory-gallery-input" accept="image/*" style="display:none" onchange="previewMemoryPhoto(this)">
+      <input type="file" id="memory-gallery-input" accept="image/*,video/*" style="display:none" onchange="previewMemoryPhoto(this)">
     </div>
 
     <!-- Caption -->
@@ -1657,6 +1721,27 @@ body {
   </button>
 </div>
 
+<!-- ── WATCH PARTY INVITE BAR ── -->
+<div id="wp-invite-bar" class="wp-invite-bar" onclick="acceptWatchPartyInvite()"></div>
+
+<!-- ── WATCH PARTY OVERLAY ── -->
+<div id="watch-party-overlay">
+  <div class="wp-header">
+    <div class="wp-title">🎬 Watch Together</div>
+    <div class="wp-count" id="wp-count-badge">👥 1 watching</div>
+    <button class="wp-leave-btn" onclick="leaveWatchParty()">✕ Leave</button>
+  </div>
+  <div class="wp-body">
+    <div class="wp-video-wrap">
+      <div id="wp-player"></div>
+    </div>
+    <div class="wp-chat-sidebar">
+      <div style="padding:8px 6px;font-size:12px;color:var(--text2);border-bottom:1px solid var(--border);text-align:center;flex-shrink:0">Live Chat</div>
+      <div class="wp-chat-messages" id="wp-chat-messages"></div>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ── PASTE ADDRESS MODAL (Safari / Chrome users) ── -->
@@ -1869,6 +1954,80 @@ function connectSocket() {
   socket.on('group_call_peer_left',  handleGroupCallPeerLeft);
   socket.on('group_call_ended',      handleGroupCallEnded);
   socket.on('group_peer_signal',     handleGroupPeerSignal);
+
+  // ── Watch Together listeners ──
+  socket.on('watch_party_created', (d) => {
+    // We are the host — open the overlay immediately
+    if (!d || !d.party_id) return;
+    _wpPartyId = d.party_id;
+    _openWatchPartyOverlay(d.party_id, _wpVideoUrl || '', true);
+  });
+
+  socket.on('watch_party_invite', (d) => {
+    if (!d || !d.party_id) return;
+    _wpPendingInvite = d;
+    const hostName = d.host_handle || shortenWallet(d.host_wallet || '');
+    const bar = document.getElementById('wp-invite-bar');
+    bar.textContent = '🎬 ' + hostName + ' started a Watch Party — Tap to Join';
+    bar.classList.add('show');
+    // Auto-dismiss after 30s if not accepted
+    setTimeout(() => { bar.classList.remove('show'); }, 30000);
+  });
+
+  socket.on('watch_party_joined', (d) => {
+    if (!d || !d.party_id) return;
+    // We just joined as a viewer
+    _wpVideoUrl = d.video_url;
+    _openWatchPartyOverlay(d.party_id, d.video_url, false);
+    document.getElementById('wp-count-badge').textContent = '👥 ' + d.member_count + ' watching';
+  });
+
+  socket.on('watch_party_update', (d) => {
+    if (!d || d.party_id !== _wpPartyId) return;
+    document.getElementById('wp-count-badge').textContent = '👥 ' + d.member_count + ' watching';
+  });
+
+  socket.on('watch_sync', (d) => {
+    if (!d || !_wpPlayer || _wpIsHost) return;
+    const action   = d.action;
+    const hostTime = parseFloat(d.time || 0);
+    try {
+      const curTime = _wpPlayer.getCurrentTime ? _wpPlayer.getCurrentTime() : 0;
+      if (action === 'play') {
+        if (Math.abs(curTime - hostTime) > 2) _wpPlayer.seekTo(hostTime, true);
+        _wpPlayer.playVideo();
+      } else if (action === 'pause') {
+        if (Math.abs(curTime - hostTime) > 2) _wpPlayer.seekTo(hostTime, true);
+        _wpPlayer.pauseVideo();
+      } else if (action === 'seek') {
+        _wpPlayer.seekTo(hostTime, true);
+      }
+    } catch(e) {}
+  });
+
+  socket.on('watch_party_ended', (d) => {
+    if (!d || d.party_id !== _wpPartyId) return;
+    _closeWatchPartyOverlay();
+    showToast('Watch Party ended');
+  });
+
+  socket.on('watch_party_error', (d) => {
+    showToast((d && d.message) ? d.message : 'Watch party error');
+  });
+
+  // Pipe live chat messages into Watch Party sidebar
+  const _origNewMsg = socket.listeners('new_message');
+  socket.on('new_message', (msg) => {
+    if (_wpPartyId && _wpPlayer) {
+      const handle = msg.sender_wallet === wallet ? (myHandle || 'You') : shortenWallet(msg.sender_wallet);
+      if ((msg.type || msg.msg_type) === 'text') _wpAddChatMsg(handle, msg.content);
+    }
+  });
+  socket.on('new_group_message', (msg) => {
+    if (_wpPartyId && _wpPlayer && (msg.type || 'text') === 'text') {
+      _wpAddChatMsg(msg.sender_handle || shortenWallet(msg.sender_wallet), msg.content);
+    }
+  });
 }
 
 async function loadContacts() {
@@ -2046,6 +2205,12 @@ function appendMessage(msg, senderHandle) {
       + (sc.thumb ? '<img src="' + escapeHtml(sc.thumb) + '" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;display:block;margin-bottom:8px" loading="lazy">' : '')
       + (sc.url   ? '<a href="' + escapeHtml(sc.url) + '" target="_blank" rel="noopener" style="display:inline-block;background:var(--purple);color:#fff;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">Open →</a>' : '')
       + '</div></div>'
+      + '<div class="msg-time">' + time + '</div></div>';
+  } else if (t === 'video') {
+    const videoId = escapeHtml(msg.content);
+    const videoSrc = BACKEND + '/video/' + videoId;
+    wrap.innerHTML = '<div>'
+      + '<video class="msg-video" controls preload="metadata" playsinline src="' + videoSrc + '"></video>'
       + '<div class="msg-time">' + time + '</div></div>';
   } else if (t === 'voice') {
     let v = {}; try { v = JSON.parse(msg.content); } catch(e) {}
@@ -2300,11 +2465,15 @@ function renderMsgBubble(text, isOut) {
     const url   = ytM[0];
     const vidId = _extractYtId(url);
     const thumb = vidId ? 'https://img.youtube.com/vi/' + vidId + '/hqdefault.jpg' : '';
+    const safeUrl = escapeHtml(url).replace(/'/g, '\\u0027');
     preview = '<div style="margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.12);max-width:100%">'
       + (thumb ? '<img src="' + escapeHtml(thumb) + '" style="width:100%;max-height:150px;object-fit:cover;display:block" loading="lazy" onerror="this.style.display=\'none\'">' : '')
-      + '<div style="padding:8px 10px;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<div style="padding:8px 10px;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap">'
       + '<span style="font-size:13px;font-weight:600;line-height:1.2">▶ YouTube Video</span>'
-      + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="flex-shrink:0;background:#cc0000;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;-webkit-tap-highlight-color:transparent">▶ Watch</a>'
+      + '<div style="display:flex;gap:6px;flex-shrink:0">'
+      + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="background:#cc0000;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;-webkit-tap-highlight-color:transparent">▶ Watch</a>'
+      + '<button onclick="startWatchParty(\'' + safeUrl + '\')" style="background:var(--purple);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">👥 Watch Together</button>'
+      + '</div>'
       + '</div></div>';
   } else if (ttM) {
     const url = ttM[0];
@@ -2853,10 +3022,38 @@ async function sendChatFile(input) {
   input.value = '';
 }
 
+async function sendChatVideo(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); input.value = ''; return; }
+  if (file.size > 50 * 1024 * 1024) { showToast('Video too large — max 50 MB'); input.value = ''; return; }
+  if (file.size > 50 * 1024 * 1024 * 0.6) {
+    document.getElementById('video-size-warning').style.display = 'block';
+  }
+  showToast('Uploading video...');
+  try {
+    const resp = await fetch(BACKEND + '/chat-video', {
+      method: 'POST',
+      headers: {'Content-Type': file.type || 'video/mp4'},
+      body: file
+    }).then(r => r.json()).catch(() => ({error: 'Upload failed'}));
+    document.getElementById('video-size-warning').style.display = 'none';
+    if (resp.error) { showToast(resp.error); input.value = ''; return; }
+    const videoId = String(resp.video_id);
+    appendMessage({sender_wallet: wallet, content: videoId, type: 'video', msg_type: 'video', created_at: Math.floor(Date.now()/1000)});
+    scrollToBottom();
+    _emitMsg(videoId, 'video');
+    closePicker();
+    showToast('Video sent!');
+  } catch(e) { showToast('Video upload failed'); }
+  input.value = '';
+}
+
 // ════════════════════════════════
 // MEMORIES
 // ════════════════════════════════
 let memoryPhotoData = null, memoryPhotoType = null, selectedStorage = 'cloud';
+let memoryIsVideo = false;
 let memoriesCache = [];
 
 function downloadMemoryPhoto(postId) {
@@ -2888,16 +3085,39 @@ function selectStorage(type) {
 async function previewMemoryPhoto(input) {
   const file = input.files[0];
   if (!file) return;
-  const compressed = await compressImage(file);
-  memoryPhotoData = compressed.base64;
-  memoryPhotoType = compressed.type;
-  document.getElementById('memory-photo-img').src = 'data:' + compressed.type + ';base64,' + compressed.base64;
+  const isVideo = file.type.startsWith('video/');
+  memoryIsVideo = isVideo;
+
+  const imgEl   = document.getElementById('memory-photo-img');
+  const videoEl = document.getElementById('memory-video-preview-el');
+
+  if (isVideo) {
+    // Show video preview inline (no compression)
+    memoryPhotoData = file; // store raw File object for later upload
+    memoryPhotoType = file.type;
+    const objUrl = URL.createObjectURL(file);
+    videoEl.src = objUrl;
+    videoEl.style.display = 'block';
+    imgEl.style.display = 'none';
+  } else {
+    const compressed = await compressImage(file);
+    memoryPhotoData = compressed.base64;
+    memoryPhotoType = compressed.type;
+    imgEl.src = 'data:' + compressed.type + ';base64,' + compressed.base64;
+    imgEl.style.display = 'block';
+    videoEl.style.display = 'none';
+  }
   document.getElementById('memory-photo-preview').style.display = 'block';
   document.getElementById('memory-photo-btn').style.display = 'none';
 }
 
 function clearMemoryPhoto() {
-  memoryPhotoData = null; memoryPhotoType = null;
+  memoryPhotoData = null; memoryPhotoType = null; memoryIsVideo = false;
+  const imgEl   = document.getElementById('memory-photo-img');
+  const videoEl = document.getElementById('memory-video-preview-el');
+  imgEl.style.display = 'block';
+  videoEl.style.display = 'none';
+  videoEl.src = '';
   document.getElementById('memory-photo-preview').style.display = 'none';
   document.getElementById('memory-photo-btn').style.display = 'flex';
   document.getElementById('memory-camera-input').value = '';
@@ -2931,20 +3151,33 @@ async function compressImage(file) {
 async function submitMemoryPost() {
   const caption = document.getElementById('memory-caption-input').value.trim();
   const errEl = document.getElementById('memory-post-error');
-  if (!caption && !memoryPhotoData) { errEl.textContent = 'Add a photo or caption'; errEl.style.display = 'block'; return; }
+  if (!caption && !memoryPhotoData) { errEl.textContent = 'Add a photo/video or caption'; errEl.style.display = 'block'; return; }
   if (selectedStorage === 'chain') { showToast('On-chain storage coming soon! Posting to Cloud for now.'); }
 
   const btn = document.getElementById('memory-post-btn');
   btn.textContent = 'Posting...'; btn.disabled = true;
   errEl.style.display = 'none';
 
-  const storage = selectedStorage === 'chain' ? 'cloud' : selectedStorage; // chain not ready yet
-
-  const resp = await fetch(BACKEND + '/post-memory', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({wallet, caption, image_data: memoryPhotoData || '', image_type: memoryPhotoType || '', storage_type: storage})
-  }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
+  let resp;
+  if (memoryIsVideo && memoryPhotoData) {
+    // Upload video via binary POST
+    resp = await fetch(BACKEND + '/post-memory-video', {
+      method: 'POST',
+      headers: {
+        'Content-Type': memoryPhotoType || 'video/mp4',
+        'X-Wallet': wallet,
+        'X-Caption': caption
+      },
+      body: memoryPhotoData
+    }).then(r => r.json()).catch(() => ({error: 'Upload failed'}));
+  } else {
+    const storage = selectedStorage === 'chain' ? 'cloud' : selectedStorage;
+    resp = await fetch(BACKEND + '/post-memory', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({wallet, caption, image_data: memoryPhotoData || '', image_type: memoryPhotoType || '', storage_type: storage})
+    }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
+  }
 
   btn.textContent = '📸 Post Memory'; btn.disabled = false;
 
@@ -2976,7 +3209,16 @@ function renderMemoriesFeed(posts) {
     const isOwn = m.wallet === wallet;
     const name = m.handle || shortenWallet(m.wallet);
     const timeAgo = getTimeAgo(m.created_at);
-    const dlBtn = m.image_data ? `<button onclick="downloadMemoryPhoto(${m.id})" class="msg-dl-btn" style="font-size:15px;padding:6px 0">⬇️ Save Photo</button>` : '';
+    const isVideoMemory = m.media_type === 'video';
+    let mediaHtml = '';
+    if (isVideoMemory && m.image_data) {
+      // image_data holds the video_id for video memories
+      const videoSrc = BACKEND + '/video/' + m.image_data;
+      mediaHtml = `<video controls playsinline style="max-width:100%;border-radius:12px;display:block;margin-bottom:8px;background:#000" src="${escapeHtml(videoSrc)}"></video>`;
+    } else if (m.image_data) {
+      mediaHtml = `<img class="memory-image" src="data:${m.image_type};base64,${m.image_data}" alt="memory">`;
+    }
+    const dlBtn = (!isVideoMemory && m.image_data) ? `<button onclick="downloadMemoryPhoto(${m.id})" class="msg-dl-btn" style="font-size:15px;padding:6px 0">⬇️ Save Photo</button>` : '';
     return `<div class="memory-post">
       <div class="memory-post-header">
         <div class="chat-avatar" style="width:48px;height:48px;font-size:20px">${avatarLetter(m.handle)}</div>
@@ -2985,12 +3227,146 @@ function renderMemoriesFeed(posts) {
           <div style="font-size:15px;color:var(--text2);margin-top:3px">${timeAgo} &nbsp;·&nbsp; ${badge}</div>
         </div>
       </div>
-      ${m.image_data ? `<img class="memory-image" src="data:${m.image_type};base64,${m.image_data}" alt="memory">` : ''}
+      ${mediaHtml}
       ${dlBtn}
       ${m.caption ? `<div class="memory-caption">${escapeHtml(m.caption)}</div>` : ''}
     </div>`;
   }).join('');
 }
+
+// ════════════════════════════════════════════════════════════════
+// WATCH TOGETHER — synced YouTube viewing
+// ════════════════════════════════════════════════════════════════
+let _wpPartyId    = null;
+let _wpVideoUrl   = null;
+let _wpIsHost     = false;
+let _wpPlayer     = null;
+let _wpSyncTimer  = null;
+let _wpPendingInvite = null; // {party_id, video_url, host_handle}
+
+function _extractYtIdSafe(url) {
+  const m = (url || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function loadYouTubeApi() {
+  if (window.YT && window.YT.Player) return Promise.resolve();
+  return new Promise((resolve) => {
+    window.onYouTubeIframeAPIReady = resolve;
+    if (!document.getElementById('yt-api-script')) {
+      const s = document.createElement('script');
+      s.id = 'yt-api-script';
+      s.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(s);
+    }
+  });
+}
+
+async function startWatchParty(videoUrl) {
+  if (!wallet || !socket) { showToast('Connect wallet first'); return; }
+  if (!currentChat && !currentGroupChat) { showToast('Open a chat first'); return; }
+  const vidId = _extractYtIdSafe(videoUrl);
+  if (!vidId) { showToast('Could not extract YouTube video ID'); return; }
+
+  const isGroup = isGroupChat && !!currentGroupChat;
+  const chatId  = isGroup ? currentGroupChat.id : getRoom(wallet, currentChat.wallet);
+  const recipients = isGroup ? [] : [currentChat.wallet];
+
+  _wpVideoUrl = videoUrl; // store before emit so watch_party_created can use it
+  socket.emit('start_watch_party', {
+    wallet,
+    chat_id: chatId,
+    video_url: videoUrl,
+    is_group: isGroup,
+    recipients
+  });
+  showToast('🎬 Starting Watch Party...');
+}
+
+async function _openWatchPartyOverlay(partyId, videoUrl, isHost) {
+  _wpPartyId  = partyId;
+  _wpVideoUrl = videoUrl;
+  _wpIsHost   = isHost;
+  document.getElementById('watch-party-overlay').classList.add('open');
+  document.getElementById('wp-chat-messages').innerHTML = '';
+  document.getElementById('wp-count-badge').textContent = '👥 1 watching';
+
+  const vidId = _extractYtIdSafe(videoUrl);
+  if (!vidId) { showToast('Invalid YouTube URL'); return; }
+
+  try {
+    await loadYouTubeApi();
+  } catch(e) {}
+
+  // Clear old player
+  document.getElementById('wp-player').innerHTML = '';
+  _wpPlayer = new YT.Player('wp-player', {
+    videoId: vidId,
+    playerVars: {
+      enablejsapi: 1,
+      origin: window.location.origin,
+      autoplay: isHost ? 1 : 0,
+      playsinline: 1,
+      controls: 1,
+      rel: 0
+    },
+    events: {
+      onReady: (e) => {
+        if (!isHost) e.target.pauseVideo();
+      },
+      onStateChange: (e) => {
+        if (!_wpIsHost || !socket || !_wpPartyId) return;
+        const S = YT.PlayerState;
+        if (e.data === S.PLAYING) {
+          socket.emit('watch_sync', {wallet, party_id: _wpPartyId, action: 'play', time: e.target.getCurrentTime()});
+        } else if (e.data === S.PAUSED) {
+          socket.emit('watch_sync', {wallet, party_id: _wpPartyId, action: 'pause', time: e.target.getCurrentTime()});
+        }
+      }
+    }
+  });
+
+  // Periodic drift correction for non-hosts (every 10s)
+  clearInterval(_wpSyncTimer);
+  if (!isHost) {
+    _wpSyncTimer = setInterval(() => {
+      // Drift correction handled by watch_sync events from host
+    }, 10000);
+  }
+}
+
+function leaveWatchParty() {
+  if (socket && _wpPartyId) {
+    socket.emit('leave_watch_party', {wallet, party_id: _wpPartyId});
+  }
+  _closeWatchPartyOverlay();
+}
+
+function _closeWatchPartyOverlay() {
+  clearInterval(_wpSyncTimer); _wpSyncTimer = null;
+  if (_wpPlayer) { try { _wpPlayer.destroy(); } catch(e) {} _wpPlayer = null; }
+  document.getElementById('watch-party-overlay').classList.remove('open');
+  _wpPartyId = null; _wpVideoUrl = null; _wpIsHost = false;
+}
+
+function acceptWatchPartyInvite() {
+  const inv = _wpPendingInvite;
+  if (!inv) return;
+  _wpPendingInvite = null;
+  document.getElementById('wp-invite-bar').classList.remove('show');
+  if (socket) socket.emit('join_watch_party', {wallet, party_id: inv.party_id});
+}
+
+function _wpAddChatMsg(handle, text) {
+  const el = document.getElementById('wp-chat-messages');
+  const div = document.createElement('div');
+  div.className = 'wp-msg';
+  div.innerHTML = '<span class="wp-msg-handle">' + escapeHtml(handle) + ':</span> ' + escapeHtml(text);
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ═══════════════ END WATCH TOGETHER ═══════════════
 
 function getTimeAgo(ts) {
   const secs = Math.floor(Date.now()/1000 - ts);
