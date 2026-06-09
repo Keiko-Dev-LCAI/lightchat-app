@@ -317,7 +317,8 @@ body {
 .msg-bubble-wrap.in { justify-content: flex-start; }
 .msg-bubble {
   max-width: 88%;
-  min-width: 120px;
+  min-width: min-content;
+  width: -webkit-fit-content;
   width: fit-content;
   padding: 13px 18px;
   border-radius: 20px;
@@ -5466,8 +5467,12 @@ async function translateText(text, targetLang) {
 }
 
 function addTranslateButton(wrapEl, originalText) {
+  // wrapEl = innerDiv (contains .msg-bubble + .msg-time)
+  // Append translate button INSIDE the bubble itself, not below timestamp
+  var bubble = wrapEl.querySelector('.msg-bubble');
+  var target = bubble || wrapEl;
   var outer = document.createElement('div');
-  outer.style.cssText = 'margin-top:3px;padding-left:2px';
+  outer.style.cssText = 'margin-top:8px;border-top:1px solid rgba(255,255,255,0.12);padding-top:6px';
 
   var btn = document.createElement('button');
   btn.className = 'translate-btn';
@@ -5505,7 +5510,7 @@ function addTranslateButton(wrapEl, originalText) {
     }
   };
   outer.appendChild(btn);
-  wrapEl.appendChild(outer);
+  target.appendChild(outer);
 }
 
 // Monkey-patch appendMessage to add translate button on incoming text messages
