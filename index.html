@@ -615,6 +615,52 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+/* ── Message long-press context menu ── */
+#msg-ctx-menu {
+  position: fixed;
+  z-index: 950;
+  background: rgba(18, 18, 38, 0.97);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 6px 4px;
+  display: none;
+  flex-direction: row;
+  gap: 2px;
+  box-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 0 0 1px rgba(155,127,232,0.18);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  min-width: 230px;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+#msg-ctx-menu.ctx-visible { display: flex; }
+.ctx-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 5px 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 14px;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1.25;
+  text-align: center;
+  min-width: 0;
+  white-space: normal;
+  word-break: break-word;
+}
+.ctx-btn:hover, .ctx-btn:active { background: var(--purple-glow); color: var(--purple); }
+.ctx-btn-icon { font-size: 20px; line-height: 1; display: block; }
+
 /* ── Mic button ── */
 .mic-btn {
   background: var(--purple-dark);
@@ -1595,6 +1641,22 @@ body {
   </div>
 </div>
 
+<!-- ── MESSAGE CONTEXT MENU ── -->
+<div id="msg-ctx-menu" role="menu" aria-label="Message actions">
+  <button class="ctx-btn" id="ctx-copy-btn">
+    <span class="ctx-btn-icon">📋</span>
+    <span id="ctx-copy-lbl">Copy</span>
+  </button>
+  <button class="ctx-btn" id="ctx-save-btn">
+    <span class="ctx-btn-icon">🌅</span>
+    <span>Memories</span>
+  </button>
+  <button class="ctx-btn" id="ctx-fwd-btn" onclick="ctxForwardMsg()">
+    <span class="ctx-btn-icon">↗️</span>
+    <span>Forward</span>
+  </button>
+</div>
+
 <div id="toast"></div>
 
 <!-- ── PASTE ADDRESS MODAL (Safari / Chrome users) ── -->
@@ -1933,6 +1995,11 @@ function appendMessage(msg, senderHandle) {
   const wrap = document.createElement('div');
   const t = msg.type || msg.msg_type || 'text';
   wrap.className = 'msg-bubble-wrap ' + (isOut ? 'out' : 'in');
+  // Store message metadata for long-press context menu
+  wrap.dataset.msgType      = t;
+  wrap.dataset.msgContent   = msg.content || '';
+  wrap.dataset.senderWallet = (msg.sender_wallet || '').toLowerCase();
+  wrap.dataset.senderHandle = senderHandle || '';
 
   if (t === 'emoji') {
     wrap.innerHTML = '<div><div style="font-size:54px;line-height:1;padding:4px 2px">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
@@ -1998,7 +2065,8 @@ function appendMessage(msg, senderHandle) {
     const vpEl = wrap.querySelector('#' + vId);
     if (vpEl) vpEl.dataset.audioUrl = v.url || '';
   } else {
-    wrap.innerHTML = '<div><div class="msg-bubble ' + (isOut ? 'out' : 'in') + '">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+    // Text message: render with clickable URLs + YouTube/TikTok preview
+    wrap.innerHTML = '<div>' + renderMsgBubble(msg.content, isOut) + '<div class="msg-time">' + time + '</div></div>';
   }
   // In group chat, show sender handle above incoming bubbles
   if (isGroupChat && !isOut && senderHandle) {
@@ -2010,6 +2078,7 @@ function appendMessage(msg, senderHandle) {
       innerDiv.insertBefore(handleEl, innerDiv.firstChild);
     }
   }
+  attachMsgContextMenu(wrap, msg, senderHandle || '');
   area.appendChild(wrap);
 }
 
@@ -2064,6 +2133,7 @@ function copyInviteLink() {
 let _sharePayload = null;
 let _shareSelectedTarget = null;
 let _shareRecipientItems = [];
+let _forwardOverride = null; // { type, content } overrides share_card send when forwarding
 
 function parseShareParams() {
   const p = new URLSearchParams(window.location.search);
@@ -2173,17 +2243,19 @@ async function sendShareCard() {
     if (e) { e.textContent = 'Please select a recipient'; e.style.display = 'block'; }
     return;
   }
-  const content = JSON.stringify(_sharePayload);
+  // _forwardOverride lets us send non-share_card types via this modal
+  const msgType = _forwardOverride ? _forwardOverride.type : 'share_card';
+  const content = _forwardOverride ? _forwardOverride.content : JSON.stringify(_sharePayload);
   if (_shareSelectedTarget.type === 'group') {
-    socket.emit('send_group_message', {wallet, group_id: _shareSelectedTarget.id, content, type: 'share_card'});
+    socket.emit('send_group_message', {wallet, group_id: _shareSelectedTarget.id, content, type: msgType});
   } else {
-    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: _shareSelectedTarget.wallet, content, type: 'share_card'});
-    appendMessage({sender_wallet: wallet, content, type: 'share_card', msg_type: 'share_card', created_at: Math.floor(Date.now()/1000)});
+    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: _shareSelectedTarget.wallet, content, type: msgType});
+    appendMessage({sender_wallet: wallet, content, type: msgType, msg_type: msgType, created_at: Math.floor(Date.now()/1000)});
     scrollToBottom();
   }
   const targetName = _shareSelectedTarget.name;
   closeShareModal();
-  showToast('✅ Shared to ' + targetName + '!');
+  showToast('✅ Forwarded to ' + targetName + '!');
 }
 
 function closeShareModal() {
@@ -2191,7 +2263,296 @@ function closeShareModal() {
   _sharePayload = null;
   _shareSelectedTarget = null;
   _shareRecipientItems = [];
+  _forwardOverride = null;
 }
+
+// ════════════════════════════════════════════════════════════════
+// URL / YOUTUBE / TIKTOK LINK PREVIEW
+// ════════════════════════════════════════════════════════════════
+function _extractYtId(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function _renderTextUrls(text) {
+  // Linkify URLs; escape everything else
+  const urlRe = /https?:\/\/[^\s<>"]+/g;
+  let result = '', last = 0, match;
+  while ((match = urlRe.exec(text)) !== null) {
+    result += escapeHtml(text.slice(last, match.index));
+    const url = match[0];
+    result += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;word-break:break-all">' + escapeHtml(url) + '</a>';
+    last = match.index + url.length;
+  }
+  result += escapeHtml(text.slice(last));
+  return result;
+}
+
+function renderMsgBubble(text, isOut) {
+  const bClass = 'msg-bubble ' + (isOut ? 'out' : 'in');
+  const ytRe = /https?:\/\/(www\.)?(youtube\.com\/(?:watch|shorts)|youtu\.be\/)[^\s]*/i;
+  const ttRe = /https?:\/\/(www\.)?tiktok\.com\/[^\s]*/i;
+  const ytM  = text.match(ytRe);
+  const ttM  = text.match(ttRe);
+  let preview = '';
+
+  if (ytM) {
+    const url   = ytM[0];
+    const vidId = _extractYtId(url);
+    const thumb = vidId ? 'https://img.youtube.com/vi/' + vidId + '/hqdefault.jpg' : '';
+    preview = '<div style="margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.12);max-width:100%">'
+      + (thumb ? '<img src="' + escapeHtml(thumb) + '" style="width:100%;max-height:150px;object-fit:cover;display:block" loading="lazy" onerror="this.style.display=\'none\'">' : '')
+      + '<div style="padding:8px 10px;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<span style="font-size:13px;font-weight:600;line-height:1.2">▶ YouTube Video</span>'
+      + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="flex-shrink:0;background:#cc0000;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;-webkit-tap-highlight-color:transparent">▶ Watch</a>'
+      + '</div></div>';
+  } else if (ttM) {
+    const url = ttM[0];
+    preview = '<div style="margin-top:8px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.12);max-width:100%">'
+      + '<div style="padding:10px;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:space-between;gap:8px">'
+      + '<span style="font-size:13px;font-weight:600;line-height:1.2">▶ TikTok Video</span>'
+      + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="flex-shrink:0;background:#010101;border:1px solid rgba(255,255,255,0.3);color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;-webkit-tap-highlight-color:transparent">▶ Watch</a>'
+      + '</div></div>';
+  }
+
+  return '<div class="' + bClass + '">' + _renderTextUrls(text) + preview + '</div>';
+}
+
+// ════════════════════════════════════════════════════════════════
+// MESSAGE LONG-PRESS CONTEXT MENU
+// ════════════════════════════════════════════════════════════════
+let _ctxMsg = null;
+let _ctxMenuTimer  = null;
+let _ctxDismissTimer = null;
+
+function attachMsgContextMenu(wrapEl, msg, handle) {
+  // ── Mobile long press ──
+  wrapEl.addEventListener('touchstart', (e) => {
+    // Don't intercept interactive children
+    if (e.target.closest('button, a, input, select, .voice-play-btn')) return;
+    e.preventDefault(); // suppress iOS text-selection magnifier
+    const touch = e.touches[0];
+    const px = touch.clientX, py = touch.clientY;
+    clearTimeout(_ctxMenuTimer);
+    _ctxMenuTimer = setTimeout(() => showMsgContextMenu(wrapEl, px, py), 500);
+  }, { passive: false });
+
+  wrapEl.addEventListener('touchend',  () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
+  wrapEl.addEventListener('touchmove', () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
+
+  // ── Desktop right-click ──
+  wrapEl.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showMsgContextMenu(wrapEl, e.clientX, e.clientY);
+  });
+}
+
+function showMsgContextMenu(wrapEl, px, py) {
+  _ctxMsg = {
+    type:         wrapEl.dataset.msgType,
+    content:      wrapEl.dataset.msgContent,
+    senderWallet: wrapEl.dataset.senderWallet,
+    senderHandle: wrapEl.dataset.senderHandle
+  };
+
+  const menu = document.getElementById('msg-ctx-menu');
+  _buildCtxMenuItems(menu);
+  menu.classList.add('ctx-visible');
+
+  // Position above the tap point, clamped to viewport
+  const mw = menu.offsetWidth  || 240;
+  const mh = menu.offsetHeight || 72;
+  let left = Math.max(8, Math.min(px - mw / 2, window.innerWidth  - mw - 8));
+  let top  = Math.max(8, py - mh - 14);
+  if (top < 8) top = Math.min(py + 24, window.innerHeight - mh - 8);
+  menu.style.left = left + 'px';
+  menu.style.top  = top  + 'px';
+
+  clearTimeout(_ctxDismissTimer);
+  _ctxDismissTimer = setTimeout(hideMsgContextMenu, 4000);
+}
+
+function hideMsgContextMenu() {
+  clearTimeout(_ctxDismissTimer);
+  const menu = document.getElementById('msg-ctx-menu');
+  if (menu) menu.classList.remove('ctx-visible');
+  _ctxMsg = null;
+}
+
+function _buildCtxMenuItems(menu) {
+  const t = (_ctxMsg && _ctxMsg.type)    || 'text';
+  const c = (_ctxMsg && _ctxMsg.content) || '';
+  const copyBtn = document.getElementById('ctx-copy-btn');
+  const saveBtn = document.getElementById('ctx-save-btn');
+  const copyLbl = document.getElementById('ctx-copy-lbl');
+
+  if (t === 'voice') {
+    copyLbl.textContent = 'Voice';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '🎤';
+    copyBtn.onclick = () => { showToast('🎤 Voice message (cannot copy)'); hideMsgContextMenu(); };
+    saveBtn.onclick = () => { showToast('Cannot save voice to Memories'); hideMsgContextMenu(); };
+  } else if (t === 'image') {
+    copyLbl.textContent = 'Copy link';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '🖼';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(BACKEND + '/chat-image/' + c).then(() => showToast('Link copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { _ctxSaveImageToMemories(); };
+  } else if (t === 'file') {
+    let f = {}; try { f = JSON.parse(c); } catch(e) {}
+    const fileUrl = BACKEND + '/chat-file/' + (f.file_id || '');
+    copyLbl.textContent = 'Copy link';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '🖼';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(fileUrl).then(() => showToast('Link copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { showToast('Cannot save files to Memories'); hideMsgContextMenu(); };
+  } else if (t === 'sticker') {
+    const stickerUrl = window.location.origin + '/stickers/' + c + '.png';
+    copyLbl.textContent = 'Copy link';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '🖼';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(stickerUrl).then(() => showToast('Link copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { showToast('Cannot save stickers to Memories'); hideMsgContextMenu(); };
+  } else if (t === 'gif') {
+    copyLbl.textContent = 'Copy link';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '🖼';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(c).then(() => showToast('Link copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { showToast('Cannot save GIFs to Memories'); hideMsgContextMenu(); };
+  } else if (t === 'share_card') {
+    let sc = {}; try { sc = JSON.parse(c); } catch(e) {}
+    const copyText = (sc.title || '') + (sc.url ? ' ' + sc.url : '');
+    copyLbl.textContent = 'Copy';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '📋';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(copyText).then(() => showToast('Copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { _ctxSaveTextToMemories(copyText); };
+  } else if (t === 'lcai_gift') {
+    let g = {}; try { g = JSON.parse(c); } catch(e) {}
+    const giftText = (g.amount || '?') + ' LCAI gift' + (g.txHash ? ' — tx: ' + g.txHash : '');
+    copyLbl.textContent = 'Copy';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '📋';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(giftText).then(() => showToast('Copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { showToast('Cannot save gifts to Memories'); hideMsgContextMenu(); };
+  } else {
+    // text, emoji, etc.
+    copyLbl.textContent = 'Copy';
+    copyBtn.querySelector('.ctx-btn-icon').textContent = '📋';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(c).then(() => showToast('Copied!')).catch(() => showToast('Could not copy'));
+      hideMsgContextMenu();
+    };
+    saveBtn.onclick = () => { _ctxSaveTextToMemories(c); };
+  }
+}
+
+async function _ctxSaveTextToMemories(text) {
+  const savedCtx = _ctxMsg ? {..._ctxMsg} : null;
+  hideMsgContextMenu();
+  if (!wallet) { showToast('Connect wallet first'); return; }
+  const handle = savedCtx ? (savedCtx.senderHandle || '') : '';
+  const attribution = handle ? ('Saved from ' + handle + "'s message") : 'Saved from chat';
+  const caption = text + '\n\n— ' + attribution;
+  try {
+    const resp = await fetch(BACKEND + '/post-memory', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({wallet, caption, image_data: '', image_type: '', storage_type: 'cloud'})
+    }).then(r => r.json());
+    if (resp.error) { showToast('Error: ' + resp.error); return; }
+    showToast('🌅 Saved to Memories!');
+    loadMemories();
+  } catch(e) { showToast('Could not save to Memories'); }
+}
+
+async function _ctxSaveImageToMemories() {
+  if (!wallet) { showToast('Connect wallet first'); hideMsgContextMenu(); return; }
+  const savedCtx = _ctxMsg ? {..._ctxMsg} : null;
+  const imgId  = savedCtx ? (savedCtx.content || '') : '';
+  const handle = savedCtx ? (savedCtx.senderHandle || '') : '';
+  hideMsgContextMenu();
+  const attribution = handle ? ('Saved from ' + handle + "'s message") : 'Saved from chat';
+  try {
+    const imgResp = await fetch(BACKEND + '/chat-image/' + imgId);
+    if (!imgResp.ok) { showToast('Image no longer available'); return; }
+    const blob = await imgResp.blob();
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const b64 = reader.result.split(',')[1];
+      const resp = await fetch(BACKEND + '/post-memory', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wallet, caption: attribution, image_data: b64, image_type: blob.type || 'image/jpeg', storage_type: 'cloud'})
+      }).then(r => r.json()).catch(() => ({error: 'Failed'}));
+      if (resp.error) { showToast('Could not save: ' + resp.error); return; }
+      showToast('📸 Saved to Memories!');
+      loadMemories();
+    };
+    reader.readAsDataURL(blob);
+  } catch(e) { showToast('Could not save image'); }
+}
+
+function ctxForwardMsg() {
+  const savedCtx = _ctxMsg ? {..._ctxMsg} : null;
+  hideMsgContextMenu();
+  if (!wallet) { showToast('Connect wallet first'); return; }
+  if (!savedCtx) return;
+  const { type: t, content: c } = savedCtx;
+
+  if (t === 'share_card') {
+    try { _sharePayload = JSON.parse(c); } catch(e) { _sharePayload = {app:'', title: c, url:'', desc:'', thumb:''}; }
+    _forwardOverride = null;
+  } else if (t === 'image') {
+    const imgUrl = BACKEND + '/chat-image/' + c;
+    _sharePayload = {app: '', title: '📷 Photo', url: imgUrl, desc: '', thumb: imgUrl};
+    _forwardOverride = {type: 'text', content: imgUrl};
+  } else if (t === 'voice') {
+    let v = {}; try { v = JSON.parse(c); } catch(e) {}
+    const vUrl = v.url || '';
+    _sharePayload = {app: '', title: '🎤 Voice Message', url: vUrl, desc: '', thumb: ''};
+    _forwardOverride = {type: 'text', content: '🎤 Voice message: ' + vUrl};
+  } else if (t === 'file') {
+    let f = {}; try { f = JSON.parse(c); } catch(e) {}
+    const fUrl = BACKEND + '/chat-file/' + (f.file_id || '');
+    _sharePayload = {app: '', title: '📄 ' + (f.file_name || 'File'), url: fUrl, desc: '', thumb: ''};
+    _forwardOverride = {type: 'text', content: '📄 ' + (f.file_name || 'File') + ': ' + fUrl};
+  } else if (t === 'gif') {
+    _sharePayload = {app: '', title: 'GIF', url: c, desc: '', thumb: c};
+    _forwardOverride = {type: 'gif', content: c};
+  } else if (t === 'sticker') {
+    _sharePayload = {app: '', title: 'Sticker', url: '', desc: '', thumb: ''};
+    _forwardOverride = {type: 'sticker', content: c};
+  } else if (t === 'emoji') {
+    _sharePayload = {app: '', title: c, url: '', desc: '', thumb: ''};
+    _forwardOverride = {type: 'emoji', content: c};
+  } else {
+    // plain text and everything else
+    _sharePayload = {app: '', title: c, url: '', desc: '', thumb: ''};
+    _forwardOverride = {type: 'text', content: c};
+  }
+  openShareModal();
+}
+
+// Dismiss context menu on outside click or scroll
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('msg-ctx-menu');
+  if (menu && menu.classList.contains('ctx-visible') && !menu.contains(e.target)) {
+    hideMsgContextMenu();
+  }
+}, true);
+document.addEventListener('scroll', hideMsgContextMenu, true);
 
 async function handleInviteParam() {
   const params = new URLSearchParams(window.location.search);
