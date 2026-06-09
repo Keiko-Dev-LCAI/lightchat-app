@@ -2285,16 +2285,20 @@ function onRemoteTrack(e) {
 }
 
 async function getLocalStream() {
-  // Request camera and mic SEPARATELY so Chrome shows a dialog for each one
-  const videoStream = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
   try {
-    const audioStream = await navigator.mediaDevices.getUserMedia({video: false, audio: true});
-    const audioTrack = audioStream.getAudioTracks()[0];
-    if (audioTrack) { videoStream.addTrack(audioTrack); }
-  } catch(e) {
-    showToast('No microphone — other person won\'t hear you. Allow Mic in site permissions.', 5000);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+    // Make sure audio is NOT muted
+    stream.getAudioTracks().forEach(track => { track.enabled = true; });
+    return stream;
+  } catch(err) {
+    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+      alert('Camera and Microphone permissions are required for video calls.\n\nPlease tap Allow when prompted.');
+    }
+    throw err;
   }
-  return videoStream;
 }
 
 async function startVideoCall() {
@@ -2319,11 +2323,6 @@ async function startVideoCall() {
       if (callState === 'calling') { endCall(); showToast('No answer'); }
     }, 30000);
   } catch(e) {
-    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      showToast('Camera blocked — tap the lock icon in your browser address bar, then allow Camera & Microphone', 6000);
-    } else {
-      showToast('Camera error: ' + (e.message || 'check permissions'));
-    }
     cleanupCall();
   }
 }
@@ -2362,11 +2361,6 @@ async function acceptCall() {
     callState = 'active';
     window._pendingCallOffer = null;
   } catch(e) {
-    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      showToast('Camera blocked — tap the lock icon in your browser address bar, then allow Camera & Microphone', 6000);
-    } else {
-      showToast('Camera error: ' + (e.message || 'check permissions'));
-    }
     cleanupCall();
   }
 }
