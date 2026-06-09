@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Force HTTPS -->
+<script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="lightchat-icon.png">
@@ -1208,6 +1210,19 @@ body {
     <!-- Me tab -->
     <div class="tab" id="tab-me">
       <div class="me-section">
+        <!-- Language Picker — always visible at top of Me tab -->
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;padding:14px 18px;margin-bottom:18px;display:flex;align-items:center;gap:14px">
+          <span style="font-size:26px">🌐</span>
+          <span style="font-size:20px;font-weight:600;flex:1" data-i18n="language">Language</span>
+          <select id="lang-selector-me" onchange="setLanguage(this.value);document.getElementById('lang-selector')&&(document.getElementById('lang-selector').value=this.value);" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:18px;padding:8px 12px;cursor:pointer">
+            <option value="en">🇺🇸 English</option>
+            <option value="zh">🇨🇳 中文</option>
+            <option value="es">🇪🇸 Español</option>
+            <option value="fr">🇫🇷 Français</option>
+            <option value="ja">🇯🇵 日本語</option>
+            <option value="ko">🇰🇷 한국어</option>
+          </select>
+        </div>
         <div class="me-profile-card">
           <div class="me-avatar" id="me-avatar">🐬</div>
           <div style="flex:1;min-width:0;overflow:hidden;">
@@ -5334,11 +5349,13 @@ function setLanguage(code) {
     }
   });
 
-  // Update language display & selector
+  // Update language display & selectors (both the Me-tab picker and Settings picker)
   var langDisplay = document.getElementById('lang-current-display');
   if (langDisplay) langDisplay.textContent = LANG_NAMES[code] || code;
   var langSel = document.getElementById('lang-selector');
   if (langSel) langSel.value = code;
+  var langSelMe = document.getElementById('lang-selector-me');
+  if (langSelMe) langSelMe.value = code;
 
   // Update voice recognition lang if active
   if (typeof _voiceRecognition !== 'undefined' && _voiceRecognition) {
