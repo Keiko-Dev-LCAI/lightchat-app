@@ -698,6 +698,18 @@ def _expire_pending_call(callee):
     eventlet.sleep(90)
     pending_calls.pop(callee, None)
 
+# ── Group call state ──────────────────────────────────────────────────
+# { group_id: { 'members': set(wallet), 'caller': wallet, 'group_name': str } }
+group_calls = {}
+
+def _expire_group_call(group_id, caller_wallet):
+    """Auto-cancel a group call after 30 s if nobody joined."""
+    eventlet.sleep(30)
+    call = group_calls.get(group_id)
+    if call and len(call['members']) == 1 and caller_wallet in call['members']:
+        del group_calls[group_id]
+        socketio.emit('group_call_ended', {'group_id': group_id, 'reason': 'timeout'}, room=caller_wallet)
+
 # WebSocket handlers
 @socketio.on('connect')
 def on_connect():
@@ -980,6 +992,123 @@ def on_get_group_messages(data):
         'timestamp': r['timestamp'], 'created_at': r['timestamp']
     } for r in rows]
     emit('group_messages', {'group_id': group_id, 'messages': messages})
+
+# ══════════════════════════════════════════════════════════════════════
+# GROUP VIDEO CALLS (WebRTC mesh, max 5)
+# ══════════════════════════════════════════════════════════════════════
+
+@socketio.on('group_call_offer')
+def on_group_call_offer(data):
+    caller = (data.get('wallet') or '').lower()
+    group_id = (data.get('group_id') or '').strip()
+    group_name = (data.get('group_name') or 'Group').strip()
+    if not caller or not group_id:
+        return
+    conn = get_db()
+    is_member = conn.execute(
+        'SELECT 1 FROM group_members WHERE group_id=? AND wallet=?', (group_id, caller)
+    ).fetchone()
+    member_rows = conn.execute(
+        'SELECT wallet FROM group_members WHERE group_id=?', (group_id,)
+    ).fetchall()
+    conn.close()
+    if not is_member:
+        return
+    member_wallets = [r['wallet'] for r in member_rows]
+    if len(member_wallets) > 5:
+        emit('error', {'message': 'Group too large for video call (max 5 members)'})
+        return
+    # Init call state (caller is the only active member to start)
+    group_calls[group_id] = {
+        'members': {caller},
+        'caller': caller,
+        'group_name': group_name
+    }
+    caller_handle = get_handle_for(caller)
+    # Notify every other group member
+    for mw in member_wallets:
+        if mw != caller:
+            socketio.emit('group_call_offer', {
+                'caller_wallet': caller,
+                'caller_handle': caller_handle,
+                'group_id': group_id,
+                'group_name': group_name
+            }, room=mw)
+    # Auto-cancel after 30 s if nobody joins
+    eventlet.spawn(_expire_group_call, group_id, caller)
+
+
+@socketio.on('group_call_accept')
+def on_group_call_accept(data):
+    new_member = (data.get('wallet') or '').lower()
+    group_id = (data.get('group_id') or '').strip()
+    if not new_member or not group_id:
+        return
+    call = group_calls.get(group_id)
+    if not call:
+        emit('group_call_ended', {'group_id': group_id, 'reason': 'no_call'})
+        return
+    new_handle = get_handle_for(new_member)
+    existing = list(call['members'])
+    call['members'].add(new_member)
+    # Build list of existing members with handles for the new joiner
+    member_list = [{'wallet': mw, 'handle': get_handle_for(mw)} for mw in existing]
+    # Tell new joiner about everyone already in the call
+    emit('group_call_joined', {'group_id': group_id, 'members': member_list})
+    # Tell everyone already in the call that a new peer joined
+    for mw in existing:
+        socketio.emit('group_call_peer_joined', {
+            'wallet': new_member,
+            'handle': new_handle,
+            'group_id': group_id
+        }, room=mw)
+
+
+@socketio.on('group_call_decline')
+def on_group_call_decline(data):
+    # Receiving side declined — nothing required server-side
+    pass
+
+
+@socketio.on('group_call_leave')
+def on_group_call_leave(data):
+    leaver = (data.get('wallet') or '').lower()
+    group_id = (data.get('group_id') or '').strip()
+    if not leaver or not group_id:
+        return
+    call = group_calls.get(group_id)
+    if not call:
+        return
+    call['members'].discard(leaver)
+    remaining = list(call['members'])
+    if len(remaining) <= 1:
+        # End call for everyone left
+        for mw in remaining:
+            socketio.emit('group_call_ended', {'group_id': group_id}, room=mw)
+        group_calls.pop(group_id, None)
+    else:
+        # Notify remaining peers that someone left
+        for mw in remaining:
+            socketio.emit('group_call_peer_left', {
+                'wallet': leaver,
+                'group_id': group_id
+            }, room=mw)
+
+
+@socketio.on('group_peer_signal')
+def on_group_peer_signal(data):
+    from_wallet = (data.get('from') or '').lower()
+    to_wallet = (data.get('to') or '').lower()
+    signal = data.get('signal')
+    group_id = (data.get('group_id') or '').strip()
+    if not from_wallet or not to_wallet or not signal:
+        return
+    socketio.emit('group_peer_signal', {
+        'from': from_wallet,
+        'signal': signal,
+        'group_id': group_id
+    }, room=to_wallet)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # PREMIUM TIER — LCAI price, call access, subscriptions, gift confirm
