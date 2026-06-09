@@ -26,7 +26,7 @@ VAPID_CLAIMS = {"sub": "mailto:noreply@lightchat.app"}
 app = Flask(__name__)
 CORS(app, origins="*")
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lightchat-secret-2026')
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB max request
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max request
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 _data_dir = os.environ.get('DATA_DIR', '/app/data')
@@ -134,6 +134,15 @@ def init_db():
 
 init_db()
 
+# Migrate memories table: add media_type column if it doesn't exist yet
+try:
+    _mig_conn = get_db()
+    _mig_conn.execute('ALTER TABLE memories ADD COLUMN media_type TEXT NOT NULL DEFAULT "image"')
+    _mig_conn.commit()
+    _mig_conn.close()
+except Exception:
+    pass  # Column already exists
+
 def cleanup_messages():
     while True:
         time.sleep(60)
@@ -152,6 +161,11 @@ def cleanup_messages():
                 expired = [k for k, v in _voice_store.items() if v['expires_at'] < now_ts]
                 for k in expired:
                     del _voice_store[k]
+            # Clean up expired in-memory video messages
+            with _video_lock:
+                expired_v = [k for k, v in _video_store.items() if v['expires_at'] < now_ts]
+                for k in expired_v:
+                    del _video_store[k]
         except Exception:
             pass
 
@@ -479,7 +493,8 @@ def get_memories(wallet):
     conn = get_db()
     rows = conn.execute('''
         SELECT m.id, m.wallet, m.caption, m.image_data, m.image_type,
-               m.storage_type, m.created_at, m.expires_at, h.handle
+               m.storage_type, m.created_at, m.expires_at, h.handle,
+               COALESCE(m.media_type, 'image') as media_type
         FROM memories m
         LEFT JOIN handles h ON h.wallet = m.wallet
         WHERE m.wallet IN (
@@ -650,6 +665,75 @@ def get_chat_voice(voice_id):
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
+# ── Chat video endpoints ──────────────────────────────────────────────
+
+@app.route('/chat-video', methods=['POST'])
+def post_chat_video():
+    video_data = request.data
+    content_type = request.headers.get('Content-Type', 'video/mp4')
+    if not video_data:
+        return jsonify({'error': 'no video data'}), 400
+    if len(video_data) > 50 * 1024 * 1024:
+        return jsonify({'error': 'Video too large — max 50 MB'}), 413
+    video_id = str(uuid.uuid4())
+    expires_at = int(time.time()) + 86400  # 24-hour TTL
+    with _video_lock:
+        _video_store[video_id] = {
+            'data': video_data,
+            'content_type': content_type,
+            'expires_at': expires_at
+        }
+    return jsonify({'video_id': video_id})
+
+@app.route('/video/<video_id>')
+def get_video(video_id):
+    with _video_lock:
+        entry = _video_store.get(video_id)
+    if not entry or entry['expires_at'] < int(time.time()):
+        return jsonify({'error': 'not found'}), 404
+    resp = make_response(entry['data'])
+    resp.headers['Content-Type'] = entry['content_type']
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Accept-Ranges'] = 'bytes'
+    return resp
+
+# ── Memory video endpoint ─────────────────────────────────────────────
+
+@app.route('/post-memory-video', methods=['POST'])
+def post_memory_video():
+    video_data = request.data
+    content_type = request.headers.get('Content-Type', 'video/mp4')
+    wallet_h = request.headers.get('X-Wallet', '').lower().strip()
+    caption_h = request.headers.get('X-Caption', '').strip()
+    if not video_data:
+        return jsonify({'error': 'video data required'}), 400
+    if not wallet_h:
+        return jsonify({'error': 'X-Wallet header required'}), 400
+    if len(video_data) > 50 * 1024 * 1024:
+        return jsonify({'error': 'Video too large — max 50 MB'}), 413
+
+    video_id = str(uuid.uuid4())
+    now = int(time.time())
+    expires_at = now + (90 * 24 * 60 * 60)  # 90-day TTL to match cloud memories
+
+    with _video_lock:
+        _video_store[video_id] = {
+            'data': video_data,
+            'content_type': content_type,
+            'expires_at': expires_at
+        }
+
+    conn = get_db()
+    cursor = conn.execute(
+        'INSERT INTO memories (wallet, caption, image_data, image_type, media_type, storage_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (wallet_h, caption_h, video_id, content_type, 'video', 'cloud', now, expires_at)
+    )
+    memory_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'id': memory_id, 'video_id': video_id, 'posted': True})
+
 @app.route('/api/groups/<wallet>')
 def api_get_groups(wallet):
     w = wallet.lower().strip()
@@ -688,6 +772,10 @@ def get_messages(wallet, contact_wallet):
 # In-memory voice message store: {uuid_str: {'data': bytes, 'content_type': str, 'expires_at': int}}
 _voice_store = {}
 _voice_lock = threading.Lock()
+
+# In-memory video store (chat + memory videos): {uuid_str: {'data': bytes, 'content_type': str, 'expires_at': int}}
+_video_store = {}
+_video_lock = threading.Lock()
 
 # Buffer for pending call offers — callee may be backgrounded/disconnected when call arrives
 # {callee_wallet: {caller_wallet, handle, offer}}
@@ -1338,6 +1426,116 @@ def api_turn_credentials():
         return jsonify(resp.json())
     except Exception:
         return jsonify(_TURN_FALLBACK)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# WATCH TOGETHER — synced YouTube viewing
+# ══════════════════════════════════════════════════════════════════════
+# {party_id: {video_url, host, members: set(), chat_id, is_group}}
+watch_parties = {}
+
+@socketio.on('start_watch_party')
+def on_start_watch_party(data):
+    sender = (data.get('wallet') or '').lower()
+    chat_id = (data.get('chat_id') or '').strip()
+    video_url = (data.get('video_url') or '').strip()
+    is_group = bool(data.get('is_group', False))
+    recipients = data.get('recipients') or []  # list of wallet addrs (for DMs)
+    if not sender or not chat_id or not video_url:
+        return
+
+    party_id = str(uuid.uuid4())
+    watch_parties[party_id] = {
+        'video_url': video_url,
+        'host': sender,
+        'members': {sender},
+        'chat_id': chat_id,
+        'is_group': is_group
+    }
+
+    host_handle = get_handle_for(sender)
+    invite_payload = {
+        'party_id': party_id,
+        'video_url': video_url,
+        'host_wallet': sender,
+        'host_handle': host_handle
+    }
+
+    if is_group:
+        # Emit to the Socket.IO group room (all members already joined it)
+        socketio.emit('watch_party_invite', invite_payload, room=chat_id)
+    else:
+        # DM: emit to each recipient's personal wallet room
+        for rw in recipients:
+            rw = str(rw).lower().strip()
+            if rw and rw != sender:
+                socketio.emit('watch_party_invite', invite_payload, room=rw)
+
+    emit('watch_party_created', {'party_id': party_id})
+
+
+@socketio.on('join_watch_party')
+def on_join_watch_party(data):
+    joiner = (data.get('wallet') or '').lower()
+    party_id = (data.get('party_id') or '').strip()
+    if not joiner or not party_id:
+        return
+    party = watch_parties.get(party_id)
+    if not party:
+        emit('watch_party_error', {'message': 'Watch party not found or ended'})
+        return
+    party['members'].add(joiner)
+    join_room(party_id)
+    count = len(party['members'])
+    socketio.emit('watch_party_update', {
+        'party_id': party_id,
+        'member_count': count
+    }, room=party_id)
+    emit('watch_party_joined', {
+        'party_id': party_id,
+        'video_url': party['video_url'],
+        'host_wallet': party['host'],
+        'member_count': count
+    })
+
+
+@socketio.on('leave_watch_party')
+def on_leave_watch_party(data):
+    leaver = (data.get('wallet') or '').lower()
+    party_id = (data.get('party_id') or '').strip()
+    if not leaver or not party_id:
+        return
+    party = watch_parties.get(party_id)
+    if not party:
+        return
+    party['members'].discard(leaver)
+    is_host = party['host'] == leaver
+    if is_host or not party['members']:
+        reason = 'host_left' if is_host else 'empty'
+        socketio.emit('watch_party_ended', {'party_id': party_id, 'reason': reason}, room=party_id)
+        watch_parties.pop(party_id, None)
+    else:
+        socketio.emit('watch_party_update', {
+            'party_id': party_id,
+            'member_count': len(party['members'])
+        }, room=party_id)
+
+
+@socketio.on('watch_sync')
+def on_watch_sync(data):
+    sender = (data.get('wallet') or '').lower()
+    party_id = (data.get('party_id') or '').strip()
+    action = data.get('action')  # 'play' | 'pause' | 'seek'
+    time_pos = float(data.get('time', 0))
+    if not sender or not party_id or not action:
+        return
+    party = watch_parties.get(party_id)
+    if not party or party['host'] != sender:
+        return  # Only host can broadcast sync
+    socketio.emit('watch_sync', {
+        'action': action,
+        'time': time_pos
+    }, room=party_id)
 
 
 if __name__ == '__main__':
