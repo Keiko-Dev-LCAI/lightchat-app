@@ -583,6 +583,15 @@ def get_messages(wallet, contact_wallet):
     conn.close()
     return jsonify([dict(r) for r in rows])
 
+# Buffer for pending call offers — callee may be backgrounded/disconnected when call arrives
+# {callee_wallet: {caller_wallet, handle, offer}}
+pending_calls = {}
+
+def _expire_pending_call(callee):
+    """Auto-clear a pending call after 90 seconds."""
+    eventlet.sleep(90)
+    pending_calls.pop(callee, None)
+
 # WebSocket handlers
 @socketio.on('connect')
 def on_connect():
@@ -593,6 +602,14 @@ def on_auth(data):
     wallet = (data.get('wallet') or '').lower()
     if wallet:
         join_room(wallet)
+        # Deliver any buffered call offer — handles iOS reconnect after being backgrounded
+        pending = pending_calls.get(wallet)
+        if pending:
+            emit('call_offer', {
+                'caller_wallet': pending['caller_wallet'],
+                'handle': pending['handle'],
+                'offer': pending['offer']
+            })
 
 @socketio.on('join_chat')
 def on_join_chat(data):
@@ -664,11 +681,15 @@ def on_call_offer(data):
     offer = data.get('offer')
     if not caller or not callee or not offer:
         return
-    emit('call_offer', {
-        'caller_wallet': caller,
-        'handle': get_handle_for(caller),
-        'offer': offer
-    }, room=callee)
+    caller_handle = get_handle_for(caller)
+    call_data = {'caller_wallet': caller, 'handle': caller_handle, 'offer': offer}
+    # Buffer for 90s so if callee is backgrounded, they get the call when they reconnect
+    pending_calls[callee] = call_data
+    eventlet.spawn(_expire_pending_call, callee)
+    # Emit to callee room (works if they're currently connected)
+    emit('call_offer', call_data, room=callee)
+    # Push notification to wake up callee if their tab is backgrounded
+    eventlet.spawn(send_push_notification, callee, caller_handle, '📞 Incoming video call from ' + caller_handle)
 
 @socketio.on('call_answer')
 def on_call_answer(data):
@@ -677,6 +698,7 @@ def on_call_answer(data):
     answer = data.get('answer')
     if not caller or not callee or not answer:
         return
+    pending_calls.pop(callee, None)  # call answered — clear buffer
     emit('call_answer', {
         'callee_wallet': callee,
         'answer': answer
@@ -700,6 +722,8 @@ def on_call_end(data):
     sender = (data.get('sender_wallet') or '').lower()
     if not target:
         return
+    pending_calls.pop(target, None)  # call ended — clear buffer for target
+    pending_calls.pop(sender, None)  # also clear for sender
     emit('call_end', {'sender_wallet': sender}, room=target)
 
 if __name__ == '__main__':
