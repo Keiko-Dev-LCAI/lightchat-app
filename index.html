@@ -2106,14 +2106,14 @@ function startRinging() {
     ringInterval = setInterval(() => playBuiltinRingOnce(tone), interval);
   }
 
-  // Auto-timeout: 30 seconds, then treat as no answer
+  // Auto-timeout: 90 seconds — long enough for push notification to wake callee
   callTimeoutId = setTimeout(() => {
     if (callState === 'calling' || callState === 'receiving') {
       stopRinging();
       if (callState === 'calling') { endCall(); showToast('No answer'); }
       else { declineCall(); }
     }
-  }, 30000);
+  }, 90000);
 }
 
 function stopRinging() {
@@ -2279,6 +2279,7 @@ function playNotificationSound() {
 // ════════════════════════════════
 let peerConnection = null, localStream = null, callState = null;
 let iceCandidateQueue = [];
+let keepAliveInterval = null;
 const ICE_SERVERS = [
   {urls: 'stun:stun.l.google.com:19302'},
   {urls: 'stun:stun1.l.google.com:19302'},
@@ -2301,7 +2302,7 @@ function onRemoteTrack(e) {
   }
 
   remoteVideo.muted = false;
-  remoteVideo.volume = 1.0;
+  remoteVideo.volume = 0.7;
   remoteVideo.autoplay = true;
   remoteVideo.playsInline = true;
 
@@ -2351,8 +2352,8 @@ async function startVideoCall() {
   // iOS requires the element to have a valid source + play() called within gesture to unlock audio
   const _rv2 = document.getElementById('remote-video');
   const _ra2 = document.getElementById('remote-audio');
-  if (_rv2) { _rv2.srcObject = new MediaStream(); _rv2.muted = false; _rv2.volume = 1.0; _rv2.playsInline = true; _rv2.play().catch(() => {}); }
-  if (_ra2) { _ra2.srcObject = new MediaStream(); _ra2.muted = false; _ra2.volume = 1.0; _ra2.play().catch(() => {}); }
+  if (_rv2) { _rv2.srcObject = new MediaStream(); _rv2.muted = false; _rv2.volume = 0.7; _rv2.playsInline = true; _rv2.play().catch(() => {}); }
+  if (_ra2) { _ra2.srcObject = new MediaStream(); _ra2.muted = false; _ra2.volume = 0.7; _ra2.play().catch(() => {}); }
   try {
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
@@ -2362,16 +2363,19 @@ async function startVideoCall() {
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.oniceconnectionstatechange = () => {
       const s = peerConnection && peerConnection.iceConnectionState;
-      if (s === 'connected' || s === 'completed') showToast('📞 Connected!', 2000);
+      if (s === 'connected' || s === 'completed') {
+        showToast('📞 Connected!', 2000);
+        startKeepAlive();
+      }
     };
     peerConnection.ontrack = onRemoteTrack;
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
     socket.emit('call_offer', {caller_wallet: wallet, callee_wallet: currentChat.wallet, offer});
-    // Start 30s timeout for caller side
+    // 90s timeout — gives push notification time to wake callee
     callTimeoutId = setTimeout(() => {
       if (callState === 'calling') { endCall(); showToast('No answer'); }
-    }, 30000);
+    }, 90000);
   } catch(e) {
     cleanupCall();
   }
@@ -2394,8 +2398,8 @@ async function acceptCall() {
   // CRITICAL: must assign srcObject = new MediaStream() BEFORE play() — iOS ignores play() on element with no source
   const _rv = document.getElementById('remote-video');
   const _ra = document.getElementById('remote-audio');
-  if (_rv) { _rv.srcObject = new MediaStream(); _rv.muted = false; _rv.volume = 1.0; _rv.playsInline = true; _rv.play().catch(() => {}); }
-  if (_ra) { _ra.srcObject = new MediaStream(); _ra.muted = false; _ra.volume = 1.0; _ra.play().catch(() => {}); }
+  if (_rv) { _rv.srcObject = new MediaStream(); _rv.muted = false; _rv.volume = 0.7; _rv.playsInline = true; _rv.play().catch(() => {}); }
+  if (_ra) { _ra.srcObject = new MediaStream(); _ra.muted = false; _ra.volume = 0.7; _ra.play().catch(() => {}); }
   if (_audioCtx) _audioCtx.resume().catch(() => {});
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
@@ -2408,7 +2412,10 @@ async function acceptCall() {
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.oniceconnectionstatechange = () => {
       const s = peerConnection && peerConnection.iceConnectionState;
-      if (s === 'connected' || s === 'completed') showToast('📞 Connected!', 2000);
+      if (s === 'connected' || s === 'completed') {
+        showToast('📞 Connected!', 2000);
+        startKeepAlive();
+      }
     };
     peerConnection.ontrack = onRemoteTrack;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -2458,8 +2465,26 @@ function endCall() {
   cleanupCall();
 }
 
+function startKeepAlive() {
+  stopKeepAlive();
+  if (!peerConnection) return;
+  try {
+    const dc = peerConnection.createDataChannel('keepalive');
+    keepAliveInterval = setInterval(() => {
+      if (dc.readyState === 'open') {
+        try { dc.send('ping'); } catch(e) {}
+      }
+    }, 15000);
+  } catch(e) {}
+}
+
+function stopKeepAlive() {
+  if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
+}
+
 function cleanupCall() {
   stopRinging();
+  stopKeepAlive();
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   if (peerConnection) { peerConnection.close(); peerConnection = null; }
   callState = null; window._pendingCallOffer = null; iceCandidateQueue = [];
