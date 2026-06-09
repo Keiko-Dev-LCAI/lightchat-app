@@ -12,7 +12,15 @@
 <meta name="apple-mobile-web-app-title" content="LightChat">
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<!-- WalletConnect loaded on-demand (842KB — only fetch when user taps Connect) -->
+<!-- WalletConnect — ESM via esm.sh, starts loading in background -->
+<script type="module">
+  try {
+    const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.3');
+    window._WCEthProvider = EthereumProvider;
+  } catch(e) {
+    console.warn('WC ESM load failed:', e && e.message ? e.message : e);
+  }
+</script>
 <script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -2580,13 +2588,8 @@ let _wcUri = null;
 
 async function initWalletConnect() {
   try {
-    const lib = window['@walletconnect/ethereum-provider'];
-    if (!lib) { showToast('WC lib not found on window'); return; }
-    const allKeys = Object.getOwnPropertyNames(lib).join(',').slice(0,120);
-    const epType = typeof lib.EthereumProvider;
-    showToast('EP type: ' + epType + ' | props: ' + allKeys);
-    const Provider = lib.EthereumProvider || lib.default;
-    if (!Provider) { showToast('No Provider found. EP=' + epType); return; }
+    const Provider = window._WCEthProvider;
+    if (!Provider) { console.warn('WC EthereumProvider not available'); return; }
 
     wcProvider = await Provider.init({
       projectId: '3c6a0da53258912a28923198ddac3333',
@@ -2633,16 +2636,22 @@ async function initWalletConnect() {
 }
 
 async function loadWCLibrary() {
-  // Already loaded
-  if (window['@walletconnect/ethereum-provider']) return true;
-  // Dynamically inject the script and wait for it
-  return new Promise((resolve) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.3/dist/index.umd.min.js';
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.head.appendChild(s);
-  });
+  // Already loaded via ESM module tag
+  if (window._WCEthProvider) return true;
+  // Wait up to 15s for the background ESM import to finish
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    if (window._WCEthProvider) return true;
+  }
+  // Fallback: try dynamic import directly
+  try {
+    const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.3');
+    window._WCEthProvider = EthereumProvider;
+    return true;
+  } catch(e) {
+    console.warn('WC dynamic import failed:', e);
+    return false;
+  }
 }
 
 async function connectViaWalletConnect() {
