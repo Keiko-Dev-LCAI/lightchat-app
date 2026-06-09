@@ -2582,10 +2582,11 @@ async function initWalletConnect() {
   try {
     const lib = window['@walletconnect/ethereum-provider'];
     if (!lib) { showToast('WC lib not found on window'); return; }
-    const keys = Object.keys(lib).join(',').slice(0,100);
-    showToast('WC lib keys: ' + keys);
+    const allKeys = Object.getOwnPropertyNames(lib).join(',').slice(0,120);
+    const epType = typeof lib.EthereumProvider;
+    showToast('EP type: ' + epType + ' | props: ' + allKeys);
     const Provider = lib.EthereumProvider || lib.default;
-    if (!Provider) { showToast('EthereumProvider not in lib — keys: ' + keys); return; }
+    if (!Provider) { showToast('No Provider found. EP=' + epType); return; }
 
     wcProvider = await Provider.init({
       projectId: '3c6a0da53258912a28923198ddac3333',
