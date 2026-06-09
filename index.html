@@ -769,6 +769,40 @@ body {
 .preview-btn { background: var(--purple-glow); border: 1px solid var(--purple); border-radius: 10px; color: var(--purple); font-size: 16px; padding: 6px 14px; cursor: pointer; flex-shrink: 0; }
 .preview-btn:active { background: var(--purple); color: #fff; }
 
+/* ── Chats DMs / Groups toggle bar ── */
+.chats-toggle-bar {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px 0;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.chats-subtab {
+  flex: 1;
+  padding: 12px 0;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text2);
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.chats-subtab.active { color: var(--purple); border-bottom-color: var(--purple); }
+.create-group-btn {
+  background: var(--purple);
+  border: none; border-radius: 50%;
+  width: 42px; height: 42px;
+  font-size: 24px; font-weight: 700;
+  color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-bottom: 4px; line-height: 1;
+}
+.create-group-btn:hover, .create-group-btn:active { background: var(--purple-dark); }
+
 /* ── Video call overlays ── */
 #call-incoming-overlay, #call-calling-overlay {
   display: none; position: fixed;
@@ -830,13 +864,32 @@ body {
 
     <!-- Chats tab -->
     <div class="tab active" id="tab-chats">
-      <div id="chat-list-empty" class="empty-state">
-        <div class="empty-icon">💬</div>
-        <div class="empty-title">No chats yet</div>
-        <div class="empty-text">Connect your wallet and add contacts to start chatting on the blockchain.</div>
-        <button class="empty-cta" id="empty-cta-btn" onclick="emptyCTAClick()">🔗 Connect Wallet</button>
+      <!-- DMs / Groups sub-tabs -->
+      <div class="chats-toggle-bar">
+        <button class="chats-subtab active" id="toggle-dms" onclick="switchChatMode('dms')">💬 DMs</button>
+        <button class="chats-subtab" id="toggle-groups" onclick="switchChatMode('groups')">👥 Groups</button>
+        <button class="create-group-btn" onclick="openCreateGroupModal()" title="Create Group">+</button>
       </div>
-      <div id="chat-list" style="display:none"></div>
+      <!-- DM list -->
+      <div id="dms-section">
+        <div id="chat-list-empty" class="empty-state">
+          <div class="empty-icon">💬</div>
+          <div class="empty-title">No chats yet</div>
+          <div class="empty-text">Connect your wallet and add contacts to start chatting on the blockchain.</div>
+          <button class="empty-cta" id="empty-cta-btn" onclick="emptyCTAClick()">🔗 Connect Wallet</button>
+        </div>
+        <div id="chat-list" style="display:none"></div>
+      </div>
+      <!-- Groups list -->
+      <div id="groups-section" style="display:none">
+        <div id="group-list-empty" class="empty-state">
+          <div class="empty-icon">👥</div>
+          <div class="empty-title">No groups yet</div>
+          <div class="empty-text">Tap + to create your first group chat with contacts.</div>
+          <button class="empty-cta" onclick="openCreateGroupModal()">+ Create Group</button>
+        </div>
+        <div id="group-list" style="display:none"></div>
+      </div>
     </div>
 
     <!-- Contacts tab -->
@@ -954,8 +1007,8 @@ body {
       <div class="chat-header-name" id="chat-header-name"></div>
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
-    <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
-    <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showGiftModal()">💜</button>
+    <button id="chat-call-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
+    <button id="chat-gift-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showGiftModal()">💜</button>
   </div>
   <div class="messages-area" id="messages-area">
     <div style="text-align:center;color:var(--text2);font-size:20px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>
@@ -1380,6 +1433,24 @@ body {
   </div>
 </div>
 
+<!-- ── CREATE GROUP MODAL ── -->
+<div id="create-group-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:20px">
+  <div class="modal-box" style="max-width:440px;max-height:85vh;display:flex;flex-direction:column">
+    <div style="font-size:44px;text-align:center;margin-bottom:10px">👥</div>
+    <div class="modal-title">Create Group</div>
+    <div class="modal-sub" style="margin-bottom:18px">Give it a name and pick who to add</div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label class="form-label">Group Name</label>
+      <input class="modal-input" id="create-group-name" type="text" placeholder="Friends, Team, Family..." maxlength="50" style="margin-bottom:0">
+    </div>
+    <div class="form-label" style="margin-bottom:8px">Add Members</div>
+    <div id="group-member-picker" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:14px;max-height:260px;min-height:80px"></div>
+    <div class="modal-error" id="create-group-error" style="margin-top:10px"></div>
+    <button class="modal-btn" id="create-group-submit-btn" onclick="submitCreateGroup()" style="margin-top:14px">+ Create Group</button>
+    <button class="modal-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text2);margin-top:10px" onclick="closeCreateGroupModal()">Cancel</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ── PASTE ADDRESS MODAL (Safari / Chrome users) ── -->
@@ -1409,6 +1480,8 @@ const APP_URL = window.location.origin + window.location.pathname.replace('index
 let wallet = null, myHandle = null, socket = null;
 let currentChat = null, contacts = [], unreadCounts = {};
 let searchFoundWallet = null;
+let groups = [], currentGroupChat = null, isGroupChat = false, groupUnreadCounts = {};
+let selectedGroupMembers = [];
 
 async function connectWallet() {
   // ── Path 1: injected wallet (Trust Wallet in-app browser, MetaMask, etc.)
@@ -1441,6 +1514,7 @@ async function onWalletConnected() {
     updateUI();
     connectSocket();
     loadContacts();
+    loadGroups();
     loadMemories();
     handleInviteParam();
   } else {
@@ -1467,7 +1541,7 @@ async function registerHandle() {
   if (resp.error) { showHandleError(resp.error); return; }
   myHandle = resp.handle;
   document.getElementById('handle-modal').classList.remove('open');
-  updateUI(); connectSocket(); loadContacts(); loadMemories();
+  updateUI(); connectSocket(); loadContacts(); loadGroups(); loadMemories();
   showToast('Welcome to LightChat ' + myHandle + '!');
   handleInviteParam();
 }
@@ -1503,6 +1577,7 @@ function connectSocket() {
   socket.on('connect', () => {
     socket.emit('auth', {wallet});
     if (currentChat) socket.emit('join_chat', {wallet, contact_wallet: currentChat.wallet});
+    socket.emit('get_groups', {wallet});
   });
   socket.on('new_message', (msg) => {
     // Already shown optimistically — skip self-echoes
@@ -1534,6 +1609,49 @@ function connectSocket() {
   socket.on('gift_confirmed', (d) => {
     playNotificationSound();
     showToast('💜 Gift received from ' + (d.handle || shortenWallet(d.from_wallet)) + '!');
+  });
+
+  // ── Group chat listeners ──
+  socket.on('groups_list', (data) => {
+    groups = data || [];
+    renderGroupList();
+    groups.forEach(g => socket.emit('join_group', {group_id: g.id}));
+  });
+
+  socket.on('group_created', (g) => {
+    if (!groups.find(x => x.id === g.id)) {
+      groups.unshift(g);
+      renderGroupList();
+    }
+    socket.emit('join_group', {group_id: g.id});
+    showToast('Added to group: ' + g.name);
+  });
+
+  socket.on('new_group_message', (msg) => {
+    if (!msg.group_id) return;
+    if (isGroupChat && currentGroupChat && currentGroupChat.id === msg.group_id) {
+      if (msg.sender_wallet.toLowerCase() !== wallet.toLowerCase()) {
+        appendMessage(msg, msg.sender_handle);
+        scrollToBottom();
+      }
+    } else {
+      groupUnreadCounts[msg.group_id] = (groupUnreadCounts[msg.group_id] || 0) + 1;
+      const g = groups.find(x => x.id === msg.group_id);
+      if (g) { g.last_message = msg.content; g.last_type = msg.type; g.last_time = String(msg.created_at || Math.floor(Date.now()/1000)); }
+      renderGroupList();
+      playNotificationSound();
+      showToast('💬 ' + (msg.sender_handle || shortenWallet(msg.sender_wallet)) + ' (group): ' + String(msg.content).substring(0, 40));
+      document.getElementById('chats-dot').classList.add('show');
+      document.getElementById('schats-dot') && document.getElementById('schats-dot').classList.add('show');
+    }
+  });
+
+  socket.on('group_messages', (data) => {
+    if (!isGroupChat || !currentGroupChat || currentGroupChat.id !== data.group_id) return;
+    const area = document.getElementById('messages-area');
+    area.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Group messages auto-delete after 24 hours 🔒</div>';
+    (data.messages || []).forEach(m => appendMessage(m, m.sender_handle));
+    scrollToBottom();
   });
 }
 
@@ -1632,19 +1750,27 @@ async function openChat(contactWallet, handle) {
   updateChatList();
 }
 
-function closeChat() { document.getElementById('chat-view').classList.remove('open'); currentChat = null; }
+function closeChat() {
+  document.getElementById('chat-view').classList.remove('open');
+  currentChat = null; currentGroupChat = null; isGroupChat = false;
+  var cb = document.getElementById('chat-call-btn');
+  var gb = document.getElementById('chat-gift-btn');
+  if (cb) cb.style.display = '';
+  if (gb) gb.style.display = '';
+}
 
 function sendMessage() {
   const input = document.getElementById('chat-input');
   const content = input.value.trim();
-  if (!content || !wallet || !currentChat || !socket) return;
+  if (!content || !wallet || !socket) return;
+  if (!currentChat && !currentGroupChat) return;
   input.value = '';
   appendMessage({sender_wallet: wallet, content, type: 'text', msg_type: 'text', created_at: Math.floor(Date.now()/1000)});
   scrollToBottom();
-  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content, type: 'text'});
+  _emitMsg(content, 'text');
 }
 
-function appendMessage(msg) {
+function appendMessage(msg, senderHandle) {
   const area = document.getElementById('messages-area');
   const isOut = msg.sender_wallet.toLowerCase() === wallet.toLowerCase();
   const time = new Date(msg.created_at * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -1694,6 +1820,16 @@ function appendMessage(msg) {
     if (vpEl) vpEl.dataset.audioUrl = v.url || '';
   } else {
     wrap.innerHTML = '<div><div class="msg-bubble ' + (isOut ? 'out' : 'in') + '">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+  }
+  // In group chat, show sender handle above incoming bubbles
+  if (isGroupChat && !isOut && senderHandle) {
+    var innerDiv = wrap.firstElementChild;
+    if (innerDiv) {
+      var handleEl = document.createElement('div');
+      handleEl.style.cssText = 'font-size:13px;color:var(--purple);font-weight:700;margin-bottom:3px;padding-left:2px';
+      handleEl.textContent = senderHandle;
+      innerDiv.insertBefore(handleEl, innerDiv.firstChild);
+    }
   }
   area.appendChild(wrap);
 }
@@ -1877,26 +2013,26 @@ function switchPickerTab(tab) {
 }
 
 function sendEmoji(e) {
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
   appendMessage({sender_wallet: wallet, content: e, type: 'emoji', msg_type: 'emoji', created_at: Math.floor(Date.now()/1000)});
   scrollToBottom();
-  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: e, type: 'emoji'});
+  _emitMsg(e, 'emoji');
   closePicker();
 }
 
 function sendSticker(e) {
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
   appendMessage({sender_wallet: wallet, content: e, type: 'sticker', msg_type: 'sticker', created_at: Math.floor(Date.now()/1000)});
   scrollToBottom();
-  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: e, type: 'sticker'});
+  _emitMsg(e, 'sticker');
   closePicker();
 }
 
 function sendGif(url) {
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
   appendMessage({sender_wallet: wallet, content: url, type: 'gif', msg_type: 'gif', created_at: Math.floor(Date.now()/1000)});
   scrollToBottom();
-  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: url, type: 'gif'});
+  _emitMsg(url, 'gif');
   closePicker();
 }
 
@@ -1978,7 +2114,7 @@ function pickChatPhoto(source) {
 async function sendChatPhoto(input) {
   const file = input.files[0];
   if (!file) return;
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); input.value = ''; return; }
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); input.value = ''; return; }
   showToast('Uploading photo...');
   try {
     const compressed = await compressImage(file);
@@ -1991,7 +2127,7 @@ async function sendChatPhoto(input) {
     const imageId = String(resp.image_id);
     appendMessage({sender_wallet: wallet, content: imageId, type: 'image', msg_type: 'image', created_at: Math.floor(Date.now()/1000)});
     scrollToBottom();
-    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: imageId, type: 'image'});
+    _emitMsg(imageId, 'image');
     closePicker();
   } catch(e) { showToast('Photo upload failed'); }
   input.value = '';
@@ -2000,7 +2136,7 @@ async function sendChatPhoto(input) {
 async function sendChatFile(input) {
   const file = input.files[0];
   if (!file) return;
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); input.value = ''; return; }
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); input.value = ''; return; }
   if (file.size > 10 * 1024 * 1024) { showToast('File too large — max 10 MB'); input.value = ''; return; }
   showToast('Uploading file...');
   try {
@@ -2020,11 +2156,7 @@ async function sendChatFile(input) {
     const fileContent = JSON.stringify({file_id: resp.file_id, file_name: file.name, file_size: file.size, file_type: file.type});
     appendMessage({sender_wallet: wallet, content: fileContent, type: 'file', msg_type: 'file', created_at: Math.floor(Date.now()/1000)});
     scrollToBottom();
-    socket.emit('send_message', {
-      sender_wallet: wallet, recipient_wallet: currentChat.wallet,
-      content: fileContent,
-      type: 'file'
-    });
+    _emitMsg(fileContent, 'file');
     closePicker();
     showToast('File sent!');
   } catch(e) { showToast('File upload failed'); }
@@ -3024,7 +3156,7 @@ function getMicMimeType() {
 }
 
 async function startVoiceRecording() {
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
   if (_voiceMR && _voiceMR.state !== 'inactive') return;
   if (typeof MediaRecorder === 'undefined') { showToast('Voice messages not supported in this browser'); return; }
 
@@ -3101,7 +3233,7 @@ async function sendVoiceBlob(chunks, mimeType, duration) {
     var vContent = JSON.stringify({url: BACKEND + resp.url, duration: duration || 1});
     appendMessage({sender_wallet: wallet, content: vContent, type: 'voice', msg_type: 'voice', created_at: Math.floor(Date.now() / 1000)});
     scrollToBottom();
-    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: vContent, type: 'voice'});
+    _emitMsg(vContent, 'voice');
   } catch(e) {
     showToast('Voice message failed');
   }
@@ -3152,6 +3284,176 @@ function toggleVoicePlay(vId) {
   });
 }
 
+// ════════════════════════════════
+// GROUPS
+// ════════════════════════════════
+
+const GROUP_COLORS = [
+  '#7c5fc9','#e05555','#4caf7d','#f0c040','#4090e0','#e0804f',
+  '#9b59b6','#3498db','#e74c3c','#2ecc71','#f39c12','#1abc9c'
+];
+
+function groupAvatarColor(groupId) {
+  var h = 0;
+  for (var i = 0; i < groupId.length; i++) {
+    h = ((h << 5) - h + groupId.charCodeAt(i)) & 0x7fffffff;
+  }
+  return GROUP_COLORS[h % GROUP_COLORS.length];
+}
+
+function switchChatMode(mode) {
+  var isDMs = mode === 'dms';
+  document.getElementById('toggle-dms').classList.toggle('active', isDMs);
+  document.getElementById('toggle-groups').classList.toggle('active', !isDMs);
+  document.getElementById('dms-section').style.display = isDMs ? '' : 'none';
+  document.getElementById('groups-section').style.display = isDMs ? 'none' : '';
+}
+
+async function loadGroups() {
+  if (!wallet) return;
+  if (socket && socket.connected) {
+    socket.emit('get_groups', {wallet: wallet});
+  } else {
+    try {
+      groups = await fetch(BACKEND + '/api/groups/' + wallet).then(function(r) { return r.json(); }).catch(function() { return []; });
+      renderGroupList();
+    } catch(e) {}
+  }
+}
+
+function renderGroupList() {
+  var empty = document.getElementById('group-list-empty');
+  var list = document.getElementById('group-list');
+  if (!list) return;
+  if (!groups.length) {
+    if (empty) empty.style.display = 'flex';
+    list.style.display = 'none';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  list.style.display = 'block';
+  list.innerHTML = groups.map(function(g) {
+    var color = groupAvatarColor(g.id);
+    var initial = (g.name || 'G').charAt(0).toUpperCase();
+    var unread = groupUnreadCounts[g.id] || 0;
+    var lastType = g.last_type || '';
+    var lastMsg = g.last_message || '';
+    var preview = lastMsg
+      ? (lastType === 'image' ? '📷 Photo'
+        : lastType === 'voice' ? '🎤 Voice'
+        : lastType === 'file' ? '📄 File'
+        : lastType === 'gif' ? 'GIF'
+        : lastType === 'emoji' ? lastMsg.substring(0, 10)
+        : lastType === 'sticker' ? lastMsg.substring(0, 10)
+        : lastMsg.substring(0, 40))
+      : 'No messages yet';
+    var timeStr = g.last_time ? getTimeAgo(parseInt(g.last_time)) : '';
+    var safeId = g.id.replace(/'/g, '');
+    var safeName = escapeHtml(g.name);
+    return '<div class="chat-item" onclick="openGroupChat(\'' + safeId + '\',' + g.member_count + ')">'
+      + '<div class="chat-avatar" style="background:' + color + '">' + initial + '</div>'
+      + '<div class="chat-info">'
+      + '<div class="chat-name">' + safeName + '</div>'
+      + '<div class="chat-preview">' + escapeHtml(preview) + (timeStr ? ' · ' + timeStr : '') + '</div>'
+      + '</div>'
+      + (unread > 0 ? '<div class="unread-badge">' + unread + '</div>' : '<div style="color:var(--text2);font-size:22px">›</div>')
+      + '</div>';
+  }).join('');
+}
+
+async function openGroupChat(groupId, memberCount) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  var g = groups.find(function(x) { return x.id === groupId; });
+  var groupName = g ? g.name : 'Group';
+  currentGroupChat = {id: groupId, name: groupName, memberCount: memberCount};
+  currentChat = null;
+  isGroupChat = true;
+  groupUnreadCounts[groupId] = 0;
+
+  document.getElementById('chat-header-name').textContent = groupName;
+  document.getElementById('chat-header-wallet').textContent = memberCount + ' members';
+
+  var cb = document.getElementById('chat-call-btn');
+  var gb = document.getElementById('chat-gift-btn');
+  if (cb) cb.style.display = 'none';
+  if (gb) gb.style.display = 'none';
+
+  document.getElementById('chat-view').classList.add('open');
+  document.getElementById('messages-area').innerHTML = '<div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Group messages auto-delete after 24 hours 🔒</div>';
+
+  if (socket) {
+    socket.emit('join_group', {group_id: groupId});
+    socket.emit('get_group_messages', {group_id: groupId, wallet: wallet, limit: 50});
+  }
+
+  document.getElementById('chat-input').focus();
+  renderGroupList();
+}
+
+function openCreateGroupModal() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  var approved = contacts.filter(function(c) { return c.status === 'approved'; });
+  if (approved.length === 0) { showToast('Add contacts first to create a group'); return; }
+  selectedGroupMembers = [];
+  document.getElementById('create-group-name').value = '';
+  var errEl = document.getElementById('create-group-error');
+  errEl.textContent = ''; errEl.style.display = 'none';
+
+  var picker = document.getElementById('group-member-picker');
+  picker.innerHTML = approved.map(function(c) {
+    return '<div class="contact-item" data-wallet="' + c.wallet + '" style="cursor:pointer;transition:background 0.1s">'
+      + '<div class="chat-avatar" style="width:46px;height:46px;font-size:20px">' + avatarLetter(c.handle) + '</div>'
+      + '<div style="flex:1"><div style="font-size:18px;font-weight:600">' + escapeHtml(c.handle || shortenWallet(c.wallet)) + '</div></div>'
+      + '<div class="gm-check" style="font-size:22px;color:var(--text2)">&#9675;</div>'
+      + '</div>';
+  }).join('');
+
+  picker.querySelectorAll('.contact-item').forEach(function(row) {
+    row.addEventListener('click', function() { toggleGroupMember(row.dataset.wallet, row); });
+  });
+
+  document.getElementById('create-group-modal').style.display = 'flex';
+}
+
+function toggleGroupMember(mWallet, row) {
+  var idx = selectedGroupMembers.indexOf(mWallet);
+  var check = row.querySelector('.gm-check');
+  if (idx === -1) {
+    selectedGroupMembers.push(mWallet);
+    if (check) { check.textContent = '✓'; check.style.color = 'var(--purple)'; }
+    row.style.background = 'var(--purple-glow)';
+  } else {
+    selectedGroupMembers.splice(idx, 1);
+    if (check) { check.innerHTML = '&#9675;'; check.style.color = 'var(--text2)'; }
+    row.style.background = '';
+  }
+}
+
+function submitCreateGroup() {
+  var name = (document.getElementById('create-group-name').value || '').trim();
+  var errEl = document.getElementById('create-group-error');
+  if (!name) { errEl.textContent = 'Enter a group name'; errEl.style.display = 'block'; return; }
+  if (selectedGroupMembers.length === 0) { errEl.textContent = 'Select at least one member'; errEl.style.display = 'block'; return; }
+  if (!wallet || !socket) { errEl.textContent = 'Not connected'; errEl.style.display = 'block'; return; }
+  socket.emit('create_group', {wallet: wallet, name: name, members: selectedGroupMembers});
+  document.getElementById('create-group-modal').style.display = 'none';
+  switchChatMode('groups');
+}
+
+function closeCreateGroupModal() {
+  document.getElementById('create-group-modal').style.display = 'none';
+}
+
+// Helper: route message emit to DM or group
+function _emitMsg(content, type) {
+  if (!socket) return;
+  if (isGroupChat && currentGroupChat) {
+    socket.emit('send_group_message', {wallet: wallet, group_id: currentGroupChat.id, content: content, type: type});
+  } else if (currentChat) {
+    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: content, type: type});
+  }
+}
+
 window.addEventListener('load', async () => {
   loadSettings();
   registerServiceWorker();
@@ -3170,6 +3472,7 @@ window.addEventListener('load', async () => {
       updateUI();
       connectSocket();   // connect socket for all users (WC and injected alike)
       loadContacts();
+      loadGroups();
       loadMemories();
       handleInviteParam();
     }

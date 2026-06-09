@@ -106,6 +106,28 @@ def init_db():
             expires_at INTEGER,
             tx_hash TEXT
         );
+        CREATE TABLE IF NOT EXISTS groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            avatar TEXT
+        );
+        CREATE TABLE IF NOT EXISTS group_members (
+            group_id TEXT NOT NULL,
+            wallet TEXT NOT NULL,
+            joined_at TEXT NOT NULL,
+            PRIMARY KEY (group_id, wallet)
+        );
+        CREATE TABLE IF NOT EXISTS group_messages (
+            id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            sender_wallet TEXT NOT NULL,
+            content TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'text',
+            timestamp INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
     ''')
     conn.commit()
     conn.close()
@@ -121,6 +143,7 @@ def cleanup_messages():
             conn.execute('DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?', (int(time.time()),))
             conn.execute('DELETE FROM chat_images WHERE expires_at < ?', (int(time.time()),))
             conn.execute('DELETE FROM chat_files WHERE expires_at < ?', (int(time.time()),))
+            conn.execute('DELETE FROM group_messages WHERE expires_at < ?', (int(time.time()),))
             conn.commit()
             conn.close()
             # Clean up expired in-memory voice messages
@@ -621,6 +644,29 @@ def get_chat_voice(voice_id):
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
+@app.route('/api/groups/<wallet>')
+def api_get_groups(wallet):
+    w = wallet.lower().strip()
+    now = int(time.time())
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT g.id, g.name, g.created_by, g.created_at,
+               (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+               (SELECT content FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1) as last_message,
+               (SELECT type FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1) as last_type,
+               (SELECT timestamp FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1) as last_time
+        FROM groups g
+        JOIN group_members mgr ON mgr.group_id = g.id AND mgr.wallet = ?
+        ORDER BY COALESCE((SELECT timestamp FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1), 0) DESC
+    ''', (now, now, now, w, now)).fetchall()
+    conn.close()
+    return jsonify([{
+        'id': r['id'], 'name': r['name'], 'created_by': r['created_by'],
+        'member_count': r['member_count'],
+        'last_message': r['last_message'], 'last_type': r['last_type'],
+        'last_time': r['last_time']
+    } for r in rows])
+
 @app.route('/messages/<wallet>/<contact_wallet>')
 def get_messages(wallet, contact_wallet):
     room = get_room(wallet, contact_wallet)
@@ -779,6 +825,155 @@ def on_call_end(data):
     pending_calls.pop(target, None)  # call ended — clear buffer for target
     pending_calls.pop(sender, None)  # also clear for sender
     emit('call_end', {'sender_wallet': sender}, room=target)
+
+# ══════════════════════════════════════════════════════════════════════
+# GROUP CHAT
+# ══════════════════════════════════════════════════════════════════════
+
+def _get_groups_for_wallet(w, conn, now):
+    rows = conn.execute('''
+        SELECT g.id, g.name, g.created_by, g.created_at,
+               (SELECT COUNT(*) FROM group_members WHERE group_id = g.id) as member_count,
+               (SELECT content FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1) as last_message,
+               (SELECT type FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1) as last_type,
+               (SELECT timestamp FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1) as last_time
+        FROM groups g
+        JOIN group_members mgr ON mgr.group_id = g.id AND mgr.wallet = ?
+        ORDER BY COALESCE((SELECT timestamp FROM group_messages WHERE group_id = g.id AND expires_at > ? ORDER BY timestamp DESC LIMIT 1), 0) DESC
+    ''', (now, now, now, w, now)).fetchall()
+    return [{
+        'id': r['id'], 'name': r['name'], 'created_by': r['created_by'],
+        'member_count': r['member_count'],
+        'last_message': r['last_message'], 'last_type': r['last_type'],
+        'last_time': r['last_time']
+    } for r in rows]
+
+@socketio.on('create_group')
+def on_create_group(data):
+    creator = (data.get('wallet') or '').lower()
+    name = (data.get('name') or '').strip()
+    members = data.get('members') or []
+    if not creator or not name:
+        return
+    group_id = str(uuid.uuid4())
+    now_str = str(int(time.time()))
+    conn = get_db()
+    try:
+        conn.execute(
+            'INSERT INTO groups (id, name, created_by, created_at) VALUES (?, ?, ?, ?)',
+            (group_id, name, creator, now_str)
+        )
+        conn.execute(
+            'INSERT OR IGNORE INTO group_members (group_id, wallet, joined_at) VALUES (?, ?, ?)',
+            (group_id, creator, now_str)
+        )
+        for m in members:
+            mw = str(m).lower().strip()
+            if mw and mw != creator:
+                conn.execute(
+                    'INSERT OR IGNORE INTO group_members (group_id, wallet, joined_at) VALUES (?, ?, ?)',
+                    (group_id, mw, now_str)
+                )
+        conn.commit()
+        member_rows = conn.execute(
+            'SELECT wallet FROM group_members WHERE group_id = ?', (group_id,)
+        ).fetchall()
+        member_count = len(member_rows)
+        group_data = {
+            'id': group_id, 'name': name, 'created_by': creator,
+            'member_count': member_count,
+            'last_message': None, 'last_type': None, 'last_time': None
+        }
+        for row in member_rows:
+            socketio.emit('group_created', group_data, room=row['wallet'])
+    finally:
+        conn.close()
+
+@socketio.on('join_group')
+def on_join_group(data):
+    group_id = (data.get('group_id') or '').strip()
+    if group_id:
+        join_room(group_id)
+
+@socketio.on('send_group_message')
+def on_send_group_message(data):
+    sender = (data.get('wallet') or '').lower()
+    group_id = (data.get('group_id') or '').strip()
+    content = str(data.get('content') or '').strip()
+    msg_type = str(data.get('type') or 'text')
+    if not sender or not group_id or not content:
+        return
+    conn = get_db()
+    is_member = conn.execute(
+        'SELECT 1 FROM group_members WHERE group_id = ? AND wallet = ?',
+        (group_id, sender)
+    ).fetchone()
+    if not is_member:
+        conn.close()
+        emit('error', {'message': 'Not a group member'})
+        return
+    now = int(time.time())
+    expires_at = now + 86400
+    msg_id = str(uuid.uuid4())
+    conn.execute(
+        'INSERT INTO group_messages (id, group_id, sender_wallet, content, type, timestamp, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (msg_id, group_id, sender, content, msg_type, now, expires_at)
+    )
+    conn.commit()
+    sender_handle = get_handle_for(sender, conn)
+    conn.close()
+    msg = {
+        'id': msg_id, 'group_id': group_id,
+        'sender_wallet': sender, 'sender_handle': sender_handle,
+        'content': content, 'type': msg_type,
+        'timestamp': now, 'created_at': now
+    }
+    emit('new_group_message', msg, room=group_id)
+
+@socketio.on('get_groups')
+def on_get_groups(data):
+    w = (data.get('wallet') or '').lower()
+    if not w:
+        return
+    conn = get_db()
+    result = _get_groups_for_wallet(w, conn, int(time.time()))
+    conn.close()
+    emit('groups_list', result)
+
+@socketio.on('get_group_messages')
+def on_get_group_messages(data):
+    group_id = (data.get('group_id') or '').strip()
+    requester = (data.get('wallet') or '').lower()
+    limit = min(int(data.get('limit') or 50), 100)
+    if not group_id or not requester:
+        return
+    conn = get_db()
+    is_member = conn.execute(
+        'SELECT 1 FROM group_members WHERE group_id = ? AND wallet = ?',
+        (group_id, requester)
+    ).fetchone()
+    if not is_member:
+        conn.close()
+        return
+    now = int(time.time())
+    rows = conn.execute('''
+        SELECT gm.id, gm.group_id, gm.sender_wallet, gm.content, gm.type,
+               gm.timestamp, h.handle as sender_handle
+        FROM group_messages gm
+        LEFT JOIN handles h ON h.wallet = gm.sender_wallet
+        WHERE gm.group_id = ? AND gm.expires_at > ?
+        ORDER BY gm.timestamp ASC
+        LIMIT ?
+    ''', (group_id, now, limit)).fetchall()
+    conn.close()
+    messages = [{
+        'id': r['id'], 'group_id': r['group_id'],
+        'sender_wallet': r['sender_wallet'],
+        'sender_handle': r['sender_handle'] or (r['sender_wallet'][:8] + '...'),
+        'content': r['content'], 'type': r['type'],
+        'timestamp': r['timestamp'], 'created_at': r['timestamp']
+    } for r in rows]
+    emit('group_messages', {'group_id': group_id, 'messages': messages})
 
 # ══════════════════════════════════════════════════════════════════════
 # PREMIUM TIER — LCAI price, call access, subscriptions, gift confirm
