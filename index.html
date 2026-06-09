@@ -816,6 +816,39 @@ body {
   top: 0; left: 0; right: 0; bottom: 0;
   background: #000; z-index: 800; flex-direction: column;
 }
+
+/* ── Group call overlays ── */
+#group-call-incoming-overlay, #group-call-calling-overlay {
+  display: none; position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(13,13,26,0.97); z-index: 810;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; text-align: center; padding: 40px;
+}
+#group-call-active-overlay {
+  display: none; position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #000; z-index: 810; flex-direction: column;
+}
+#group-video-grid {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 140px;
+  display: grid; grid-template-columns: 1fr; gap: 2px; overflow: hidden;
+}
+.group-video-tile {
+  position: relative; background: #111; overflow: hidden; min-height: 0;
+}
+.group-video-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gtile-label {
+  position: absolute; bottom: 8px; left: 10px;
+  background: rgba(0,0,0,0.65); color: #fff;
+  font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 8px;
+}
+#group-call-controls {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 18px 32px 32px;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.9));
+}
 </style>
 </head>
 <body>
@@ -1014,6 +1047,7 @@ body {
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
     <button id="chat-call-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
+    <button id="chat-group-call-btn" style="display:none;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startGroupVideoCall()" title="Group Video Call">📹</button>
     <button id="chat-gift-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showGiftModal()">💜</button>
   </div>
   <div class="messages-area" id="messages-area">
@@ -1494,6 +1528,40 @@ body {
   </div>
 </div>
 
+<!-- ── GROUP CALL OVERLAYS ── -->
+<!-- Incoming group call overlay -->
+<div id="group-call-incoming-overlay">
+  <div style="font-size:80px">📹</div>
+  <div style="font-size:28px;font-weight:700">Incoming Group Call</div>
+  <div style="font-size:22px;color:var(--purple);line-height:1.4" id="group-call-incoming-name"></div>
+  <div style="display:flex;gap:48px;margin-top:8px">
+    <button onclick="declineGroupCall()" style="width:80px;height:80px;border-radius:50%;background:var(--red);border:none;font-size:34px;cursor:pointer">📵</button>
+    <button onclick="acceptGroupCall()" style="width:80px;height:80px;border-radius:50%;background:var(--green);border:none;font-size:34px;cursor:pointer">📞</button>
+  </div>
+  <div style="color:var(--text2);font-size:18px">↙ Decline &nbsp;&nbsp;&nbsp; Accept ↘</div>
+</div>
+
+<!-- Calling overlay (waiting for members to join) -->
+<div id="group-call-calling-overlay">
+  <div style="font-size:80px">📹</div>
+  <div style="font-size:28px;font-weight:700">Starting Group Call…</div>
+  <div style="font-size:22px;color:var(--purple)" id="group-call-calling-name"></div>
+  <div style="font-size:18px;color:var(--text2)">Waiting for members to join (30 s)</div>
+  <button onclick="cancelGroupCall()" style="width:80%;max-width:280px;padding:20px;border-radius:50px;background:var(--red);border:none;font-size:24px;font-weight:700;color:#fff;cursor:pointer">📵 Cancel Call</button>
+</div>
+
+<!-- Active group call overlay -->
+<div id="group-call-active-overlay">
+  <div id="group-video-grid"></div>
+  <div id="group-call-controls">
+    <div style="display:flex;justify-content:center;gap:28px">
+      <button id="group-mute-btn" onclick="toggleGroupMute()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">🎤</button>
+      <button id="group-cam-btn" onclick="toggleGroupCamera()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">📷</button>
+    </div>
+    <button onclick="leaveGroupCall()" style="width:100%;max-width:260px;padding:18px;border-radius:50px;background:var(--red);border:none;font-size:22px;font-weight:700;color:#fff;cursor:pointer">📵 Leave Call</button>
+  </div>
+</div>
+
 <!-- ── CREATE GROUP MODAL ── -->
 <div id="create-group-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:500;align-items:center;justify-content:center;padding:20px">
   <div class="modal-box" style="max-width:440px;max-height:85vh;display:flex;flex-direction:column">
@@ -1714,6 +1782,14 @@ function connectSocket() {
     (data.messages || []).forEach(m => appendMessage(m, m.sender_handle));
     scrollToBottom();
   });
+
+  // ── Group video call listeners ──
+  socket.on('group_call_offer',      handleGroupCallOffer);
+  socket.on('group_call_joined',     handleGroupCallJoined);
+  socket.on('group_call_peer_joined',handleGroupCallPeerJoined);
+  socket.on('group_call_peer_left',  handleGroupCallPeerLeft);
+  socket.on('group_call_ended',      handleGroupCallEnded);
+  socket.on('group_peer_signal',     handleGroupPeerSignal);
 }
 
 async function loadContacts() {
@@ -1816,8 +1892,10 @@ function closeChat() {
   currentChat = null; currentGroupChat = null; isGroupChat = false;
   var cb = document.getElementById('chat-call-btn');
   var gb = document.getElementById('chat-gift-btn');
+  var gcb = document.getElementById('chat-group-call-btn');
   if (cb) cb.style.display = '';
   if (gb) gb.style.display = '';
+  if (gcb) gcb.style.display = 'none';
 }
 
 function sendMessage() {
@@ -2792,7 +2870,8 @@ async function startVideoCall() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   if (!currentChat) { showToast('Open a chat first'); return; }
   if (!socket) { connectSocket(); showToast('Reconnecting — try again in 2 seconds'); return; }
-  if (callState) { showToast('Already in a call'); return; }
+  if (callState)      { showToast('Already in a call'); return; }
+  if (groupCallState) { showToast('Already in a group call'); return; }
   // ── Premium gate: check call access ──
   const _svAccess = await checkCallAccess();
   if (!_svAccess.allowed) { showUpgradeModal(() => startVideoCall()); return; }
@@ -3365,6 +3444,344 @@ function toggleVoicePlay(vId) {
 }
 
 // ════════════════════════════════
+// GROUP VIDEO CALLS (WebRTC mesh, max 5)
+// ════════════════════════════════
+let groupCallState      = null;   // null | 'calling' | 'receiving' | 'active'
+let groupCallGroupId    = null;
+let groupCallGroupName  = null;
+let groupCallLocalStream= null;
+let groupCallPendingOffer = null; // { caller_wallet, caller_handle, group_id, group_name }
+let groupCallTimeoutId  = null;
+let groupPeerConnections= {};     // { walletAddr: RTCPeerConnection }
+let groupCallHandles    = {};     // { walletAddr: handle } — populated as peers join
+let groupCallIceQueues  = {};     // { walletAddr: [candidate, ...] } — ICE before PC ready
+
+async function startGroupVideoCall() {
+  if (!wallet || !currentGroupChat || !socket) { showToast('Open a group chat first'); return; }
+  if (groupCallState) { showToast('Already in a call'); return; }
+  if (callState)      { showToast('Already in a 1:1 call'); return; }
+  const access = await checkCallAccess();
+  if (!access.allowed) { showUpgradeModal(() => startGroupVideoCall()); return; }
+  if (!access.subscribed) useCall();
+
+  groupCallState     = 'calling';
+  groupCallGroupId   = currentGroupChat.id;
+  groupCallGroupName = currentGroupChat.name;
+  groupCallHandles[wallet] = myHandle || wallet.substring(0,8)+'...';
+
+  document.getElementById('group-call-calling-name').textContent = currentGroupChat.name;
+  document.getElementById('group-call-calling-overlay').style.display = 'flex';
+
+  try {
+    groupCallLocalStream = await getLocalStream();
+    // Add our own tile to the grid now (grid is hidden until someone joins)
+    _addGroupTile(wallet, 'You', true);
+  } catch(e) {
+    cleanupGroupCall();
+    return;
+  }
+
+  socket.emit('group_call_offer', {
+    wallet: wallet,
+    group_id: groupCallGroupId,
+    group_name: groupCallGroupName
+  });
+
+  // 30-second timeout — server also fires, this is the client-side safeguard
+  groupCallTimeoutId = setTimeout(() => {
+    if (groupCallState === 'calling') {
+      cancelGroupCall();
+      showToast('No one joined the group call');
+    }
+  }, 30000);
+}
+
+// ─── Incoming: shown to every group member except the caller ───
+function handleGroupCallOffer(data) {
+  if (groupCallState) return; // already in a call — ignore
+  groupCallState = 'receiving';
+  groupCallPendingOffer = data;
+  groupCallGroupId   = data.group_id;
+  groupCallGroupName = data.group_name;
+  groupCallHandles[data.caller_wallet] = data.caller_handle || data.caller_wallet.substring(0,8)+'...';
+
+  document.getElementById('group-call-incoming-name').textContent =
+    'Group call in ' + (data.group_name || 'Group') + '\n— from ' + (data.caller_handle || data.caller_wallet);
+  document.getElementById('group-call-incoming-overlay').style.display = 'flex';
+  startRinging();
+
+  groupCallTimeoutId = setTimeout(() => {
+    if (groupCallState === 'receiving') declineGroupCall();
+  }, 30000);
+}
+
+async function acceptGroupCall() {
+  const data = groupCallPendingOffer;
+  if (!data) return;
+  clearTimeout(groupCallTimeoutId); groupCallTimeoutId = null;
+  stopRinging();
+  document.getElementById('group-call-incoming-overlay').style.display = 'none';
+  try {
+    groupCallLocalStream = await getLocalStream();
+    groupCallHandles[wallet] = myHandle || wallet.substring(0,8)+'...';
+    _addGroupTile(wallet, 'You', true);
+    document.getElementById('group-call-active-overlay').style.display = 'flex';
+    socket.emit('group_call_accept', { wallet: wallet, group_id: data.group_id });
+    groupCallState = 'active';
+    groupCallPendingOffer = null;
+  } catch(e) {
+    cleanupGroupCall();
+  }
+}
+
+function declineGroupCall() {
+  const data = groupCallPendingOffer;
+  stopRinging();
+  clearTimeout(groupCallTimeoutId); groupCallTimeoutId = null;
+  if (data && socket) socket.emit('group_call_decline', { wallet: wallet, group_id: data.group_id });
+  groupCallPendingOffer = null;
+  groupCallState = null;
+  groupCallGroupId = null;
+  document.getElementById('group-call-incoming-overlay').style.display = 'none';
+}
+
+function cancelGroupCall() {
+  leaveGroupCall(); // caller cancelling before anyone accepted
+}
+
+// ─── Sent to the NEW JOINER: list of everyone already in the call ───
+function handleGroupCallJoined(data) {
+  if (!data || data.group_id !== groupCallGroupId) return;
+  // Store handles; existing members will send us offers via group_peer_signal
+  (data.members || []).forEach(m => {
+    groupCallHandles[m.wallet] = m.handle || m.wallet.substring(0,8)+'...';
+  });
+}
+
+// ─── Sent to EXISTING members when a new peer accepts ───
+async function handleGroupCallPeerJoined(data) {
+  if (!data || data.group_id !== groupCallGroupId) return;
+  if (groupCallState !== 'calling' && groupCallState !== 'active') return;
+
+  // Transition caller from 'calling' → 'active' on first acceptance
+  if (groupCallState === 'calling') {
+    clearTimeout(groupCallTimeoutId); groupCallTimeoutId = null;
+    groupCallState = 'active';
+    document.getElementById('group-call-calling-overlay').style.display = 'none';
+    document.getElementById('group-call-active-overlay').style.display = 'flex';
+  }
+
+  const peerWallet = data.wallet;
+  const peerHandle = data.handle || peerWallet.substring(0,8)+'...';
+  groupCallHandles[peerWallet] = peerHandle;
+
+  // We are the OFFERER to the newly joined peer
+  await _createGroupPC(peerWallet, peerHandle, true);
+}
+
+// ─── SDP / ICE signals between specific peer pairs ───
+async function handleGroupPeerSignal(data) {
+  if (!data || data.group_id !== groupCallGroupId) return;
+  const fromWallet = data.from;
+  const signal     = data.signal;
+
+  if (signal.type === 'offer') {
+    // We're the ANSWERER — create PC if we don't have one yet
+    let pc = groupPeerConnections[fromWallet];
+    if (!pc) {
+      const h = groupCallHandles[fromWallet] || fromWallet.substring(0,8)+'...';
+      pc = await _createGroupPC(fromWallet, h, false);
+    }
+    await pc.setRemoteDescription(new RTCSessionDescription(signal));
+    // Flush any queued ICE candidates
+    for (const c of (groupCallIceQueues[fromWallet] || [])) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e) {}
+    }
+    groupCallIceQueues[fromWallet] = [];
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    socket.emit('group_peer_signal', { from: wallet, to: fromWallet, group_id: groupCallGroupId, signal: { type: 'answer', sdp: answer } });
+
+  } else if (signal.type === 'answer') {
+    const pc = groupPeerConnections[fromWallet];
+    if (pc) {
+      await pc.setRemoteDescription(new RTCSessionDescription(signal));
+      for (const c of (groupCallIceQueues[fromWallet] || [])) {
+        try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e) {}
+      }
+      groupCallIceQueues[fromWallet] = [];
+    }
+
+  } else if (signal.type === 'ice') {
+    const pc = groupPeerConnections[fromWallet];
+    if (pc && pc.remoteDescription) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(signal.candidate)); } catch(e) {}
+    } else {
+      if (!groupCallIceQueues[fromWallet]) groupCallIceQueues[fromWallet] = [];
+      groupCallIceQueues[fromWallet].push(signal.candidate);
+    }
+  }
+}
+
+function handleGroupCallPeerLeft(data) {
+  if (!data || data.group_id !== groupCallGroupId) return;
+  const lw = data.wallet;
+  _removeGroupTile(lw);
+  const pc = groupPeerConnections[lw];
+  if (pc) { pc.close(); delete groupPeerConnections[lw]; }
+  delete groupCallHandles[lw];
+  _checkGroupCallAlone();
+}
+
+function handleGroupCallEnded(data) {
+  if (!data || data.group_id !== groupCallGroupId) return;
+  cleanupGroupCall();
+  showToast('Group call ended');
+}
+
+// ─── Create (or return) a peer connection to a specific wallet ───
+async function _createGroupPC(peerWallet, peerHandle, isOfferer) {
+  if (groupPeerConnections[peerWallet]) return groupPeerConnections[peerWallet];
+
+  const pc = new RTCPeerConnection({ iceServers });
+  groupPeerConnections[peerWallet] = pc;
+
+  // Attach local tracks
+  if (groupCallLocalStream) {
+    groupCallLocalStream.getTracks().forEach(t => pc.addTrack(t, groupCallLocalStream));
+  }
+
+  // ICE relay
+  pc.onicecandidate = e => {
+    if (e.candidate && socket) {
+      socket.emit('group_peer_signal', {
+        from: wallet, to: peerWallet, group_id: groupCallGroupId,
+        signal: { type: 'ice', candidate: e.candidate }
+      });
+    }
+  };
+
+  // Remote video
+  pc.ontrack = e => {
+    let tile = document.getElementById('gtile-' + peerWallet);
+    if (!tile) { _addGroupTile(peerWallet, peerHandle, false); tile = document.getElementById('gtile-' + peerWallet); }
+    if (tile) {
+      const vid = tile.querySelector('video');
+      if (vid) {
+        const stream = e.streams && e.streams[0] ? e.streams[0] : new MediaStream([e.track]);
+        vid.srcObject = stream;
+        vid.muted = false; vid.volume = 0.8; vid.autoplay = true; vid.playsInline = true;
+        vid.play().catch(() => {});
+      }
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+      _removeGroupTile(peerWallet);
+      pc.close();
+      delete groupPeerConnections[peerWallet];
+      _checkGroupCallAlone();
+    }
+  };
+
+  if (isOfferer) {
+    // Add a placeholder tile so UI updates immediately
+    _addGroupTile(peerWallet, peerHandle, false);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('group_peer_signal', {
+      from: wallet, to: peerWallet, group_id: groupCallGroupId,
+      signal: { type: 'offer', sdp: offer }
+    });
+  }
+
+  return pc;
+}
+
+// ─── Video grid tile management ───
+function _addGroupTile(walletAddr, label, isLocal) {
+  const grid = document.getElementById('group-video-grid');
+  if (!grid || document.getElementById('gtile-' + walletAddr)) return;
+  const tile = document.createElement('div');
+  tile.className = 'group-video-tile';
+  tile.id = 'gtile-' + walletAddr;
+  tile.innerHTML = '<video autoplay playsinline' + (isLocal ? ' muted' : '') + '></video>'
+    + '<div class="gtile-label">' + escapeHtml(label) + '</div>';
+  if (isLocal && groupCallLocalStream) {
+    const vid = tile.querySelector('video');
+    vid.srcObject = groupCallLocalStream;
+    vid.play().catch(() => {});
+  }
+  grid.appendChild(tile);
+  _updateGroupGrid();
+}
+
+function _removeGroupTile(walletAddr) {
+  const t = document.getElementById('gtile-' + walletAddr);
+  if (t) t.remove();
+  _updateGroupGrid();
+}
+
+function _updateGroupGrid() {
+  const grid = document.getElementById('group-video-grid');
+  if (!grid) return;
+  const n = grid.querySelectorAll('.group-video-tile').length;
+  if (n <= 1)      grid.style.gridTemplateColumns = '1fr';
+  else if (n <= 2) grid.style.gridTemplateColumns = '1fr 1fr';
+  else             grid.style.gridTemplateColumns = '1fr 1fr';  // 3-5 → 2-col, tiles fill rows
+}
+
+function _checkGroupCallAlone() {
+  const grid = document.getElementById('group-video-grid');
+  if (!grid) return;
+  const n = grid.querySelectorAll('.group-video-tile').length;
+  if (n <= 1 && groupCallState === 'active') {
+    leaveGroupCall();
+    showToast('Everyone else left the group call');
+  }
+}
+
+function leaveGroupCall() {
+  if (socket && groupCallGroupId) {
+    socket.emit('group_call_leave', { wallet: wallet, group_id: groupCallGroupId });
+  }
+  cleanupGroupCall();
+}
+
+function toggleGroupMute() {
+  if (!groupCallLocalStream) return;
+  const t = groupCallLocalStream.getAudioTracks()[0];
+  if (t) { t.enabled = !t.enabled; document.getElementById('group-mute-btn').textContent = t.enabled ? '🎤' : '🔇'; }
+}
+
+function toggleGroupCamera() {
+  if (!groupCallLocalStream) return;
+  const t = groupCallLocalStream.getVideoTracks()[0];
+  if (t) { t.enabled = !t.enabled; document.getElementById('group-cam-btn').textContent = t.enabled ? '📷' : '🚫'; }
+}
+
+function cleanupGroupCall() {
+  stopRinging();
+  clearTimeout(groupCallTimeoutId); groupCallTimeoutId = null;
+  Object.values(groupPeerConnections).forEach(pc => { try { pc.close(); } catch(e) {} });
+  groupPeerConnections = {};
+  groupCallIceQueues = {};
+  if (groupCallLocalStream) { groupCallLocalStream.getTracks().forEach(t => t.stop()); groupCallLocalStream = null; }
+  groupCallState       = null;
+  groupCallGroupId     = null;
+  groupCallGroupName   = null;
+  groupCallPendingOffer= null;
+  groupCallHandles     = {};
+  const grid = document.getElementById('group-video-grid');
+  if (grid) grid.innerHTML = '';
+  document.getElementById('group-call-incoming-overlay').style.display = 'none';
+  document.getElementById('group-call-calling-overlay').style.display  = 'none';
+  document.getElementById('group-call-active-overlay').style.display   = 'none';
+}
+
+// ════════════════════════════════
 // GROUPS
 // ════════════════════════════════
 
@@ -3455,8 +3872,10 @@ async function openGroupChat(groupId, memberCount) {
 
   var cb = document.getElementById('chat-call-btn');
   var gb = document.getElementById('chat-gift-btn');
+  var gcb = document.getElementById('chat-group-call-btn');
   if (cb) cb.style.display = 'none';
   if (gb) gb.style.display = 'none';
+  if (gcb) gcb.style.display = memberCount >= 2 ? '' : 'none';
 
   document.getElementById('chat-view').classList.add('open');
   document.getElementById('messages-area').innerHTML = '<div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Group messages auto-delete after 24 hours 🔒</div>';
