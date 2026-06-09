@@ -5354,18 +5354,18 @@ function initLanguage() {
 
 // Patch loadSettings to also restore autoTranslate
 var _origLoadSettings = loadSettings;
-function loadSettings() {
+loadSettings = function() {
   _origLoadSettings();
   if (!('autoTranslate' in settings)) settings.autoTranslate = false;
-}
+};
 
 // Patch showSettings to also restore autoTranslate toggle
 var _origShowSettings = showSettings;
-function showSettings() {
+showSettings = function() {
   _origShowSettings();
   var el = document.getElementById('setting-autoTranslate');
   if (el) el.checked = !!settings.autoTranslate;
-}
+};
 
 // ══════════════════════════════════════════════════════════════════
 // FEATURE 2: AUTO-TRANSLATE MESSAGES
@@ -5428,7 +5428,7 @@ function addTranslateButton(wrapEl, originalText) {
 
 // Monkey-patch appendMessage to add translate button on incoming text messages
 var _origAppendMessage = appendMessage;
-function appendMessage(msg, senderHandle) {
+appendMessage = function(msg, senderHandle) {
   _origAppendMessage.call(this, msg, senderHandle);
   // Find the element we just appended (last child of messages-area)
   var area = document.getElementById('messages-area');
@@ -6014,19 +6014,19 @@ window.addEventListener('load', function() {
 
 // Patch switchTab to load calendar when selected
 var _origSwitchTab = switchTab;
-function switchTab(name) {
+switchTab = function(name) {
   _origSwitchTab(name);
   if (name === 'calendar') {
     if (!_calEvents.length || true) loadCalEvents();
   }
-}
+};
 
 // Patch connectSocket to add calendar invite listener
 var _origConnectSocket = connectSocket;
-function connectSocket() {
+connectSocket = function() {
   _origConnectSocket();
   setTimeout(setupCalendarSocketListeners, 500);
-}
+};
 
 </script>
 </body>
