@@ -4214,7 +4214,12 @@ function toggleCamera() {
 function openPasteAddressModal() {
   document.getElementById('wc-modal').style.display = 'flex';
   const inp = document.getElementById('wc-addr-input');
-  if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 100); }
+  if (inp) {
+    // Pre-fill with saved address so returning user just taps Connect
+    const saved = localStorage.getItem('lc_wallet');
+    inp.value = saved || '';
+    setTimeout(() => inp.focus(), 100);
+  }
 }
 
 function closeWCModal() {
@@ -5140,6 +5145,10 @@ window.addEventListener('load', async () => {
       loadMemories();
       handleInviteParam();
       handleShareParam();
+    } else if (saved) {
+      // Backend unreachable or handle not found — pre-fill modal so user just taps Connect
+      const inp = document.getElementById('wc-addr-input');
+      if (inp) inp.value = saved;
     }
   }
   // ── 2. Silent web3 reconnect (Trust Wallet / injected wallet)
