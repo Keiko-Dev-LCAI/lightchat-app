@@ -5510,8 +5510,11 @@ function addTranslateButton(wrapEl, originalText) {
       done = true;
       btn.textContent = '🌐 Hide';
     } else {
-      btn.textContent = t('translate');
-      showToast('Translation not available');
+      // Same language or no translation available — mark done silently
+      btn.textContent = '✓';
+      btn.title = 'Already in your language';
+      btn.disabled = true;
+      done = true;
     }
   };
   outer.appendChild(btn);
@@ -5542,7 +5545,8 @@ appendMessage = function(msg, senderHandle) {
             var tDiv = document.createElement('div');
             tDiv.className = 'translated-text';
             tDiv.textContent = result;
-            innerDiv.appendChild(tDiv);
+            var _atBubble = innerDiv.querySelector('.msg-bubble');
+            (_atBubble || innerDiv).appendChild(tDiv);
           }
         })();
       } else {
