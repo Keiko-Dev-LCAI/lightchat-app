@@ -953,6 +953,135 @@ body {
   display: flex; flex-direction: column; align-items: center; gap: 14px;
   background: linear-gradient(transparent, rgba(0,0,0,0.9));
 }
+
+/* ── Translate button ── */
+.translate-btn {
+  background: none; border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text2); font-size: 13px; cursor: pointer; padding: 3px 10px;
+  margin-top: 4px; display: inline-block; transition: color 0.15s, border-color 0.15s;
+}
+.translate-btn:hover { color: var(--purple); border-color: var(--purple); }
+.translated-text {
+  font-size: 15px; color: var(--text2); font-style: italic;
+  margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--border);
+  line-height: 1.5;
+}
+
+/* ── Voice AI floating button ── */
+#voice-ai-fab {
+  position: fixed; bottom: 90px; right: 18px;
+  width: 56px; height: 56px;
+  background: var(--purple); border: none; border-radius: 50%;
+  color: #fff; font-size: 24px; cursor: pointer; z-index: 400;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 20px rgba(155,127,232,0.45);
+  transition: background 0.15s, transform 0.15s;
+}
+#voice-ai-fab:hover, #voice-ai-fab:active { background: var(--purple-dark); transform: scale(1.08); }
+@media (min-width: 768px) { #voice-ai-fab { bottom: 32px; right: 32px; } }
+
+/* ── Voice AI overlay ── */
+#voice-ai-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(13,13,26,0.97); z-index: 850;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 26px; text-align: center; padding: 40px;
+}
+#voice-ai-overlay.open { display: flex; }
+.voice-ai-mic-ring {
+  width: 110px; height: 110px; border-radius: 50%;
+  background: var(--purple-glow); border: 3px solid var(--purple);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px;
+}
+.voice-ai-mic-ring.listening {
+  animation: mic-ai-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-ai-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(155,127,232,0.4); }
+  50%      { box-shadow: 0 0 0 22px rgba(155,127,232,0); }
+}
+.voice-ai-status { font-size: 24px; font-weight: 600; color: var(--text); }
+.voice-ai-hint { font-size: 16px; color: var(--text2); line-height: 1.7; max-width: 360px; }
+.voice-ai-transcript { font-size: 20px; color: var(--purple); font-style: italic; min-height: 1.5em; }
+
+/* ── Calendar tab ── */
+.cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 22px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.cal-title { font-size: 26px; font-weight: 700; }
+.cal-nav-btn {
+  background: none; border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 20px; padding: 6px 16px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.cal-nav-btn:hover { border-color: var(--purple); color: var(--purple); }
+.cal-month-label { font-size: 22px; font-weight: 600; color: var(--text); }
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 2px; padding: 10px 10px 6px;
+}
+.cal-dow {
+  text-align: center; font-size: 13px; color: var(--text2); font-weight: 600;
+  padding: 6px 0;
+}
+.cal-cell {
+  aspect-ratio: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  border-radius: 10px; cursor: pointer; font-size: 17px;
+  position: relative; transition: background 0.1s;
+  gap: 2px;
+}
+.cal-cell:hover { background: var(--purple-glow); }
+.cal-cell.today { background: var(--purple); color: #fff; font-weight: 700; }
+.cal-cell.today:hover { background: var(--purple-dark); }
+.cal-cell.selected { border: 2px solid var(--purple); }
+.cal-cell.other-month { color: var(--text2); opacity: 0.45; }
+.cal-cell .cal-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--gold);
+  position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
+}
+.cal-events-panel {
+  border-top: 1px solid var(--border); padding: 16px 18px; overflow-y: auto;
+  flex: 1;
+}
+.cal-events-title { font-size: 18px; font-weight: 600; color: var(--text2); margin-bottom: 12px; }
+.cal-event-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: 14px;
+  background: var(--card); border: 1px solid var(--border);
+  margin-bottom: 10px; cursor: pointer; transition: border-color 0.15s;
+}
+.cal-event-item:hover { border-color: var(--purple); }
+.cal-event-color { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.cal-event-info { flex: 1; }
+.cal-event-title { font-size: 18px; font-weight: 600; }
+.cal-event-time  { font-size: 14px; color: var(--text2); margin-top: 2px; }
+.cal-add-btn {
+  background: var(--purple); border: none; border-radius: 50%;
+  width: 48px; height: 48px; font-size: 28px; color: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-weight: 700;
+  box-shadow: 0 3px 14px rgba(155,127,232,0.4);
+  transition: background 0.15s;
+}
+.cal-add-btn:hover { background: var(--purple-dark); }
+
+/* ── Calendar event modal ── */
+#cal-event-modal {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.88); z-index: 500;
+  align-items: center; justify-content: center; padding: 20px;
+}
+#cal-event-modal.open { display: flex; }
+.cal-color-picker { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.cal-color-swatch {
+  width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  border: 3px solid transparent; transition: border-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.cal-color-swatch.selected { border-color: #fff; transform: scale(1.15); }
 </style>
 </head>
 <body>
@@ -975,6 +1104,9 @@ body {
     </button>
     <button class="sidebar-tab" id="snav-me" onclick="switchTab('me')">
       <span class="sidebar-tab-icon">👤</span> Me
+    </button>
+    <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
+      <span class="sidebar-tab-icon">📅</span> <span data-i18n="tab_calendar">Calendar</span>
     </button>
   </div>
 
@@ -1120,23 +1252,48 @@ body {
       </div>
     </div>
 
+
+    <!-- Calendar tab -->
+    <div class="tab" id="tab-calendar">
+      <div class="cal-header">
+        <button class="cal-nav-btn" onclick="calPrevMonth()">‹</button>
+        <div>
+          <div class="cal-month-label" id="cal-month-label">June 2026</div>
+        </div>
+        <button class="cal-nav-btn" onclick="calNextMonth()">›</button>
+        <button class="cal-add-btn" onclick="openCalEventModal(null)" title="Add Event" style="margin-left:8px">+</button>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
+      <div class="cal-events-panel" id="cal-events-panel">
+        <div class="cal-events-title" id="cal-events-title">Events</div>
+        <div id="cal-events-list">
+          <div class="empty-state" style="padding:30px 0">
+            <div class="empty-text" data-i18n="no_events">No events today</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 
   <!-- Mobile bottom nav -->
   <div class="bottom-nav">
     <button class="nav-tab active" id="nav-chats" onclick="switchTab('chats')">
       <span class="notif-dot" id="chats-dot"></span>
-      <div class="nav-tab-icon">💬</div><div>Chats</div>
+      <div class="nav-tab-icon">💬</div><div data-i18n="tab_chats">Chats</div>
     </button>
     <button class="nav-tab" id="nav-contacts" onclick="switchTab('contacts')">
       <span class="notif-dot" id="contacts-dot"></span>
-      <div class="nav-tab-icon">👥</div><div>Contacts</div>
+      <div class="nav-tab-icon">👥</div><div data-i18n="tab_contacts">Contacts</div>
     </button>
     <button class="nav-tab" id="nav-memories" onclick="switchTab('memories')">
-      <div class="nav-tab-icon">📸</div><div>Memories</div>
+      <div class="nav-tab-icon">📸</div><div data-i18n="tab_memories">Memories</div>
     </button>
     <button class="nav-tab" id="nav-me" onclick="switchTab('me')">
-      <div class="nav-tab-icon">👤</div><div>Me</div>
+      <div class="nav-tab-icon">👤</div><div data-i18n="tab_me">Me</div>
+    </button>
+    <button class="nav-tab" id="nav-calendar" onclick="switchTab('calendar')">
+      <div class="nav-tab-icon">📅</div><div data-i18n="tab_calendar">Calendar</div>
     </button>
   </div>
 
@@ -1349,6 +1506,33 @@ body {
         </div>
         <label class="toggle-switch" id="push-toggle-label">
           <input type="checkbox" id="setting-push" onchange="toggleSetting('pushNotifs')">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+      <div class="me-menu-item" style="cursor:default">
+        <div class="me-menu-icon">🌐</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:600" data-i18n="language">Language</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px" id="lang-current-display">English</div>
+        </div>
+        <select id="lang-selector" onchange="setLanguage(this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:18px;padding:8px 12px;cursor:pointer">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+        </select>
+      </div>
+      <div class="me-menu-item" style="cursor:default">
+        <div class="me-menu-icon">🌐</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:600" data-i18n="auto_translate">Auto-translate messages</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px">Translate incoming messages automatically</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="setting-autoTranslate" onchange="toggleSetting('autoTranslate')">
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -1761,6 +1945,68 @@ body {
       style="width:100%;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-size:17px;padding:16px 14px;margin-bottom:16px;outline:none;font-family:monospace">
     <button onclick="connectPastedAddress()" style="width:100%;padding:18px;border-radius:14px;background:var(--purple);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer">Connect →</button>
     <div style="text-align:center;margin-top:14px;font-size:14px;color:var(--text2);opacity:0.7">Your wallet address is public — no password needed</div>
+  </div>
+</div>
+
+
+<!-- ── VOICE AI BUTTON ── -->
+<button id="voice-ai-fab" onclick="openVoiceAI()" title="Voice AI Assistant">🎙</button>
+
+<!-- ── VOICE AI OVERLAY ── -->
+<div id="voice-ai-overlay">
+  <div class="voice-ai-mic-ring" id="voice-ai-mic-ring">🎙</div>
+  <div class="voice-ai-status" id="voice-ai-status">Listening...</div>
+  <div class="voice-ai-transcript" id="voice-ai-transcript"></div>
+  <div class="voice-ai-hint">
+    Try: "Call Alex" · "Message Mom" · "Go to Contacts" · "Add Meeting Friday at 3pm"
+  </div>
+  <button onclick="closeVoiceAI()" style="background:var(--red);border:none;border-radius:50px;color:#fff;font-size:18px;font-weight:700;padding:14px 36px;cursor:pointer;margin-top:8px">✕ Close</button>
+</div>
+
+<!-- ── CALENDAR EVENT MODAL ── -->
+<div id="cal-event-modal">
+  <div class="modal-box" style="max-width:420px;width:100%">
+    <div style="font-size:44px;text-align:center;margin-bottom:10px">📅</div>
+    <div class="modal-title" id="cal-modal-title">New Event</div>
+    <div class="modal-error" id="cal-event-error"></div>
+    <div class="form-group" style="margin-top:14px">
+      <label class="form-label">Title</label>
+      <input class="modal-input" id="cal-event-title-input" type="text" placeholder="Event title" maxlength="80" style="margin-bottom:0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date &amp; Time</label>
+      <input class="modal-input" id="cal-event-dt-input" type="datetime-local" style="margin-bottom:0">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes (optional)</label>
+      <textarea class="modal-input" id="cal-event-notes-input" rows="2" placeholder="Add notes..." maxlength="300" style="resize:none;line-height:1.5;margin-bottom:0"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Reminder</label>
+      <select class="modal-input" id="cal-event-reminder-input" style="margin-bottom:0">
+        <option value="0">No reminder</option>
+        <option value="5">5 minutes before</option>
+        <option value="15">15 minutes before</option>
+        <option value="30" selected>30 minutes before</option>
+        <option value="60">1 hour before</option>
+        <option value="1440">1 day before</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Color</label>
+      <div class="cal-color-picker" id="cal-color-picker">
+        <div class="cal-color-swatch selected" style="background:#9b7fe8" data-color="#9b7fe8" onclick="selectCalColor(this)"></div>
+        <div class="cal-color-swatch" style="background:#4caf7d" data-color="#4caf7d" onclick="selectCalColor(this)"></div>
+        <div class="cal-color-swatch" style="background:#e05555" data-color="#e05555" onclick="selectCalColor(this)"></div>
+        <div class="cal-color-swatch" style="background:#f0c040" data-color="#f0c040" onclick="selectCalColor(this)"></div>
+        <div class="cal-color-swatch" style="background:#00bcd4" data-color="#00bcd4" onclick="selectCalColor(this)"></div>
+        <div class="cal-color-swatch" style="background:#ff7043" data-color="#ff7043" onclick="selectCalColor(this)"></div>
+      </div>
+    </div>
+    <input type="hidden" id="cal-editing-event-id">
+    <button class="modal-btn" onclick="submitCalEvent()" id="cal-event-submit-btn">+ Create Event</button>
+    <button class="modal-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text2);margin-top:10px" onclick="closeCalEventModal()">Cancel</button>
+    <button class="modal-btn" id="cal-delete-btn" style="background:var(--red);border:none;margin-top:10px;display:none" onclick="deleteCalEvent()">🗑 Delete Event</button>
   </div>
 </div>
 
@@ -4033,7 +4279,18 @@ function wcCopyUri() { /* legacy stub — no longer used */ }
 // ════════════════════════════════════════════════════════════════
 let _upgradeCallAction = null; // pending call fn to retry after successful subscription
 
+// ── Premium whitelist (free access for testing accounts) ──
+const _PREMIUM_WHITELIST = ['@keiko326', '@bin1977'];
+function _isPremiumWhitelisted() {
+  if (!myHandle) return false;
+  var h = myHandle.toLowerCase();
+  return _PREMIUM_WHITELIST.some(function(w) { return w === h; });
+}
+
 async function checkCallAccess() {
+  if (_isPremiumWhitelisted()) {
+    return { allowed: true, free_remaining: 99, subscribed: true, expires_at: null };
+  }
   if (!wallet) return {allowed: false, free_remaining: 0, subscribed: false, expires_at: null};
   try {
     return await fetch(BACKEND + '/api/call-access/' + wallet).then(r => r.json());
@@ -4898,6 +5155,870 @@ window.addEventListener('load', async () => {
   }
   // ── 3. (WalletConnect removed — using paste-address flow instead)
 });
+
+// ══════════════════════════════════════════════════════════════════
+// FEATURE 1: MULTI-LANGUAGE UI
+// ══════════════════════════════════════════════════════════════════
+const TRANSLATIONS = {
+  en: {
+    tab_chats:'Chats', tab_contacts:'Contacts', tab_memories:'Memories',
+    tab_me:'Me', tab_calendar:'Calendar',
+    send_message:'Send a message', send:'Send', voice_message:'Voice message',
+    search_contacts:'Search contacts', no_chats_yet:'No chats yet',
+    connect_wallet_msg:'Connect your wallet and add contacts to start chatting on the blockchain.',
+    connect_wallet:'Connect Wallet', connect:'Connect',
+    call:'Call', video:'Video', cancel:'Cancel', accept:'Accept', decline:'Decline',
+    leave:'Leave', save:'Save', copy:'Copy', forward:'Forward',
+    post_memory:'Post a Memory', camera:'Camera', gallery:'Gallery',
+    caption:'Caption', post:'Post', no_memories_yet:'No memories yet',
+    settings:'Settings', sound:'Sound', push_notifications:'Push Notifications',
+    language:'Language', premium:'Premium', sign_out:'Sign Out',
+    auto_translate:'Auto-translate messages',
+    calling:'Calling...', incoming_call:'Incoming call from',
+    accept_call:'Accept', decline_call:'Decline', leave_call:'Leave call',
+    groups:'Groups', create_group:'Create Group', group_name:'Group Name',
+    add_members:'Add Members', members:'Members',
+    calendar:'Calendar', add_event:'Add Event',
+    no_events:'No events today', events_for:'Events for',
+    translate:'\u{1F310} Translate', translating:'Translating...'
+  },
+  zh: {
+    tab_chats:'聊天', tab_contacts:'联系人', tab_memories:'回忆',
+    tab_me:'我', tab_calendar:'日历',
+    send_message:'发送消息', send:'发送', voice_message:'语音消息',
+    search_contacts:'搜索联系人', no_chats_yet:'暂无聊天',
+    connect_wallet_msg:'连接您的錢包并添加联系人，开始在区块链上聊天。',
+    connect_wallet:'连接錢包', connect:'连接',
+    call:'通话', video:'视频', cancel:'取消', accept:'接受', decline:'拒绝',
+    leave:'离开', save:'保存', copy:'复制', forward:'转发',
+    post_memory:'发布回忆', camera:'相机', gallery:'相册',
+    caption:'说明', post:'发布', no_memories_yet:'暂无回忆',
+    settings:'设置', sound:'声音', push_notifications:'推送通知',
+    language:'语言', premium:'高级版', sign_out:'退出',
+    auto_translate:'自动翻译消息',
+    calling:'呼叫中...', incoming_call:'来自...的来电',
+    accept_call:'接听', decline_call:'拒接', leave_call:'挂断',
+    groups:'群组', create_group:'创建群组', group_name:'群组名称',
+    add_members:'添加成员', members:'成员',
+    calendar:'日历', add_event:'添加活动',
+    no_events:'今天没有活动', events_for:'活动日期',
+    translate:'\u{1F310} 翻译', translating:'翻译中...'
+  },
+  es: {
+    tab_chats:'Chats', tab_contacts:'Contactos', tab_memories:'Recuerdos',
+    tab_me:'Yo', tab_calendar:'Calendario',
+    send_message:'Enviar un mensaje', send:'Enviar', voice_message:'Mensaje de voz',
+    search_contacts:'Buscar contactos', no_chats_yet:'Sin chats aún',
+    connect_wallet_msg:'Conecta tu wallet y agrega contactos para chatear en la blockchain.',
+    connect_wallet:'Conectar Wallet', connect:'Conectar',
+    call:'Llamar', video:'Video', cancel:'Cancelar', accept:'Aceptar', decline:'Rechazar',
+    leave:'Salir', save:'Guardar', copy:'Copiar', forward:'Reenviar',
+    post_memory:'Publicar Recuerdo', camera:'Cámara', gallery:'Galería',
+    caption:'Título', post:'Publicar', no_memories_yet:'Sin recuerdos aún',
+    settings:'Configuración', sound:'Sonido', push_notifications:'Notificaciones Push',
+    language:'Idioma', premium:'Premium', sign_out:'Cerrar sesión',
+    auto_translate:'Auto-traducir mensajes',
+    calling:'Llamando...', incoming_call:'Llamada entrante de',
+    accept_call:'Aceptar', decline_call:'Rechazar', leave_call:'Terminar llamada',
+    groups:'Grupos', create_group:'Crear Grupo', group_name:'Nombre del Grupo',
+    add_members:'Agregar Miembros', members:'Miembros',
+    calendar:'Calendario', add_event:'Agregar Evento',
+    no_events:'No hay eventos hoy', events_for:'Eventos para',
+    translate:'\u{1F310} Traducir', translating:'Traduciendo...'
+  },
+  fr: {
+    tab_chats:'Chats', tab_contacts:'Contacts', tab_memories:'Souvenirs',
+    tab_me:'Moi', tab_calendar:'Calendrier',
+    send_message:'Envoyer un message', send:'Envoyer', voice_message:'Message vocal',
+    search_contacts:'Rechercher des contacts', no_chats_yet:'Pas encore de chats',
+    connect_wallet_msg:'Connectez votre portefeuille et ajoutez des contacts pour discuter sur la blockchain.',
+    connect_wallet:'Connecter Wallet', connect:'Connecter',
+    call:'Appeler', video:'Vidéo', cancel:'Annuler', accept:'Accepter', decline:'Refuser',
+    leave:'Quitter', save:'Enregistrer', copy:'Copier', forward:'Transférer',
+    post_memory:'Publier un Souvenir', camera:'Caméra', gallery:'Galerie',
+    caption:'Légende', post:'Publier', no_memories_yet:'Pas encore de souvenirs',
+    settings:'Paramètres', sound:'Son', push_notifications:'Notifications Push',
+    language:'Langue', premium:'Premium', sign_out:'Se déconnecter',
+    auto_translate:'Traduire automatiquement',
+    calling:'Appel en cours...', incoming_call:'Appel entrant de',
+    accept_call:'Accepter', decline_call:'Refuser', leave_call:'Terminer',
+    groups:'Groupes', create_group:'Créer un Groupe', group_name:'Nom du Groupe',
+    add_members:'Ajouter des Membres', members:'Membres',
+    calendar:'Calendrier', add_event:'Ajouter un Événement',
+    no_events:"Pas d'événements aujourd'hui", events_for:'Événements pour',
+    translate:'\u{1F310} Traduire', translating:'Traduction...'
+  },
+  ja: {
+    tab_chats:'チャット', tab_contacts:'連絡先', tab_memories:'思い出',
+    tab_me:'マイページ', tab_calendar:'カレンダー',
+    send_message:'メッセージを送る', send:'送信', voice_message:'音声メッセージ',
+    search_contacts:'連絡先を検索', no_chats_yet:'チャットはまだありません',
+    connect_wallet_msg:'ウォレットを接続して連絡先を追加し、ブロックチェーン上でチャットを始めましょう。',
+    connect_wallet:'ウォレット接続', connect:'接続',
+    call:'通話', video:'ビデオ', cancel:'キャンセル', accept:'受け入れる', decline:'断る',
+    leave:'退出', save:'保存', copy:'コピー', forward:'転送',
+    post_memory:'思い出を投稿', camera:'カメラ', gallery:'ギャラリー',
+    caption:'キャプション', post:'投稿', no_memories_yet:'まだ思い出はありません',
+    settings:'設定', sound:'音', push_notifications:'プッシュ通知',
+    language:'言語', premium:'プレミアム', sign_out:'サインアウト',
+    auto_translate:'メッセージを自動翻訳',
+    calling:'呼び出し中...', incoming_call:'着信：',
+    accept_call:'応答', decline_call:'拒否', leave_call:'通話終了',
+    groups:'グループ', create_group:'グループ作成', group_name:'グループ名',
+    add_members:'メンバー追加', members:'メンバー',
+    calendar:'カレンダー', add_event:'イベント追加',
+    no_events:'今日のイベントはありません', events_for:'イベント：',
+    translate:'\u{1F310} 翻訳', translating:'翻訳中...'
+  },
+  ko: {
+    tab_chats:'채팅', tab_contacts:'연락처', tab_memories:'추억',
+    tab_me:'나', tab_calendar:'캐린더',
+    send_message:'메시지 보내기', send:'보내기', voice_message:'음성 메시지',
+    search_contacts:'연락처 검색', no_chats_yet:'아직 채팅 없음',
+    connect_wallet_msg:'지갑을 연결하고 연락처를 추가하여 블록체인에서 채팅을 시작하세요.',
+    connect_wallet:'지갑 연결', connect:'연결',
+    call:'통화', video:'비디오', cancel:'취소', accept:'수낙', decline:'거절',
+    leave:'나가기', save:'저장', copy:'복사', forward:'전달',
+    post_memory:'추억 게시', camera:'카메라', gallery:'긤러리',
+    caption:'캐플션', post:'게시', no_memories_yet:'아직 추억 없음',
+    settings:'설정', sound:'소리', push_notifications:'푸시 알림',
+    language:'언어', premium:'프리미엄', sign_out:'로그아웃',
+    auto_translate:'메시지 자동 번역',
+    calling:'통화 중...', incoming_call:'수신 전화 from',
+    accept_call:'수낙', decline_call:'거절', leave_call:'통화 종료',
+    groups:'그룹', create_group:'그룹 만들기', group_name:'그룹 이름',
+    add_members:'멤버 추가', members:'멤버',
+    calendar:'캐린더', add_event:'이벤트 추가',
+    no_events:'오늘 이벤트 없음', events_for:'이벤트:',
+    translate:'\u{1F310} 번역', translating:'번역 중...'
+  }
+};
+
+const LANG_NAMES = { en:'English', zh:'中文', es:'Español', fr:'Français', ja:'日本語', ko:'한국어' };
+const LANG_TAG_MAP = { zh:'zh-CN', en:'en-US', es:'es-ES', fr:'fr-FR', ja:'ja-JP', ko:'ko-KR' };
+
+let currentLang = 'en';
+
+function t(key) {
+  return (TRANSLATIONS[currentLang] || TRANSLATIONS.en)[key] || TRANSLATIONS.en[key] || key;
+}
+
+function setLanguage(code) {
+  if (!TRANSLATIONS[code]) code = 'en';
+  currentLang = code;
+  localStorage.setItem('lc_lang', code);
+  document.documentElement.lang = LANG_TAG_MAP[code] || code;
+
+  // Update all data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(function(el) {
+    var key = el.getAttribute('data-i18n');
+    var val = t(key);
+    if (el.tagName === 'INPUT' && 'placeholder' in el) {
+      el.placeholder = val;
+    } else {
+      el.textContent = val;
+    }
+  });
+
+  // Update language display & selector
+  var langDisplay = document.getElementById('lang-current-display');
+  if (langDisplay) langDisplay.textContent = LANG_NAMES[code] || code;
+  var langSel = document.getElementById('lang-selector');
+  if (langSel) langSel.value = code;
+
+  // Update voice recognition lang if active
+  if (typeof _voiceRecognition !== 'undefined' && _voiceRecognition) {
+    _voiceRecognition.lang = LANG_TAG_MAP[code] || 'en-US';
+  }
+}
+
+function initLanguage() {
+  var saved = localStorage.getItem('lc_lang');
+  if (saved && TRANSLATIONS[saved]) {
+    currentLang = saved;
+  } else {
+    var bl = ((navigator.language || navigator.userLanguage || 'en')).substring(0,2).toLowerCase();
+    currentLang = TRANSLATIONS[bl] ? bl : 'en';
+  }
+  setLanguage(currentLang);
+}
+
+// Patch loadSettings to also restore autoTranslate
+var _origLoadSettings = loadSettings;
+function loadSettings() {
+  _origLoadSettings();
+  if (!('autoTranslate' in settings)) settings.autoTranslate = false;
+}
+
+// Patch showSettings to also restore autoTranslate toggle
+var _origShowSettings = showSettings;
+function showSettings() {
+  _origShowSettings();
+  var el = document.getElementById('setting-autoTranslate');
+  if (el) el.checked = !!settings.autoTranslate;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FEATURE 2: AUTO-TRANSLATE MESSAGES
+// ══════════════════════════════════════════════════════════════════
+
+async function translateText(text, targetLang) {
+  var lt = LANG_TAG_MAP[targetLang] || 'en';
+  var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=autodetect%7C' + lt;
+  try {
+    var resp = await fetch(url).then(function(r) { return r.json(); });
+    if (resp && resp.responseData && resp.responseData.translatedText) {
+      return resp.responseData.translatedText;
+    }
+  } catch(e) {}
+  return null;
+}
+
+function addTranslateButton(wrapEl, originalText) {
+  var outer = document.createElement('div');
+  outer.style.cssText = 'margin-top:3px;padding-left:2px';
+
+  var btn = document.createElement('button');
+  btn.className = 'translate-btn';
+  btn.textContent = t('translate');
+  var done = false;
+  var tDiv = null;
+
+  btn.onclick = async function() {
+    if (done) {
+      if (tDiv) tDiv.style.display = tDiv.style.display === 'none' ? '' : 'none';
+      btn.textContent = (tDiv && tDiv.style.display === 'none') ? t('translate') : '🌐 Hide';
+      return;
+    }
+    // ── Premium gate ──
+    var _pAccess = await checkCallAccess().catch(function() { return {subscribed: false}; });
+    if (!_pAccess.subscribed && !_isPremiumWhitelisted()) {
+      showToast('⭐ Auto-translate is a Premium feature — upgrade for $1/month');
+      showUpgradeModal(null);
+      return;
+    }
+    btn.textContent = t('translating');
+    btn.disabled = true;
+    var result = await translateText(originalText, currentLang);
+    btn.disabled = false;
+    if (result && result.toLowerCase() !== originalText.toLowerCase()) {
+      tDiv = document.createElement('div');
+      tDiv.className = 'translated-text';
+      tDiv.textContent = result;
+      outer.appendChild(tDiv);
+      done = true;
+      btn.textContent = '🌐 Hide';
+    } else {
+      btn.textContent = t('translate');
+      showToast('Translation not available');
+    }
+  };
+  outer.appendChild(btn);
+  wrapEl.appendChild(outer);
+}
+
+// Monkey-patch appendMessage to add translate button on incoming text messages
+var _origAppendMessage = appendMessage;
+function appendMessage(msg, senderHandle) {
+  _origAppendMessage.call(this, msg, senderHandle);
+  // Find the element we just appended (last child of messages-area)
+  var area = document.getElementById('messages-area');
+  var wrap = area ? area.lastElementChild : null;
+  if (!wrap) return;
+  var msgType = msg.type || msg.msg_type || 'text';
+  var isOut = msg.sender_wallet && wallet && msg.sender_wallet.toLowerCase() === wallet.toLowerCase();
+  if (!isOut && msgType === 'text' && msg.content && msg.content.trim()) {
+    // Add translate button
+    var innerDiv = wrap.firstElementChild;
+    if (innerDiv) {
+      // Auto-translate if enabled AND user is premium
+      if (settings.autoTranslate) {
+        (async function() {
+          var _atAccess = await checkCallAccess().catch(function() { return {subscribed: false}; });
+          if (!_atAccess.subscribed && !_isPremiumWhitelisted()) return; // silently skip if not premium
+          var result = await translateText(msg.content, currentLang);
+          if (result && result.toLowerCase() !== msg.content.toLowerCase()) {
+            var tDiv = document.createElement('div');
+            tDiv.className = 'translated-text';
+            tDiv.textContent = result;
+            innerDiv.appendChild(tDiv);
+          }
+        })();
+      } else {
+        addTranslateButton(innerDiv, msg.content);
+      }
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FEATURE 3: VOICE AI ASSISTANT
+// ══════════════════════════════════════════════════════════════════
+
+var _voiceRecognition = null;
+var _voiceAIActive = false;
+
+async function openVoiceAI() {
+  // ── Premium gate ──
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  var _access = await checkCallAccess().catch(function() { return {subscribed: false}; });
+  if (!_access.subscribed) {
+    showToast('⭐ Voice AI is a Premium feature — upgrade for $1/month');
+    showUpgradeModal(null);
+    return;
+  }
+
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    showToast('Voice commands not supported in this browser — try Chrome');
+    return;
+  }
+
+  var overlay = document.getElementById('voice-ai-overlay');
+  var ring = document.getElementById('voice-ai-mic-ring');
+  var statusEl = document.getElementById('voice-ai-status');
+  var transcriptEl = document.getElementById('voice-ai-transcript');
+
+  overlay.classList.add('open');
+  ring.classList.add('listening');
+  statusEl.textContent = 'Listening…';
+  transcriptEl.textContent = '';
+  _voiceAIActive = true;
+
+  try {
+    _voiceRecognition = new SpeechRecognition();
+    _voiceRecognition.lang = LANG_TAG_MAP[currentLang] || 'en-US';
+    _voiceRecognition.interimResults = true;
+    _voiceRecognition.maxAlternatives = 1;
+
+    _voiceRecognition.onresult = function(event) {
+      var transcript = '';
+      for (var i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      transcriptEl.textContent = transcript;
+      if (event.results[event.results.length - 1].isFinal) {
+        ring.classList.remove('listening');
+        statusEl.textContent = 'Processing…';
+        setTimeout(function() { parseVoiceCommand(transcript); }, 300);
+      }
+    };
+
+    _voiceRecognition.onerror = function(e) {
+      ring.classList.remove('listening');
+      statusEl.textContent = 'Could not understand — tap Close and try again';
+      if (e.error === 'no-speech') statusEl.textContent = 'No speech detected — tap Close and try again';
+    };
+
+    _voiceRecognition.onend = function() {
+      ring.classList.remove('listening');
+    };
+
+    _voiceRecognition.start();
+  } catch(e) {
+    statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+function closeVoiceAI() {
+  _voiceAIActive = false;
+  if (_voiceRecognition) {
+    try { _voiceRecognition.abort(); } catch(e) {}
+    _voiceRecognition = null;
+  }
+  var overlay = document.getElementById('voice-ai-overlay');
+  overlay.classList.remove('open');
+  document.getElementById('voice-ai-mic-ring').classList.remove('listening');
+}
+
+function parseVoiceCommand(raw) {
+  var text = raw.trim().toLowerCase();
+  var overlay = document.getElementById('voice-ai-overlay');
+  var statusEl = document.getElementById('voice-ai-status');
+
+  // "call [name]"
+  var callMatch = text.match(/^(?:call|ring|video call)\s+(.+)$/);
+  if (callMatch) {
+    var name = callMatch[1].trim();
+    var contact = fuzzyFindContact(name);
+    if (contact) {
+      showToast('✓ Calling ' + (contact.handle || contact.wallet) + '…');
+      setTimeout(function() {
+        closeVoiceAI();
+        openChat(contact.wallet, contact.handle);
+        setTimeout(startVideoCall, 600);
+      }, 800);
+    } else {
+      statusEl.textContent = 'No contact named "' + name + '" found';
+    }
+    return;
+  }
+
+  // "message [name]" / "chat with [name]"
+  var msgMatch = text.match(/^(?:message|chat with|text|dm)\s+(.+)$/);
+  if (msgMatch) {
+    var name = msgMatch[1].trim();
+    var contact = fuzzyFindContact(name);
+    if (contact) {
+      showToast('✓ Opening chat with ' + (contact.handle || contact.wallet) + '…');
+      setTimeout(function() { closeVoiceAI(); openChat(contact.wallet, contact.handle); }, 600);
+    } else {
+      statusEl.textContent = 'No contact named "' + name + '" found';
+    }
+    return;
+  }
+
+  // "send [name] [message]"
+  var sendMatch = text.match(/^send\s+(\S+)\s+(.+)$/);
+  if (sendMatch) {
+    var name = sendMatch[1].trim();
+    var msgText = sendMatch[2].trim();
+    var contact = fuzzyFindContact(name);
+    if (contact) {
+      showToast('✓ Sending message to ' + (contact.handle || contact.wallet) + '…');
+      setTimeout(function() {
+        closeVoiceAI();
+        openChat(contact.wallet, contact.handle);
+        setTimeout(function() {
+          var inp = document.getElementById('chat-input');
+          if (inp) { inp.value = msgText; sendMessage(); }
+        }, 800);
+      }, 600);
+    } else {
+      statusEl.textContent = 'No contact named "' + name + '" found';
+    }
+    return;
+  }
+
+  // "go to [tab]" / "open [tab]"
+  var tabMatch = text.match(/^(?:go to|open|switch to|navigate to)\s+(.+)$/);
+  if (tabMatch) {
+    var tabName = tabMatch[1].trim();
+    var tabMap = {
+      'chats': 'chats', 'chat': 'chats', 'messages': 'chats',
+      'contacts': 'contacts', 'contact': 'contacts', 'friends': 'contacts',
+      'memories': 'memories', 'memory': 'memories', 'photos': 'memories',
+      'me': 'me', 'profile': 'me', 'settings': 'me',
+      'calendar': 'calendar', 'events': 'calendar', 'schedule': 'calendar'
+    };
+    // Try to match translated tab names too
+    var translated = {
+      '聊天': 'chats', '联系人': 'contacts', '回忆': 'memories', '日历': 'calendar',
+      'chats': 'chats', 'contactos': 'contacts', 'recuerdos': 'memories', 'calendrier': 'calendar',
+      'souvenirs': 'memories', 'calendrier': 'calendar', 'カレンダー': 'calendar',
+      '캐린더': 'calendar'
+    };
+    var tabId = tabMap[tabName] || translated[tabName];
+    if (tabId) {
+      showToast('✓ Going to ' + tabId + '…');
+      setTimeout(function() { closeVoiceAI(); switchTab(tabId); }, 600);
+    } else {
+      statusEl.textContent = 'Unknown tab: "' + tabName + '"';
+    }
+    return;
+  }
+
+  // "create group [name]"
+  var groupMatch = text.match(/^create (?:group|chat)\s+(.+)$/);
+  if (groupMatch) {
+    var groupName = groupMatch[1].trim();
+    showToast('✓ Creating group "' + groupName + '"…');
+    setTimeout(function() {
+      closeVoiceAI();
+      switchTab('chats');
+      setTimeout(function() {
+        openCreateGroupModal();
+        var inp = document.getElementById('create-group-name');
+        if (inp) inp.value = groupName;
+      }, 400);
+    }, 600);
+    return;
+  }
+
+  // "add [event] [day] at [time]" / "what's on my calendar"
+  var calAdd = text.match(/^(?:add|create|schedule)\s+(.+?)\s+(?:on\s+)?(.+?)\s+at\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)$/i);
+  if (calAdd) {
+    showToast('✓ Opening calendar to add event…');
+    setTimeout(function() {
+      closeVoiceAI();
+      switchTab('calendar');
+      setTimeout(function() { openCalEventModal(null, calAdd[1]); }, 400);
+    }, 600);
+    return;
+  }
+
+  var calQuery = text.match(/^(?:what'?s?\s+(?:on\s+)?(?:my\s+)?calendar|show\s+(?:my\s+)?calendar|calendar\s+today)/);
+  if (calQuery) {
+    showToast('✓ Opening your calendar…');
+    setTimeout(function() { closeVoiceAI(); switchTab('calendar'); }, 600);
+    return;
+  }
+
+  // Unrecognized
+  statusEl.textContent = 'I didn’t understand: "' + raw + '"';
+  showToast('I didn’t understand: ' + raw.substring(0, 40));
+}
+
+function fuzzyFindContact(name) {
+  var n = name.toLowerCase().trim();
+  var approved = contacts.filter(function(c) { return c.status === 'approved'; });
+  // Exact match first
+  var exact = approved.find(function(c) {
+    var h = (c.handle || '').toLowerCase().replace('@','');
+    return h === n || c.wallet.toLowerCase().startsWith(n);
+  });
+  if (exact) return exact;
+  // Contains match
+  var contains = approved.find(function(c) {
+    var h = (c.handle || '').toLowerCase();
+    return h.includes(n) || n.includes(h.replace('@',''));
+  });
+  return contains || null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FEATURE 4: CALENDAR
+// ══════════════════════════════════════════════════════════════════
+
+var _calYear  = new Date().getFullYear();
+var _calMonth = new Date().getMonth(); // 0-based
+var _calEvents = [];       // all loaded events for current month
+var _calSelectedDate = null;
+var _calEventColor = '#9b7fe8';
+var _calNotifiedEvents = {};  // sessionStorage-backed: {eventId: true}
+
+// Load notified events from sessionStorage on init
+try {
+  _calNotifiedEvents = JSON.parse(sessionStorage.getItem('lc_cal_notified') || '{}');
+} catch(e) { _calNotifiedEvents = {}; }
+
+var MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+var DAYS_EN   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function calMonthStr() {
+  return _calYear + '-' + String(_calMonth + 1).padStart(2,'0');
+}
+
+async function loadCalEvents() {
+  if (!wallet) return;
+  try {
+    var url = BACKEND + '/api/calendar?wallet=' + wallet + '&month=' + calMonthStr();
+    _calEvents = await fetch(url).then(function(r) { return r.json(); }).catch(function() { return []; });
+  } catch(e) { _calEvents = []; }
+  renderCalendar();
+  if (_calSelectedDate) renderCalDayEvents(_calSelectedDate);
+}
+
+function renderCalendar() {
+  var grid = document.getElementById('cal-grid');
+  var label = document.getElementById('cal-month-label');
+  if (!grid || !label) return;
+
+  label.textContent = MONTHS_EN[_calMonth] + ' ' + _calYear;
+
+  // Day-of-week headers
+  var html = DAYS_EN.map(function(d) {
+    return '<div class="cal-dow">' + d + '</div>';
+  }).join('');
+
+  var firstDay = new Date(_calYear, _calMonth, 1).getDay(); // 0=Sun
+  var daysInMonth = new Date(_calYear, _calMonth + 1, 0).getDate();
+  var prevDays = new Date(_calYear, _calMonth, 0).getDate();
+  var today = new Date();
+
+  // Build set of event dates for dot indicators
+  var eventDates = {};
+  _calEvents.forEach(function(ev) {
+    var d = new Date(ev.start_time * 1000);
+    if (d.getFullYear() === _calYear && d.getMonth() === _calMonth) {
+      eventDates[d.getDate()] = true;
+    }
+  });
+
+  // Prev month filler
+  for (var i = firstDay - 1; i >= 0; i--) {
+    html += '<div class="cal-cell other-month">' + (prevDays - i) + '</div>';
+  }
+
+  // Current month cells
+  for (var day = 1; day <= daysInMonth; day++) {
+    var isToday = day === today.getDate() && _calMonth === today.getMonth() && _calYear === today.getFullYear();
+    var isSel   = _calSelectedDate && _calSelectedDate.day === day && _calSelectedDate.month === _calMonth && _calSelectedDate.year === _calYear;
+    var cls     = 'cal-cell' + (isToday ? ' today' : '') + (isSel ? ' selected' : '');
+    var dot     = eventDates[day] ? '<div class="cal-dot"></div>' : '';
+    html += '<div class="' + cls + '" onclick="calSelectDate(' + day + ')">' + day + dot + '</div>';
+  }
+
+  // Next month filler
+  var totalCells = firstDay + daysInMonth;
+  var remain = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (var i = 1; i <= remain; i++) {
+    html += '<div class="cal-cell other-month">' + i + '</div>';
+  }
+
+  grid.innerHTML = html;
+}
+
+function calSelectDate(day) {
+  _calSelectedDate = { day: day, month: _calMonth, year: _calYear };
+  renderCalendar();
+  renderCalDayEvents(_calSelectedDate);
+}
+
+function renderCalDayEvents(dateObj) {
+  var panel = document.getElementById('cal-events-panel');
+  var title = document.getElementById('cal-events-title');
+  var list  = document.getElementById('cal-events-list');
+  if (!panel || !list) return;
+
+  var dt = new Date(dateObj.year, dateObj.month, dateObj.day);
+  var dayStart = dt.getTime() / 1000;
+  var dayEnd   = dayStart + 86399;
+
+  title.textContent = t('events_for') + ' ' + MONTHS_EN[dateObj.month] + ' ' + dateObj.day + ', ' + dateObj.year;
+
+  var dayEvents = _calEvents.filter(function(ev) {
+    return ev.start_time >= dayStart && ev.start_time <= dayEnd;
+  });
+
+  if (dayEvents.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:24px 0"><div class="empty-text" data-i18n="no_events">' + t('no_events') + '</div></div>';
+    return;
+  }
+
+  list.innerHTML = dayEvents.map(function(ev) {
+    var d = new Date(ev.start_time * 1000);
+    var timeStr = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    return '<div class="cal-event-item" onclick="openCalEventModal(\'' + escapeHtml(ev.id) + '\')">'
+      + '<div class="cal-event-color" style="background:' + escapeHtml(ev.color || '#9b7fe8') + '"></div>'
+      + '<div class="cal-event-info">'
+      + '<div class="cal-event-title">' + escapeHtml(ev.title) + '</div>'
+      + '<div class="cal-event-time">' + timeStr + (ev.notes ? ' · ' + escapeHtml(ev.notes.substring(0,40)) : '') + '</div>'
+      + '</div>'
+      + '<div style="color:var(--text2);font-size:20px">›</div>'
+      + '</div>';
+  }).join('');
+}
+
+function calPrevMonth() {
+  _calMonth--;
+  if (_calMonth < 0) { _calMonth = 11; _calYear--; }
+  _calSelectedDate = null;
+  loadCalEvents();
+}
+
+function calNextMonth() {
+  _calMonth++;
+  if (_calMonth > 11) { _calMonth = 0; _calYear++; }
+  _calSelectedDate = null;
+  loadCalEvents();
+}
+
+function openCalEventModal(eventId, prefillTitle) {
+  var modal = document.getElementById('cal-event-modal');
+  var titleEl = document.getElementById('cal-event-title-input');
+  var dtEl    = document.getElementById('cal-event-dt-input');
+  var notesEl = document.getElementById('cal-event-notes-input');
+  var reminderEl = document.getElementById('cal-event-reminder-input');
+  var submitBtn  = document.getElementById('cal-event-submit-btn');
+  var deleteBtn  = document.getElementById('cal-delete-btn');
+  var editingEl  = document.getElementById('cal-editing-event-id');
+  var errEl = document.getElementById('cal-event-error');
+  var modalTitle = document.getElementById('cal-modal-title');
+
+  errEl.style.display = 'none';
+  editingEl.value = '';
+  _calEventColor = '#9b7fe8';
+  document.querySelectorAll('.cal-color-swatch').forEach(function(s) {
+    s.classList.toggle('selected', s.dataset.color === '#9b7fe8');
+  });
+
+  if (eventId) {
+    // Edit existing
+    var ev = _calEvents.find(function(e) { return e.id === eventId; });
+    if (!ev) { showToast('Event not found'); return; }
+    modalTitle.textContent = 'Edit Event';
+    submitBtn.textContent = '✓ Update Event';
+    deleteBtn.style.display = '';
+    editingEl.value = eventId;
+    titleEl.value = ev.title || '';
+    var d = new Date(ev.start_time * 1000);
+    dtEl.value = d.toISOString().slice(0,16);
+    notesEl.value = ev.notes || '';
+    if (reminderEl) reminderEl.value = String(ev.reminder_minutes || 30);
+    _calEventColor = ev.color || '#9b7fe8';
+    document.querySelectorAll('.cal-color-swatch').forEach(function(s) {
+      s.classList.toggle('selected', s.dataset.color === _calEventColor);
+    });
+  } else {
+    // New event
+    modalTitle.textContent = t('add_event') || 'New Event';
+    submitBtn.textContent = '+ Create Event';
+    deleteBtn.style.display = 'none';
+    titleEl.value = prefillTitle || '';
+    // Default to selected date at noon, or today
+    var defaultDate = _calSelectedDate
+      ? new Date(_calSelectedDate.year, _calSelectedDate.month, _calSelectedDate.day, 12, 0)
+      : new Date();
+    defaultDate.setMinutes(0,0,0);
+    if (!_calSelectedDate) defaultDate.setHours(12);
+    dtEl.value = defaultDate.toISOString().slice(0,16);
+    notesEl.value = '';
+    if (reminderEl) reminderEl.value = '30';
+  }
+
+  modal.classList.add('open');
+}
+
+function closeCalEventModal() {
+  document.getElementById('cal-event-modal').classList.remove('open');
+}
+
+function selectCalColor(el) {
+  _calEventColor = el.dataset.color;
+  document.querySelectorAll('.cal-color-swatch').forEach(function(s) {
+    s.classList.toggle('selected', s === el);
+  });
+}
+
+async function submitCalEvent() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  var titleEl = document.getElementById('cal-event-title-input');
+  var dtEl    = document.getElementById('cal-event-dt-input');
+  var notesEl = document.getElementById('cal-event-notes-input');
+  var reminderEl = document.getElementById('cal-event-reminder-input');
+  var editingEl  = document.getElementById('cal-editing-event-id');
+  var errEl = document.getElementById('cal-event-error');
+  var submitBtn = document.getElementById('cal-event-submit-btn');
+
+  var title = (titleEl.value || '').trim();
+  var dtStr = dtEl.value;
+  if (!title) { errEl.textContent = 'Please enter a title'; errEl.style.display = 'block'; return; }
+  if (!dtStr) { errEl.textContent = 'Please pick a date & time'; errEl.style.display = 'block'; return; }
+
+  var startTime = Math.floor(new Date(dtStr).getTime() / 1000);
+  var notes = (notesEl.value || '').trim();
+  var reminderMin = parseInt((reminderEl ? reminderEl.value : '30') || '30');
+  var editingId = editingEl.value;
+
+  errEl.style.display = 'none';
+  submitBtn.disabled = true;
+
+  try {
+    var resp;
+    if (editingId) {
+      resp = await fetch(BACKEND + '/api/calendar/' + editingId, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wallet, title, start_time: startTime, notes, color: _calEventColor, reminder_minutes: reminderMin})
+      }).then(function(r) { return r.json(); });
+    } else {
+      resp = await fetch(BACKEND + '/api/calendar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wallet, title, start_time: startTime, notes, color: _calEventColor, reminder_minutes: reminderMin})
+      }).then(function(r) { return r.json(); });
+    }
+    if (resp.error) {
+      errEl.textContent = resp.error; errEl.style.display = 'block';
+    } else {
+      closeCalEventModal();
+      showToast(editingId ? '✓ Event updated' : '✓ Event created');
+      // Jump to the event's month
+      var evDate = new Date(startTime * 1000);
+      _calYear  = evDate.getFullYear();
+      _calMonth = evDate.getMonth();
+      _calSelectedDate = {day: evDate.getDate(), month: _calMonth, year: _calYear};
+      await loadCalEvents();
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error'; errEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+  }
+}
+
+async function deleteCalEvent() {
+  var editingId = document.getElementById('cal-editing-event-id').value;
+  if (!editingId || !wallet) return;
+  if (!confirm('Delete this event?')) return;
+  try {
+    var resp = await fetch(BACKEND + '/api/calendar/' + editingId + '?wallet=' + wallet, {method:'DELETE'}).then(function(r) { return r.json(); });
+    if (resp.deleted) {
+      closeCalEventModal();
+      showToast('Event deleted');
+      loadCalEvents();
+    } else {
+      showToast(resp.error || 'Could not delete event');
+    }
+  } catch(e) { showToast('Connection error'); }
+}
+
+// Calendar reminders check (runs every minute)
+async function checkCalendarReminders() {
+  if (!wallet) return;
+  var now = Math.floor(Date.now() / 1000);
+  var soon = now + 2 * 60 * 60; // look 2 hours ahead
+  try {
+    var evs = await fetch(BACKEND + '/api/calendar?wallet=' + wallet).then(function(r) { return r.json(); }).catch(function() { return []; });
+    evs.forEach(function(ev) {
+      if (_calNotifiedEvents[ev.id]) return;
+      var remMin = ev.reminder_minutes || 30;
+      if (remMin === 0) return;
+      var remSec = remMin * 60;
+      if (ev.start_time > now && ev.start_time - now <= remSec) {
+        _calNotifiedEvents[ev.id] = true;
+        try { sessionStorage.setItem('lc_cal_notified', JSON.stringify(_calNotifiedEvents)); } catch(e) {}
+        var minsLeft = Math.round((ev.start_time - now) / 60);
+        var msg = '⏰ "' + ev.title + '" starts in ' + minsLeft + ' minute' + (minsLeft !== 1 ? 's' : '');
+        showToast(msg, 6000);
+        // Also push browser notification if permitted
+        if (Notification && Notification.permission === 'granted') {
+          try { new Notification('LightChat Calendar', {body: msg, icon: '/lightchat-icon.png'}); } catch(e) {}
+        }
+      }
+    });
+  } catch(e) {}
+}
+
+// Also handle calendar_invite socket events
+function setupCalendarSocketListeners() {
+  if (!socket) return;
+  socket.on('calendar_invite', function(data) {
+    var d = new Date(data.start_time * 1000);
+    var timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    showToast('📅 Calendar invite: "' + (data.title||'Event') + '" on ' + timeStr + ' from ' + (data.from_handle || ''));
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INIT HOOK: patch window.load to run language + calendar init
+// ══════════════════════════════════════════════════════════════════
+var _origOnLoad = window.onload;
+window.addEventListener('load', function() {
+  // Language initialization
+  initLanguage();
+  // Start reminder checker every 60s
+  setInterval(checkCalendarReminders, 60000);
+  checkCalendarReminders();
+});
+
+// Patch switchTab to load calendar when selected
+var _origSwitchTab = switchTab;
+function switchTab(name) {
+  _origSwitchTab(name);
+  if (name === 'calendar') {
+    if (!_calEvents.length || true) loadCalEvents();
+  }
+}
+
+// Patch connectSocket to add calendar invite listener
+var _origConnectSocket = connectSocket;
+function connectSocket() {
+  _origConnectSocket();
+  setTimeout(setupCalendarSocketListeners, 500);
+}
+
 </script>
 </body>
 </html>
