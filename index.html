@@ -1604,7 +1604,7 @@ function getRoom(w1, w2) { return [w1.toLowerCase(), w2.toLowerCase()].sort().jo
 function shortenWallet(w) { if (!w) return ''; return w.substring(0,6) + '...' + w.substring(w.length-4); }
 function avatarLetter(h) { if (!h) return '🐬'; return h.replace('@','').charAt(0).toUpperCase(); }
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2800); }
+function showToast(msg, ms) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), ms || 2800); }
 
 // ════════════════════════════════
 // EMOJI / STICKER / GIF PICKER
@@ -2285,7 +2285,11 @@ async function startVideoCall() {
       if (callState === 'calling') { endCall(); showToast('No answer'); }
     }, 30000);
   } catch(e) {
-    showToast('Camera error: ' + (e.message || 'check permissions'));
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      showToast('Camera blocked — tap the lock icon in your browser address bar, then allow Camera & Microphone', 6000);
+    } else {
+      showToast('Camera error: ' + (e.message || 'check permissions'));
+    }
     cleanupCall();
   }
 }
@@ -2319,7 +2323,11 @@ async function acceptCall() {
     callState = 'active';
     window._pendingCallOffer = null;
   } catch(e) {
-    showToast('Camera error: ' + (e.message || 'check permissions'));
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      showToast('Camera blocked — tap the lock icon in your browser address bar, then allow Camera & Microphone', 6000);
+    } else {
+      showToast('Camera error: ' + (e.message || 'check permissions'));
+    }
     cleanupCall();
   }
 }
