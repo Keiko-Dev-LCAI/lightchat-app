@@ -2265,7 +2265,11 @@ function playNotificationSound() {
 // ════════════════════════════════
 let peerConnection = null, localStream = null, callState = null;
 let iceCandidateQueue = [];
-const ICE_SERVERS = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
+const ICE_SERVERS = [
+  {urls: 'stun:stun.l.google.com:19302'},
+  {urls: 'stun:stun1.l.google.com:19302'},
+  {urls: 'stun:stun.cloudflare.com:3478'}
+];
 
 function onRemoteTrack(e) {
   const rv = document.getElementById('remote-video');
@@ -2276,6 +2280,8 @@ function onRemoteTrack(e) {
     if (!rv.srcObject) rv.srcObject = new MediaStream();
     rv.srcObject.addTrack(e.track);
   }
+  // Android Chrome needs explicit play() even with autoplay attribute
+  rv.play().catch(() => {});
 }
 
 async function getLocalStream() {
@@ -2284,9 +2290,9 @@ async function getLocalStream() {
   try {
     const audioStream = await navigator.mediaDevices.getUserMedia({video: false, audio: true});
     const audioTrack = audioStream.getAudioTracks()[0];
-    if (audioTrack) videoStream.addTrack(audioTrack);
+    if (audioTrack) { videoStream.addTrack(audioTrack); }
   } catch(e) {
-    showToast('Microphone blocked — tap lock icon → Permissions → allow Microphone', 5000);
+    showToast('No microphone — other person won\'t hear you. Allow Mic in site permissions.', 5000);
   }
   return videoStream;
 }
