@@ -2630,8 +2630,17 @@ async function initWalletConnect() {
 
 async function connectViaWalletConnect() {
   if (!wcProvider) {
-    showToast('WalletConnect loading — try again in a moment');
-    return;
+    // Library may still be loading — wait up to 5s for it
+    showToast('Connecting…');
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      await initWalletConnect();
+      if (wcProvider) break;
+    }
+    if (!wcProvider) {
+      showToast('WalletConnect unavailable — please reload and try again');
+      return;
+    }
   }
 
   _wcUri = null;
