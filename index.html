@@ -1198,8 +1198,8 @@ body {
   <div style="font-size:80px">📹</div>
   <div style="font-size:28px;font-weight:700">Calling...</div>
   <div style="font-size:26px;color:var(--purple)" id="call-calling-name"></div>
-  <div style="font-size:18px;color:var(--text2)">Waiting for answer</div>
-  <button onclick="endCall()" style="margin-top:24px;width:80px;height:80px;border-radius:50%;background:var(--red);border:none;font-size:34px;cursor:pointer">📵</button>
+  <div style="font-size:18px;color:var(--text2);margin-bottom:32px">Waiting for answer — tap Allow if Chrome asks for camera</div>
+  <button onclick="endCall()" style="width:80%;max-width:280px;padding:20px;border-radius:50px;background:var(--red);border:none;font-size:24px;font-weight:700;color:#fff;cursor:pointer">📵 Cancel Call</button>
 </div>
 
 <div id="call-active-overlay">
@@ -2300,6 +2300,10 @@ async function getLocalStream() {
 async function startVideoCall() {
   if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
   if (callState) { showToast('Already in a call'); return; }
+  // Lock state IMMEDIATELY — prevents multiple taps stacking up permission dialogs
+  callState = 'calling';
+  document.getElementById('call-calling-name').textContent = currentChat.handle;
+  document.getElementById('call-calling-overlay').style.display = 'flex';
   try {
     localStream = await getLocalStream();
     document.getElementById('local-video').srcObject = localStream;
@@ -2310,9 +2314,6 @@ async function startVideoCall() {
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
     socket.emit('call_offer', {caller_wallet: wallet, callee_wallet: currentChat.wallet, offer});
-    callState = 'calling';
-    document.getElementById('call-calling-name').textContent = currentChat.handle;
-    document.getElementById('call-calling-overlay').style.display = 'flex';
     // Start 30s timeout for caller side
     callTimeoutId = setTimeout(() => {
       if (callState === 'calling') { endCall(); showToast('No answer'); }
