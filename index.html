@@ -2581,9 +2581,11 @@ let _wcUri = null;
 async function initWalletConnect() {
   try {
     const lib = window['@walletconnect/ethereum-provider'];
-    if (!lib) { console.warn('WC lib not loaded yet'); return; }
+    if (!lib) { showToast('WC lib not found on window'); return; }
+    const keys = Object.keys(lib).join(',').slice(0,100);
+    showToast('WC lib keys: ' + keys);
     const Provider = lib.EthereumProvider || lib.default;
-    if (!Provider) { console.warn('EthereumProvider not found in WC lib'); return; }
+    if (!Provider) { showToast('EthereumProvider not in lib — keys: ' + keys); return; }
 
     wcProvider = await Provider.init({
       projectId: '3c6a0da53258912a28923198ddac3333',
