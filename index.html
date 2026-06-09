@@ -1203,7 +1203,8 @@ body {
 </div>
 
 <div id="call-active-overlay">
-  <video id="remote-video" autoplay playsinline style="width:100%;height:100%;object-fit:cover;background:#000"></video>
+  <video id="remote-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;background:#000"></video>
+  <audio id="remote-audio" autoplay playsinline></audio>
   <video id="local-video" autoplay playsinline muted style="position:absolute;top:20px;right:20px;width:120px;height:160px;border-radius:12px;object-fit:cover;border:2px solid var(--purple);background:#111"></video>
   <div style="position:absolute;bottom:0;left:0;right:0;padding:28px 32px 36px;display:flex;flex-direction:column;align-items:center;gap:18px;background:linear-gradient(transparent,rgba(0,0,0,0.9))">
     <div style="display:flex;justify-content:center;gap:28px">
@@ -2287,15 +2288,20 @@ const ICE_SERVERS = [
 ];
 
 function onRemoteTrack(e) {
-  const rv = document.getElementById('remote-video');
-  if (!rv) return;
-  if (!rv.srcObject) rv.srcObject = new MediaStream();
-  rv.srcObject.addTrack(e.track);
-  // Critical for iOS + Trust Wallet
-  rv.autoplay = true;
-  rv.playsInline = true;
-  rv.muted = false;
-  rv.play().catch(() => {});
+  if (e.track.kind === 'video') {
+    const rv = document.getElementById('remote-video');
+    if (!rv) return;
+    if (!rv.srcObject) rv.srcObject = new MediaStream();
+    rv.srcObject.addTrack(e.track);
+    rv.play().catch(() => {});
+  } else if (e.track.kind === 'audio') {
+    const ra = document.getElementById('remote-audio');
+    if (!ra) return;
+    if (!ra.srcObject) ra.srcObject = new MediaStream();
+    ra.srcObject.addTrack(e.track);
+    ra.muted = false;
+    ra.play().catch(() => {});
+  }
 }
 
 async function getLocalStream() {
@@ -2330,6 +2336,9 @@ async function startVideoCall() {
   callState = 'calling';
   document.getElementById('call-calling-name').textContent = currentChat.handle;
   document.getElementById('call-calling-overlay').style.display = 'flex';
+  // Unlock audio element during user gesture before async ops
+  const _ra2 = document.getElementById('remote-audio');
+  if (_ra2) { _ra2.muted = false; _ra2.play().catch(() => {}); }
   try {
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
@@ -2363,9 +2372,11 @@ async function acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
   stopRinging();
-  // Unlock remote video audio NOW during user gesture — must be synchronous before any await
+  // Unlock audio elements NOW during user gesture — must be synchronous before any await
   const _rv = document.getElementById('remote-video');
-  if (_rv) { _rv.muted = false; _rv.play().catch(() => {}); }
+  const _ra = document.getElementById('remote-audio');
+  if (_rv) _rv.play().catch(() => {});
+  if (_ra) { _ra.muted = false; _ra.play().catch(() => {}); }
   if (_audioCtx) _audioCtx.resume().catch(() => {});
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
@@ -2434,6 +2445,7 @@ function cleanupCall() {
   document.getElementById('call-active-overlay').style.display = 'none';
   const lv = document.getElementById('local-video'); if (lv) lv.srcObject = null;
   const rv = document.getElementById('remote-video'); if (rv) rv.srcObject = null;
+  const ra = document.getElementById('remote-audio'); if (ra) { ra.srcObject = null; ra.pause(); }
   // Re-join socket room so incoming calls work after call ends
   if (socket && wallet) setTimeout(() => { if (socket && wallet) socket.emit('auth', {wallet}); }, 300);
 }
