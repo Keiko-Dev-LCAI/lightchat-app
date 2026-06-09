@@ -2284,24 +2284,42 @@ function onRemoteTrack(e) {
 }
 
 async function getLocalStream() {
+  // Try combined video+audio first (works on most browsers)
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    // Make sure audio is NOT muted
     stream.getAudioTracks().forEach(track => { track.enabled = true; });
     return stream;
-  } catch(err) {
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-      alert('Camera and Microphone permissions are required for video calls.\n\nPlease tap Allow when prompted.');
+  } catch(combinedErr) {
+    // Combined failed (Trust Wallet shows dialogs one at a time) — try separately
+    try {
+      const videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+        });
+        audioStream.getAudioTracks().forEach(t => { t.enabled = true; videoStream.addTrack(t); });
+      } catch(audioErr) {
+        showToast('Microphone not available — other person won\'t hear you', 4000);
+      }
+      return videoStream;
+    } catch(videoErr) {
+      if (videoErr.name === 'NotAllowedError' || videoErr.name === 'PermissionDeniedError') {
+        alert('Camera permission is required.\n\nIn Trust Wallet: tap OK on every Allow prompt.');
+      }
+      throw videoErr;
     }
-    throw err;
   }
 }
 
 async function startVideoCall() {
-  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  if (!currentChat) { showToast('Open a chat first'); return; }
+  if (!socket || !socket.connected) { connectSocket(); showToast('Reconnecting... try again in 2 seconds'); return; }
   if (callState) { showToast('Already in a call'); return; }
   // Lock state IMMEDIATELY — prevents multiple taps stacking up permission dialogs
   callState = 'calling';
