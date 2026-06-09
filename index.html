@@ -2504,13 +2504,26 @@ function playNotificationSound() {
 let peerConnection = null, localStream = null, callState = null;
 let iceCandidateQueue = [];
 let keepAliveInterval = null;
-const ICE_SERVERS = [
-  {urls: 'stun:stun.l.google.com:19302'},
-  {urls: 'stun:stun1.l.google.com:19302'},
-  {urls: 'turn:openrelay.metered.ca:80',          username: 'openrelayproject', credential: 'openrelayproject'},
-  {urls: 'turn:openrelay.metered.ca:443',         username: 'openrelayproject', credential: 'openrelayproject'},
-  {urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject'}
-];
+let iceServers = null;
+async function loadIceServers() {
+  try {
+    const resp = await fetch('/api/turn-credentials');
+    if (resp.ok) {
+      const servers = await resp.json();
+      if (Array.isArray(servers) && servers.length) {
+        iceServers = servers;
+        return;
+      }
+    }
+  } catch(e) {}
+  // Fallback to Google STUN only — server.py already returns openrelay on failure
+  iceServers = [
+    {urls: 'stun:stun.l.google.com:19302'},
+    {urls: 'stun:stun1.l.google.com:19302'}
+  ];
+}
+// Load ICE servers once on page load
+loadIceServers();
 
 function onRemoteTrack(e) {
   const remoteVideo = document.getElementById('remote-video');
@@ -2586,7 +2599,7 @@ async function startVideoCall() {
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
-    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
+    peerConnection = new RTCPeerConnection({iceServers: iceServers});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.oniceconnectionstatechange = () => {
@@ -2647,7 +2660,7 @@ async function acceptCall() {
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
     document.getElementById('call-active-overlay').style.display = 'flex';
-    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
+    peerConnection = new RTCPeerConnection({iceServers: iceServers});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.oniceconnectionstatechange = () => {
