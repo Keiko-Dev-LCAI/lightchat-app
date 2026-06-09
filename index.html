@@ -731,11 +731,11 @@ body {
 .emoji-grid { display: flex; flex-wrap: wrap; gap: 2px; }
 .emoji-btn { background: none; border: none; font-size: 30px; cursor: pointer; padding: 6px; border-radius: 8px; line-height: 1; }
 .emoji-btn:hover, .emoji-btn:active { background: var(--purple-glow); }
-.sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-.sticker-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 10px 6px; cursor: pointer; text-align: center; }
-.sticker-btn:hover, .sticker-btn:active { border-color: var(--purple); }
-.sticker-emoji { font-size: 48px; display: block; line-height: 1.1; }
-.sticker-label { font-size: 13px; color: var(--text2); margin-top: 4px; }
+.sticker-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.sticker-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 6px 4px; cursor: pointer; text-align: center; transition: border-color 0.15s, transform 0.1s; }
+.sticker-btn:hover, .sticker-btn:active { border-color: var(--purple); transform: scale(1.06); }
+.sticker-img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; display: block; margin: 0 auto; }
+.sticker-label { font-size: 11px; color: var(--text2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gif-search-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; color: var(--text); font-size: 18px; outline: none; margin-bottom: 10px; }
 .gif-search-input:focus { border-color: var(--purple); }
 .gif-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -1842,7 +1842,11 @@ function appendMessage(msg, senderHandle) {
   if (t === 'emoji') {
     wrap.innerHTML = '<div><div style="font-size:54px;line-height:1;padding:4px 2px">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
   } else if (t === 'sticker') {
-    wrap.innerHTML = '<div><div style="font-size:80px;line-height:1;padding:6px 2px">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
+    const isImgSticker = /^[a-z0-9-]+$/.test(msg.content);
+    const stickerHtml = isImgSticker
+      ? '<img src="/stickers/' + escapeHtml(msg.content) + '.png" style="width:140px;height:140px;object-fit:cover;border-radius:12px;display:block" alt="sticker">'
+      : '<span style="font-size:80px;line-height:1;display:block;padding:4px 2px">' + escapeHtml(msg.content) + '</span>';
+    wrap.innerHTML = '<div>' + stickerHtml + '<div class="msg-time">' + time + '</div></div>';
   } else if (t === 'gif') {
     const gifUrl = escapeHtml(msg.content);
     const gifProxy = BACKEND + '/proxy-gif?url=' + encodeURIComponent(msg.content) + '&name=animated.gif';
@@ -2027,11 +2031,26 @@ const EMOJI_LIST = [
 ];
 
 const STICKER_LIST = [
-  {e:'😀',l:'Happy'},{e:'😂',l:'LOL'},{e:'😍',l:'Love it'},{e:'🥰',l:'Cute'},
-  {e:'😎',l:'Cool'},{e:'🔥',l:'Fire!'},{e:'💯',l:'100%'},{e:'❤️',l:'Heart'},
-  {e:'💜',l:'Purple'},{e:'🎉',l:'Party!'},{e:'🙏',l:'Please'},{e:'👍',l:'Nice'},
-  {e:'😭',l:'Crying'},{e:'😡',l:'Angry'},{e:'🤔',l:'Hmm...'},{e:'💤',l:'Sleepy'},
-  {e:'🚀',l:'LFG!'},{e:'💎',l:'Diamond'},{e:'🐬',l:'Orca'},{e:'🌊',l:'Wave'}
+  // Expressions
+  {s:'happy',l:'Happy'},{s:'laughing',l:'Laughing'},{s:'sad',l:'Sad'},
+  {s:'surprised',l:'Surprised'},{s:'love-struck',l:'Love Struck'},
+  {s:'angry',l:'Angry'},{s:'embarrassed',l:'Embarrassed'},
+  // Greetings
+  {s:'hello',l:'Hello!'},{s:'good-morning',l:'Good Morning'},
+  {s:'good-night',l:'Good Night'},{s:'good-afternoon',l:'Good Afternoon'},
+  // Responses
+  {s:'thank-you',l:'Thank You'},{s:'youre-welcome',l:"You're Welcome"},
+  {s:'sorry',l:'Sorry'},{s:'no-problem',l:'No Problem'},
+  {s:'i-miss-you',l:'I Miss You'},{s:'i-love-you',l:'I Love You'},
+  {s:'congratulations',l:'Congrats!'},{s:'happy-birthday',l:'Happy Birthday'},
+  {s:'get-well-soon',l:'Get Well Soon'},
+  // Reactions
+  {s:'lol',l:'LOL'},{s:'omg',l:'OMG'},{s:'wow',l:'Wow!'},
+  {s:'ok',l:'OK'},{s:'yes',l:'Yes!'},{s:'no',l:'No'},
+  {s:'on-my-way',l:'On My Way'},
+  // Orca
+  {s:'orca-wave',l:'Orca Wave'},{s:'orca-love',l:'Orca Love'},
+  {s:'orca-celebrate',l:'Orca Party'},
 ];
 
 const TENOR_KEY = 'LIVDSRZULELA';
@@ -2043,7 +2062,7 @@ function initPicker() {
   eg.innerHTML = EMOJI_LIST.map(e => `<button class="emoji-btn" onclick="sendEmoji('${e}')">${e}</button>`).join('');
   // Sticker grid
   const sg = document.getElementById('sticker-grid');
-  sg.innerHTML = STICKER_LIST.map(s => `<button class="sticker-btn" onclick="sendSticker('${s.e}')"><span class="sticker-emoji">${s.e}</span><div class="sticker-label">${s.l}</div></button>`).join('');
+  sg.innerHTML = STICKER_LIST.map(s => `<button class="sticker-btn" onclick="sendSticker('${s.s}')"><img class="sticker-img" src="/stickers/${s.s}.png" alt="${s.l}" loading="lazy"><div class="sticker-label">${s.l}</div></button>`).join('');
   // Load trending GIFs
   loadGifs('');
 }
@@ -2081,11 +2100,11 @@ function sendEmoji(e) {
   closePicker();
 }
 
-function sendSticker(e) {
+function sendSticker(slug) {
   if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
-  appendMessage({sender_wallet: wallet, content: e, type: 'sticker', msg_type: 'sticker', created_at: Math.floor(Date.now()/1000)});
+  appendMessage({sender_wallet: wallet, content: slug, type: 'sticker', msg_type: 'sticker', created_at: Math.floor(Date.now()/1000)});
   scrollToBottom();
-  _emitMsg(e, 'sticker');
+  _emitMsg(slug, 'sticker');
   closePicker();
 }
 

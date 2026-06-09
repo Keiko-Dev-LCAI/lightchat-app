@@ -1,7 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, send_from_directory
 from flask_socketio import SocketIO, join_room, emit
 from flask_cors import CORS
 import sqlite3
@@ -212,6 +212,12 @@ def send_push_notification(to_wallet, title, body):
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok', 'service': 'LightChat'})
+
+STICKERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stickers')
+
+@app.route('/stickers/<path:filename>')
+def serve_sticker(filename):
+    return send_from_directory(STICKERS_DIR, filename)
 
 @app.route('/vapid-public-key')
 def vapid_public_key():
