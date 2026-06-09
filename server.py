@@ -96,6 +96,15 @@ def init_db():
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS call_usage (
+            wallet TEXT PRIMARY KEY,
+            free_calls_used INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            wallet TEXT PRIMARY KEY,
+            expires_at INTEGER,
+            tx_hash TEXT
+        );
     ''')
     conn.commit()
     conn.close()
@@ -725,6 +734,212 @@ def on_call_end(data):
     pending_calls.pop(target, None)  # call ended — clear buffer for target
     pending_calls.pop(sender, None)  # also clear for sender
     emit('call_end', {'sender_wallet': sender}, room=target)
+
+# ══════════════════════════════════════════════════════════════════════
+# PREMIUM TIER — LCAI price, call access, subscriptions, gift confirm
+# ══════════════════════════════════════════════════════════════════════
+
+OWNER_WALLET = '0x6518fd07b3da01b17bd37d7c40f9a5e3c87a09ba'
+FREE_CALLS_LIMIT = 5
+
+_lcai_price_cache = {'price': 0.004, 'ts': 0}
+
+
+def get_lcai_price():
+    """Fetch LCAI/USD price, cached 5 min. Fallback $0.004."""
+    global _lcai_price_cache
+    now = time.time()
+    if now - _lcai_price_cache['ts'] < 300:
+        return _lcai_price_cache['price']
+    # Try CoinGecko
+    try:
+        req = _urllib_req.Request(
+            'https://api.coingecko.com/api/v3/simple/price?ids=lightchain-ai&vs_currencies=usd',
+            headers={'User-Agent': 'LightChat/1.0', 'Accept': 'application/json'}
+        )
+        with _urllib_req.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+            price = (data.get('lightchain-ai') or {}).get('usd')
+            if price and float(price) > 0:
+                _lcai_price_cache = {'price': float(price), 'ts': now}
+                return float(price)
+    except Exception:
+        pass
+    # Try DexScreener
+    try:
+        req = _urllib_req.Request(
+            'https://api.dexscreener.com/latest/dex/search?q=LCAI',
+            headers={'User-Agent': 'LightChat/1.0', 'Accept': 'application/json'}
+        )
+        with _urllib_req.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+            for pair in (data.get('pairs') or []):
+                price = float(pair.get('priceUsd') or 0)
+                if price > 0:
+                    _lcai_price_cache = {'price': price, 'ts': now}
+                    return price
+    except Exception:
+        pass
+    # Fallback — bump ts to avoid hammering APIs on every request
+    _lcai_price_cache['ts'] = now
+    return _lcai_price_cache['price']
+
+
+def lightchain_rpc(method, params):
+    """Call the Lightchain JSON-RPC endpoint."""
+    payload = json.dumps({
+        'jsonrpc': '2.0', 'method': method, 'params': params, 'id': 1
+    }).encode()
+    req = _urllib_req.Request(
+        'https://node1.lightchain.ai',
+        data=payload,
+        headers={'Content-Type': 'application/json', 'User-Agent': 'LightChat/1.0'}
+    )
+    with _urllib_req.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+@app.route('/api/lcai-price')
+def api_lcai_price():
+    price = get_lcai_price()
+    return jsonify({'price': price, 'currency': 'USD'})
+
+
+@app.route('/api/call-access/<wallet>')
+def api_call_access(wallet):
+    w = wallet.lower().strip()
+    now = int(time.time())
+    conn = get_db()
+    sub = conn.execute('SELECT expires_at FROM subscriptions WHERE wallet = ?', (w,)).fetchone()
+    subscribed = bool(sub and sub['expires_at'] and sub['expires_at'] > now)
+    expires_at = sub['expires_at'] if sub else None
+    usage = conn.execute('SELECT free_calls_used FROM call_usage WHERE wallet = ?', (w,)).fetchone()
+    free_used = usage['free_calls_used'] if usage else 0
+    conn.close()
+    free_remaining = max(0, FREE_CALLS_LIMIT - free_used)
+    allowed = subscribed or (free_used < FREE_CALLS_LIMIT)
+    return jsonify({
+        'allowed': allowed,
+        'free_remaining': free_remaining,
+        'subscribed': subscribed,
+        'expires_at': expires_at
+    })
+
+
+@app.route('/api/use-call', methods=['POST'])
+def api_use_call():
+    data = request.json or {}
+    w = data.get('wallet', '').lower().strip()
+    if not w:
+        return jsonify({'error': 'wallet required'}), 400
+    now = int(time.time())
+    conn = get_db()
+    sub = conn.execute('SELECT expires_at FROM subscriptions WHERE wallet = ?', (w,)).fetchone()
+    subscribed = bool(sub and sub['expires_at'] and sub['expires_at'] > now)
+    if not subscribed:
+        conn.execute(
+            'INSERT INTO call_usage (wallet, free_calls_used) VALUES (?, 1) '
+            'ON CONFLICT(wallet) DO UPDATE SET free_calls_used = free_calls_used + 1',
+            (w,)
+        )
+        conn.commit()
+    usage = conn.execute('SELECT free_calls_used FROM call_usage WHERE wallet = ?', (w,)).fetchone()
+    free_used = usage['free_calls_used'] if usage else 0
+    conn.close()
+    return jsonify({
+        'allowed': subscribed or (free_used < FREE_CALLS_LIMIT),
+        'free_remaining': max(0, FREE_CALLS_LIMIT - free_used),
+        'subscribed': subscribed,
+        'expires_at': sub['expires_at'] if sub else None
+    })
+
+
+@app.route('/api/verify-subscription', methods=['POST'])
+def api_verify_subscription():
+    data = request.json or {}
+    w = data.get('wallet', '').lower().strip()
+    tx_hash = (data.get('tx_hash') or '').strip()
+    if not w or not tx_hash:
+        return jsonify({'error': 'wallet and tx_hash required'}), 400
+    try:
+        result = lightchain_rpc('eth_getTransactionByHash', [tx_hash])
+        tx = result.get('result')
+        if not tx:
+            return jsonify({'error': 'Transaction not found on Lightchain — check the hash and try again'}), 404
+        # Verify recipient is the owner wallet
+        to_addr = (tx.get('to') or '').lower()
+        if to_addr != OWNER_WALLET:
+            return jsonify({'error': 'This transaction was not sent to the LightChat subscription address'}), 400
+        # Verify value: must be >= $3 worth of LCAI
+        price = get_lcai_price()
+        required_lcai = 3.0 / price
+        required_wei = int(required_lcai * 1e18)
+        tx_value = int(tx.get('value', '0x0'), 16)
+        if tx_value < required_wei:
+            sent_lcai = round(tx_value / 1e18, 4)
+            needed_lcai = round(required_lcai, 2)
+            return jsonify({
+                'error': f'Insufficient amount — sent {sent_lcai} LCAI, need {needed_lcai} LCAI'
+            }), 400
+        # Verify receipt status (soft check — receipt may not exist yet on very new tx)
+        try:
+            rcpt_result = lightchain_rpc('eth_getTransactionReceipt', [tx_hash]).get('result')
+            if rcpt_result and rcpt_result.get('status') == '0x0':
+                return jsonify({'error': 'Transaction was reverted — please send a new one'}), 400
+        except Exception:
+            pass  # Receipt may not exist yet; proceed with tx-existence check
+        # Store 30-day subscription
+        expires_at = int(time.time()) + 30 * 24 * 60 * 60
+        conn = get_db()
+        conn.execute(
+            'INSERT OR REPLACE INTO subscriptions (wallet, expires_at, tx_hash) VALUES (?, ?, ?)',
+            (w, expires_at, tx_hash)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'expires_at': expires_at})
+    except Exception as e:
+        return jsonify({'error': 'Could not verify transaction: ' + str(e)}), 500
+
+
+@app.route('/api/confirm-gift', methods=['POST'])
+def api_confirm_gift():
+    data = request.json or {}
+    from_wallet = (data.get('from_wallet') or '').lower().strip()
+    to_wallet   = (data.get('to_wallet') or '').lower().strip()
+    tx_hash     = (data.get('tx_hash') or '').strip()
+    amount      = float(data.get('amount') or 0)
+    if not from_wallet or not to_wallet or not tx_hash:
+        return jsonify({'error': 'from_wallet, to_wallet, and tx_hash required'}), 400
+    try:
+        result = lightchain_rpc('eth_getTransactionByHash', [tx_hash])
+        tx = result.get('result')
+        if not tx:
+            return jsonify({'error': 'Transaction not found on Lightchain — check the hash'}), 404
+        tx_from = (tx.get('from') or '').lower()
+        tx_to   = (tx.get('to')   or '').lower()
+        if tx_to != to_wallet:
+            return jsonify({'error': 'Transaction recipient does not match'}), 400
+        if tx_from != from_wallet:
+            return jsonify({'error': 'Transaction sender does not match your connected wallet'}), 400
+        if amount > 0:
+            expected_wei = int(amount * 1e18)
+            tx_value = int(tx.get('value', '0x0'), 16)
+            if tx_value < int(expected_wei * 0.99):  # 1% tolerance
+                return jsonify({'error': 'Transaction amount is less than the gift amount'}), 400
+        # Notify recipient via their personal socket room
+        gift_content = json.dumps({'amount': amount, 'txHash': tx_hash})
+        from_handle  = get_handle_for(from_wallet)
+        socketio.emit('gift_confirmed', {
+            'from_wallet': from_wallet,
+            'handle':      from_handle,
+            'content':     gift_content,
+            'type':        'lcai_gift'
+        }, room=to_wallet)
+        return jsonify({'success': True, 'tx_hash': tx_hash})
+    except Exception as e:
+        return jsonify({'error': 'Could not verify transaction: ' + str(e)}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))

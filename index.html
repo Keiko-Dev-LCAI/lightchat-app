@@ -1189,6 +1189,77 @@ body {
   </div>
 </div>
 
+<!-- ── UPGRADE MODAL (Premium video calls) ── -->
+<div id="upgrade-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.93);z-index:600;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-box" style="max-width:460px;margin:auto">
+    <div style="font-size:52px;text-align:center;margin-bottom:10px">💜</div>
+    <div class="modal-title" style="font-size:28px">Upgrade to LightChat Pro</div>
+    <div class="modal-sub" style="font-size:20px;margin-bottom:22px">5 free video calls included — you've used yours</div>
+    <div style="background:var(--bg);border:2px solid var(--purple);border-radius:16px;padding:22px;margin-bottom:22px;text-align:center">
+      <div style="font-size:38px;font-weight:800;color:var(--text)">$3 <span style="font-size:22px;font-weight:400;color:var(--text2)">/ month</span></div>
+      <div style="font-size:22px;color:var(--purple);margin-top:8px">≈ <span id="upgrade-lcai-amount">750</span> LCAI</div>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:20px">
+      <div style="font-size:22px;font-weight:700;margin-bottom:16px">How to subscribe:</div>
+      <div style="font-size:20px;margin-bottom:10px;line-height:1.55">1️⃣ Send <strong style="color:var(--purple)" id="upgrade-lcai-send">750</strong> LCAI to this address:</div>
+      <div onclick="copyOwnerWallet()" style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 14px;font-size:14px;color:var(--purple);word-break:break-all;font-family:monospace;margin-bottom:10px;cursor:pointer" title="Tap to copy">0x6518fD07b3Da01b17Bd37d7C40f9a5E3c87A09bA</div>
+      <button onclick="copyOwnerWallet()" style="background:none;border:1px solid var(--border);border-radius:10px;color:var(--text2);font-size:18px;padding:12px 18px;cursor:pointer;width:100%;margin-bottom:18px">📋 Copy Address</button>
+      <div style="font-size:20px;margin-bottom:10px;line-height:1.55">2️⃣ Paste your transaction hash below</div>
+      <div style="font-size:20px;line-height:1.55">3️⃣ Tap Verify</div>
+    </div>
+    <div class="modal-error" id="upgrade-error"></div>
+    <div style="display:none;color:var(--green);font-size:20px;text-align:center;margin-bottom:14px;padding:14px;background:rgba(76,175,125,0.12);border-radius:12px;font-weight:600" id="upgrade-success"></div>
+    <input class="modal-input" id="upgrade-tx-input" type="text" placeholder="0x… paste your transaction hash" autocomplete="off" autocorrect="off" spellcheck="false" style="margin-bottom:14px;font-size:18px">
+    <button class="modal-btn" id="upgrade-verify-btn" onclick="verifySubscription()" style="font-size:22px;padding:20px">✓ Verify</button>
+    <div style="font-size:18px;color:var(--text2);text-align:center;margin-top:16px;line-height:1.6">Already subscribed? Paste your tx hash above to restore access</div>
+    <button class="modal-btn" style="background:none;border:1px solid var(--border);color:var(--text2);margin-top:12px;font-size:18px;padding:16px" onclick="document.getElementById('upgrade-modal').style.display='none'">✕ Close</button>
+  </div>
+</div>
+
+<!-- ── GIFT DEEP LINK MODAL (Chrome / Safari / no-injected-wallet users) ── -->
+<div id="gift-deeplink-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.93);z-index:600;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-box" style="max-width:460px;margin:auto">
+    <div style="font-size:52px;text-align:center;margin-bottom:10px">💜</div>
+    <div class="modal-title" style="font-size:28px">Send LCAI Gift</div>
+    <div class="modal-sub" style="font-size:20px;margin-bottom:20px">To: <span id="deeplink-to-handle" style="color:var(--purple);font-weight:700"></span> &nbsp;<span id="deeplink-to-addr" style="color:var(--text2);font-size:16px"></span></div>
+    <div style="margin-bottom:20px">
+      <label class="form-label" style="font-size:20px;margin-bottom:10px;display:block">Amount (LCAI)</label>
+      <input class="modal-input" id="deeplink-amount-input" type="number" placeholder="Amount in LCAI" min="0.01" step="0.01" style="font-size:22px">
+    </div>
+    <div id="deeplink-wallet-section">
+      <div style="font-size:20px;font-weight:600;margin-bottom:14px;color:var(--text2)">Open in your wallet app:</div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
+        <button onclick="openDeeplinkWallet('trust')" style="display:flex;align-items:center;gap:16px;background:var(--card);border:2px solid var(--border);border-radius:16px;padding:18px 22px;cursor:pointer;width:100%;text-align:left">
+          <span style="font-size:32px">💙</span>
+          <span style="font-size:22px;font-weight:700;color:var(--text)">Trust Wallet</span>
+        </button>
+        <button onclick="openDeeplinkWallet('metamask')" style="display:flex;align-items:center;gap:16px;background:var(--card);border:2px solid var(--border);border-radius:16px;padding:18px 22px;cursor:pointer;width:100%;text-align:left">
+          <span style="font-size:32px">🦊</span>
+          <span style="font-size:22px;font-weight:700;color:var(--text)">MetaMask</span>
+        </button>
+        <button onclick="openDeeplinkWallet('coinbase')" style="display:flex;align-items:center;gap:16px;background:var(--card);border:2px solid var(--border);border-radius:16px;padding:18px 22px;cursor:pointer;width:100%;text-align:left">
+          <span style="font-size:32px">🔵</span>
+          <span style="font-size:22px;font-weight:700;color:var(--text)">Coinbase Wallet</span>
+        </button>
+        <button onclick="copyGiftDetails()" style="display:flex;align-items:center;gap:16px;background:var(--card);border:2px solid var(--border);border-radius:16px;padding:18px 22px;cursor:pointer;width:100%;text-align:left">
+          <span style="font-size:32px">📋</span>
+          <span style="font-size:22px;font-weight:700;color:var(--text)">Copy details</span>
+        </button>
+      </div>
+    </div>
+    <div id="deeplink-confirm-section" style="display:none">
+      <div style="background:var(--bg);border:2px solid var(--purple);border-radius:14px;padding:18px;margin-bottom:18px;font-size:20px;color:var(--text);line-height:1.6">
+        💜 After sending, paste your transaction hash below to confirm the gift.
+      </div>
+      <div class="modal-error" id="deeplink-error"></div>
+      <input class="modal-input" id="deeplink-tx-input" type="text" placeholder="0x… paste transaction hash" autocomplete="off" autocorrect="off" spellcheck="false" style="margin-bottom:14px;font-size:18px">
+      <button class="modal-btn" id="deeplink-confirm-btn" onclick="confirmGiftFromDeeplink()" style="font-size:22px;padding:20px">✓ Confirm Gift</button>
+      <button onclick="document.getElementById('deeplink-confirm-section').style.display='none';document.getElementById('deeplink-wallet-section').style.display='block'" style="background:none;border:1px solid var(--border);border-radius:14px;color:var(--text2);font-size:20px;padding:16px;cursor:pointer;width:100%;margin-top:12px">← Back</button>
+    </div>
+    <button class="modal-btn" style="background:none;border:1px solid var(--border);color:var(--text2);margin-top:12px;font-size:18px;padding:16px" onclick="document.getElementById('gift-deeplink-modal').style.display='none'">✕ Close</button>
+  </div>
+</div>
+
 <!-- ── VIDEO CALL OVERLAYS ── -->
 <div id="call-incoming-overlay">
   <div style="font-size:80px">📹</div>
@@ -1373,6 +1444,10 @@ function connectSocket() {
     loadContacts();
   });
   socket.on('contact_approved', (d) => { showToast('✅ ' + (d.handle || shortenWallet(d.wallet)) + ' accepted!'); loadContacts(); });
+  socket.on('gift_confirmed', (d) => {
+    playNotificationSound();
+    showToast('💜 Gift received from ' + (d.handle || shortenWallet(d.from_wallet)) + '!');
+  });
 }
 
 async function loadContacts() {
@@ -2016,7 +2091,12 @@ async function sendLcaiGift() {
   const amount = parseFloat(amountStr);
   const errEl = document.getElementById('gift-error');
   if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid LCAI amount'; errEl.style.display = 'block'; return; }
-  if (!window.ethereum) { errEl.textContent = 'Wallet not available'; errEl.style.display = 'block'; return; }
+  if (!window.ethereum) {
+    // No injected wallet — open deep-link modal for Chrome / Safari users
+    document.getElementById('lcai-gift-modal').style.display = 'none';
+    showGiftDeeplinkModal(amount);
+    return;
+  }
   errEl.style.display = 'none';
   try {
     const valueHex = '0x' + BigInt(Math.round(amount * 1e18)).toString(16);
@@ -2384,8 +2464,12 @@ async function startVideoCall() {
   if (!currentChat) { showToast('Open a chat first'); return; }
   if (!socket) { connectSocket(); showToast('Reconnecting — try again in 2 seconds'); return; }
   if (callState) { showToast('Already in a call'); return; }
+  // ── Premium gate: check call access ──
+  const _svAccess = await checkCallAccess();
+  if (!_svAccess.allowed) { showUpgradeModal(() => startVideoCall()); return; }
   // Lock state IMMEDIATELY — prevents multiple taps stacking up permission dialogs
   callState = 'calling';
+  if (!_svAccess.subscribed) useCall(); // fire-and-forget: non-blocking counter increment
   document.getElementById('call-calling-name').textContent = currentChat.handle;
   document.getElementById('call-calling-overlay').style.display = 'flex';
   // Unlock BOTH remote-video and remote-audio during user gesture with empty streams
@@ -2433,14 +2517,26 @@ async function handleCallOffer(data) {
 async function acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
-  stopRinging();
-  // Unlock BOTH remote-video and remote-audio during user gesture
-  // CRITICAL: must assign srcObject = new MediaStream() BEFORE play() — iOS ignores play() on element with no source
+  // CRITICAL: audio unlock MUST happen synchronously inside the user-gesture call stack (iOS)
+  // srcObject = new MediaStream() + play() must precede any await
   const _rv = document.getElementById('remote-video');
   const _ra = document.getElementById('remote-audio');
   if (_rv) { _rv.srcObject = new MediaStream(); _rv.muted = false; _rv.volume = 0.7; _rv.playsInline = true; _rv.play().catch(() => {}); }
   if (_ra) { _ra.srcObject = new MediaStream(); _ra.muted = false; _ra.volume = 0.7; _ra.play().catch(() => {}); }
   if (_audioCtx) _audioCtx.resume().catch(() => {});
+  // ── Premium gate (after audio unlock so iOS gesture chain is preserved) ──
+  const _acAccess = await checkCallAccess();
+  if (!_acAccess.allowed) {
+    stopRinging();
+    document.getElementById('call-incoming-overlay').style.display = 'none';
+    if (socket) socket.emit('call_end', {target_wallet: data.caller_wallet, sender_wallet: wallet});
+    window._pendingCallOffer = null;
+    callState = null;
+    showUpgradeModal(null);
+    return;
+  }
+  if (!_acAccess.subscribed) useCall(); // fire-and-forget
+  stopRinging();
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
     localStream = await getLocalStream();
@@ -2583,6 +2679,182 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function wcCopyUri() { /* legacy stub — no longer used */ }
+
+// ════════════════════════════════════════════════════════════════
+// PREMIUM TIER — call access gating + subscription flow
+// ════════════════════════════════════════════════════════════════
+let _upgradeCallAction = null; // pending call fn to retry after successful subscription
+
+async function checkCallAccess() {
+  if (!wallet) return {allowed: false, free_remaining: 0, subscribed: false, expires_at: null};
+  try {
+    return await fetch(BACKEND + '/api/call-access/' + wallet).then(r => r.json());
+  } catch(e) {
+    return {allowed: true, free_remaining: 5, subscribed: false, expires_at: null}; // fail open
+  }
+}
+
+function useCall() {
+  // Non-blocking — fire and forget
+  if (!wallet) return;
+  fetch(BACKEND + '/api/use-call', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({wallet})
+  }).catch(() => {});
+}
+
+async function showUpgradeModal(pendingAction) {
+  _upgradeCallAction = pendingAction || null;
+  // Fetch live LCAI price
+  let lcaiAmount = 750;
+  try {
+    const pr = await fetch(BACKEND + '/api/lcai-price').then(r => r.json());
+    if (pr.price && pr.price > 0) lcaiAmount = Math.ceil(3 / pr.price);
+  } catch(e) {}
+  const amtStr = lcaiAmount.toLocaleString();
+  document.getElementById('upgrade-lcai-amount').textContent = amtStr;
+  document.getElementById('upgrade-lcai-send').textContent = amtStr;
+  document.getElementById('upgrade-tx-input').value = '';
+  document.getElementById('upgrade-error').style.display = 'none';
+  document.getElementById('upgrade-success').style.display = 'none';
+  const btn = document.getElementById('upgrade-verify-btn');
+  btn.textContent = '✓ Verify'; btn.disabled = false;
+  document.getElementById('upgrade-modal').style.display = 'flex';
+}
+
+function copyOwnerWallet() {
+  navigator.clipboard.writeText('0x6518fD07b3Da01b17Bd37d7C40f9a5E3c87A09bA')
+    .then(() => showToast('Address copied!'))
+    .catch(() => showToast('Tap and hold the address to copy'));
+}
+
+async function verifySubscription() {
+  const txHash = document.getElementById('upgrade-tx-input').value.trim();
+  const errEl  = document.getElementById('upgrade-error');
+  const succEl = document.getElementById('upgrade-success');
+  if (!txHash) { errEl.textContent = 'Please paste your transaction hash'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none'; succEl.style.display = 'none';
+  const btn = document.getElementById('upgrade-verify-btn');
+  btn.textContent = 'Verifying…'; btn.disabled = true;
+  try {
+    const resp = await fetch(BACKEND + '/api/verify-subscription', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({wallet, tx_hash: txHash})
+    }).then(r => r.json());
+    if (resp.success) {
+      succEl.textContent = '✅ Subscribed! Enjoy unlimited video calls.';
+      succEl.style.display = 'block';
+      setTimeout(() => {
+        document.getElementById('upgrade-modal').style.display = 'none';
+        if (_upgradeCallAction) {
+          const fn = _upgradeCallAction;
+          _upgradeCallAction = null;
+          fn();
+        }
+      }, 2000);
+    } else {
+      errEl.textContent = resp.error || 'Verification failed — please try again';
+      errEl.style.display = 'block';
+      btn.textContent = '✓ Verify'; btn.disabled = false;
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error — please try again';
+    errEl.style.display = 'block';
+    btn.textContent = '✓ Verify'; btn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// GIFT DEEP LINKS — Chrome / Safari users without window.ethereum
+// ════════════════════════════════════════════════════════════════
+function showGiftDeeplinkModal(prefilledAmount) {
+  if (!currentChat) return;
+  document.getElementById('deeplink-to-handle').textContent = currentChat.handle;
+  document.getElementById('deeplink-to-addr').textContent = shortenWallet(currentChat.wallet);
+  document.getElementById('deeplink-amount-input').value = prefilledAmount || '';
+  document.getElementById('deeplink-wallet-section').style.display = 'block';
+  document.getElementById('deeplink-confirm-section').style.display = 'none';
+  document.getElementById('deeplink-tx-input').value = '';
+  document.getElementById('deeplink-error').style.display = 'none';
+  const cb = document.getElementById('deeplink-confirm-btn');
+  cb.textContent = '✓ Confirm Gift'; cb.disabled = false;
+  document.getElementById('gift-deeplink-modal').style.display = 'flex';
+}
+
+function openDeeplinkWallet(walletType) {
+  const amountStr = document.getElementById('deeplink-amount-input').value;
+  const amount = parseFloat(amountStr);
+  if (!amount || amount <= 0) { showToast('Enter a valid LCAI amount first'); return; }
+  if (!currentChat) return;
+  const recipient = currentChat.wallet;
+  const amountWei = BigInt(Math.round(amount * 1e18)).toString();
+  let url;
+  if (walletType === 'trust') {
+    url = `https://link.trustwallet.com/send?asset=c9000&address=${recipient}&amount=${amount}`;
+  } else if (walletType === 'metamask') {
+    url = `https://metamask.app.link/send/${recipient}@9200?value=${amountWei}`;
+  } else if (walletType === 'coinbase') {
+    url = `https://go.cb-wallet.com/send?to=${recipient}&chainId=9200&value=${amountWei}`;
+  }
+  if (url) window.open(url, '_blank');
+  // Slide to the confirm section
+  document.getElementById('deeplink-wallet-section').style.display = 'none';
+  document.getElementById('deeplink-confirm-section').style.display = 'block';
+}
+
+function copyGiftDetails() {
+  const amountStr = document.getElementById('deeplink-amount-input').value;
+  const amount = parseFloat(amountStr);
+  if (!amount || amount <= 0) { showToast('Enter a valid LCAI amount first'); return; }
+  if (!currentChat) return;
+  const text = `Send ${amount} LCAI to ${currentChat.wallet}`;
+  navigator.clipboard.writeText(text)
+    .then(() => showToast('Details copied — send from your wallet and paste the tx hash when done', 4000))
+    .catch(() => showToast('Tap and hold to copy'));
+}
+
+async function confirmGiftFromDeeplink() {
+  const txHash  = document.getElementById('deeplink-tx-input').value.trim();
+  const errEl   = document.getElementById('deeplink-error');
+  const amtStr  = document.getElementById('deeplink-amount-input').value;
+  const amount  = parseFloat(amtStr);
+  if (!txHash)  { errEl.textContent = 'Please paste your transaction hash'; errEl.style.display = 'block'; return; }
+  if (!amount || amount <= 0) { errEl.textContent = 'Invalid amount'; errEl.style.display = 'block'; return; }
+  if (!wallet || !currentChat) { errEl.textContent = 'Not connected'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  const btn = document.getElementById('deeplink-confirm-btn');
+  btn.textContent = 'Confirming…'; btn.disabled = true;
+  try {
+    const resp = await fetch(BACKEND + '/api/confirm-gift', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({from_wallet: wallet, to_wallet: currentChat.wallet, tx_hash: txHash, amount})
+    }).then(r => r.json());
+    if (resp.success) {
+      document.getElementById('gift-deeplink-modal').style.display = 'none';
+      const giftContent = JSON.stringify({amount, txHash});
+      // Show in sender's chat immediately
+      appendMessage({sender_wallet: wallet, content: giftContent, type: 'lcai_gift', msg_type: 'lcai_gift', created_at: Math.floor(Date.now()/1000)});
+      scrollToBottom();
+      // Persist + deliver to recipient via existing message flow
+      if (socket) socket.emit('send_message', {
+        sender_wallet: wallet, recipient_wallet: currentChat.wallet,
+        content: giftContent, type: 'lcai_gift'
+      });
+      showToast('💜 Gift sent! ' + amount + ' LCAI');
+    } else {
+      errEl.textContent = resp.error || 'Verification failed — check the tx hash';
+      errEl.style.display = 'block';
+      btn.textContent = '✓ Confirm Gift'; btn.disabled = false;
+    }
+  } catch(e) {
+    errEl.textContent = 'Connection error — please try again';
+    errEl.style.display = 'block';
+    btn.textContent = '✓ Confirm Gift'; btn.disabled = false;
+  }
+}
 
 window.addEventListener('load', async () => {
   loadSettings();
