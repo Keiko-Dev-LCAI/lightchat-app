@@ -2265,18 +2265,16 @@ let peerConnection = null, localStream = null, callState = null;
 const ICE_SERVERS = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
 
 async function getLocalStream() {
-  // Try camera + mic together
-  try { return await navigator.mediaDevices.getUserMedia({video: true, audio: true}); } catch(e) {
-    if (e.name !== 'NotAllowedError' && e.name !== 'PermissionDeniedError') throw e;
-  }
-  // Mic blocked silently — try video-only so call still connects
+  // Request camera and mic SEPARATELY so Chrome shows a dialog for each one
+  const videoStream = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
   try {
-    const s = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
-    showToast('Microphone blocked — video only', 3500);
-    return s;
+    const audioStream = await navigator.mediaDevices.getUserMedia({video: false, audio: true});
+    const audioTrack = audioStream.getAudioTracks()[0];
+    if (audioTrack) videoStream.addTrack(audioTrack);
   } catch(e) {
-    throw e;
+    showToast('Microphone blocked — tap lock icon → Permissions → allow Microphone', 5000);
   }
+  return videoStream;
 }
 
 async function startVideoCall() {
