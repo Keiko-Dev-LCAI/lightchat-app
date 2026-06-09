@@ -1230,11 +1230,17 @@ body {
     <button onclick="closeWCModal()" style="position:absolute;top:14px;right:18px;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;line-height:1;padding:4px 8px">✕</button>
     <div style="font-size:34px;text-align:center;margin-bottom:10px">🔗</div>
     <div style="font-size:26px;font-weight:700;text-align:center;margin-bottom:8px">Connect Wallet</div>
-    <div style="font-size:17px;color:var(--text2);text-align:center;margin-bottom:28px;line-height:1.4">Open Trust Wallet, copy your address, and paste it below</div>
-    <input id="wc-addr-input" type="text" placeholder="0x..." autocomplete="off" autocorrect="off" spellcheck="false"
+    <div style="font-size:17px;color:var(--text2);text-align:center;margin-bottom:6px;line-height:1.5">This is a <strong style="color:var(--text)">one-time setup</strong>. After this, the app remembers you automatically.</div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 14px;margin-bottom:20px;font-size:16px;color:var(--text2);line-height:1.6">
+      <div style="margin-bottom:6px">1️⃣ Open <strong style="color:var(--text)">Trust Wallet</strong></div>
+      <div style="margin-bottom:6px">2️⃣ Tap your wallet name at the top</div>
+      <div style="margin-bottom:6px">3️⃣ Tap <strong style="color:var(--text)">Copy Address</strong></div>
+      <div>4️⃣ Come back here and paste below</div>
+    </div>
+    <input id="wc-addr-input" type="text" placeholder="Paste your 0x address here" autocomplete="off" autocorrect="off" spellcheck="false"
       style="width:100%;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-size:17px;padding:16px 14px;margin-bottom:16px;outline:none;font-family:monospace">
-    <button onclick="connectPastedAddress()" style="width:100%;padding:18px;border-radius:14px;background:var(--purple);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer">Connect</button>
-    <div style="text-align:center;margin-top:16px;font-size:14px;color:var(--text2);opacity:0.7">Your address is public — no password needed</div>
+    <button onclick="connectPastedAddress()" style="width:100%;padding:18px;border-radius:14px;background:var(--purple);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer">Connect →</button>
+    <div style="text-align:center;margin-top:14px;font-size:14px;color:var(--text2);opacity:0.7">Your wallet address is public — no password needed</div>
   </div>
 </div>
 
