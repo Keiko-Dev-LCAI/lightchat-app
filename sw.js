@@ -10,12 +10,12 @@ self.addEventListener('push', function(event) {
 
   const options = {
     body: data.body,
-    icon: 'https://keiko-dev-lcai.github.io/lightchat-app/icon-192.png',
-    badge: 'https://keiko-dev-lcai.github.io/lightchat-app/icon-192.png',
+    icon: 'https://lightchat.chat/icon-192.png',
+    badge: 'https://lightchat.chat/icon-192.png',
     tag: 'lightchat-message',
     renotify: true,
     vibrate: [200, 100, 200],
-    data: { url: self.location.origin + '/lightchat-app/' }
+    data: { url: 'https://lightchat.chat/' }
   };
 
   event.waitUntil(
@@ -27,12 +27,12 @@ self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url)
     ? event.notification.data.url
-    : 'https://keiko-dev-lcai.github.io/lightchat-app/';
+    : 'https://lightchat.chat/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
       for (let client of list) {
-        if (client.url.includes('lightchat-app') && 'focus' in client) {
+        if (client.url.includes('lightchat.chat') && 'focus' in client) {
           return client.focus();
         }
       }
