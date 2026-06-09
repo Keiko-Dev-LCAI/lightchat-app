@@ -1423,6 +1423,21 @@ body {
   </div>
 </div>
 
+<!-- ── SHARE FORWARD MODAL ── -->
+<div id="share-forward-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:600;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div class="modal-box" style="max-width:420px;margin:auto">
+    <div style="font-size:22px;font-weight:700;margin-bottom:16px;text-align:center">🔗 Forward to...</div>
+    <div id="share-card-preview" style="background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:20px"></div>
+    <input id="share-search-input" type="text" placeholder="Search contacts &amp; groups..."
+      oninput="renderShareRecipients(this.value)"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);padding:12px 14px;border-radius:10px;font-size:16px;outline:none;margin-bottom:12px;font-family:inherit">
+    <div id="share-recipient-list" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;margin-bottom:16px"></div>
+    <div class="modal-error" id="share-send-error"></div>
+    <button class="modal-btn" id="share-send-btn" onclick="sendShareCard()" style="opacity:0.45;pointer-events:none">Send</button>
+    <button class="modal-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text2);margin-top:10px" onclick="closeShareModal()">Cancel</button>
+  </div>
+</div>
+
 <!-- ── UPGRADE MODAL (Premium video calls) ── -->
 <div id="upgrade-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.93);z-index:600;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
   <div class="modal-box" style="max-width:460px;margin:auto">
@@ -1646,6 +1661,7 @@ async function onWalletConnected() {
     loadGroups();
     loadMemories();
     handleInviteParam();
+    handleShareParam();
   } else {
     showHandleModal();
   }
@@ -1671,6 +1687,7 @@ async function registerHandle() {
   myHandle = resp.handle;
   document.getElementById('handle-modal').classList.remove('open');
   updateUI(); connectSocket(); loadContacts(); loadGroups(); loadMemories();
+  handleInviteParam(); handleShareParam();
   showToast('Welcome to LightChat ' + myHandle + '!');
   handleInviteParam();
 }
@@ -1944,6 +1961,25 @@ function appendMessage(msg, senderHandle) {
     let g = {}; try { g = JSON.parse(msg.content); } catch(e) {}
     const rad = isOut ? 'border-bottom-right-radius:5px' : 'border-bottom-left-radius:5px';
     wrap.innerHTML = '<div><div style="background:linear-gradient(135deg,#6b4fc4,#9b7fe8);padding:22px 28px;border-radius:20px;min-width:190px;text-align:center;' + rad + '"><div style="font-size:52px">💜</div><div style="font-size:22px;font-weight:700;color:#fff;margin:8px 0">' + (g.amount || '?') + ' LCAI</div><div style="font-size:15px;color:rgba(255,255,255,0.8);margin-bottom:10px">' + (isOut ? 'You sent a gift' : 'Sent you a gift') + '</div>' + (g.txHash ? '<a href="https://scan.lightchain.ai/tx/' + g.txHash + '" target="_blank" style="font-size:13px;color:rgba(255,255,255,0.75);text-decoration:underline">View on Lightscan ↗</a>' : '') + '</div><div class="msg-time">' + time + '</div></div>';
+  } else if (t === 'share_card') {
+    let sc = {}; try { sc = JSON.parse(msg.content); } catch(e) {}
+    const appBadges = {lighttunes:'🎵', orcamint:'🏪', topten:'📊'};
+    const appNames  = {lighttunes:'LightTunes', orcamint:'OrcaMint', topten:'Top Ten'};
+    const scBadge   = appBadges[sc.app] || '🔗';
+    const scAppName = appNames[sc.app]  || sc.app || 'App';
+    const scRad     = isOut ? 'border-bottom-right-radius:5px' : 'border-bottom-left-radius:5px';
+    wrap.innerHTML = '<div><div style="background:var(--card);border:1px solid var(--border);border-radius:16px;min-width:220px;max-width:280px;overflow:hidden;' + scRad + '">'
+      + '<div style="background:rgba(155,127,232,0.15);padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)">'
+      + '<span style="font-size:18px">' + scBadge + '</span>'
+      + '<span style="font-size:13px;font-weight:700;color:var(--purple)">' + escapeHtml(scAppName) + '</span>'
+      + '</div>'
+      + '<div style="padding:14px">'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:4px">' + escapeHtml(sc.title || '') + '</div>'
+      + (sc.desc  ? '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">' + escapeHtml(sc.desc) + '</div>' : '')
+      + (sc.thumb ? '<img src="' + escapeHtml(sc.thumb) + '" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;display:block;margin-bottom:8px" loading="lazy">' : '')
+      + (sc.url   ? '<a href="' + escapeHtml(sc.url) + '" target="_blank" rel="noopener" style="display:inline-block;background:var(--purple);color:#fff;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">Open →</a>' : '')
+      + '</div></div>'
+      + '<div class="msg-time">' + time + '</div></div>';
   } else if (t === 'voice') {
     let v = {}; try { v = JSON.parse(msg.content); } catch(e) {}
     const vDur = Math.round(v.duration || 0);
@@ -2020,6 +2056,141 @@ function showInvitePanel() {
 
 function copyInviteLink() {
   navigator.clipboard.writeText(APP_URL + '?add=' + wallet).then(() => showToast('Link copied!')).catch(() => showToast('Tap and hold to copy'));
+}
+
+// ════════════════════════════════════════════════════════════════
+// SHARE-TO-LIGHTCHAT — receive share params from other apps
+// ════════════════════════════════════════════════════════════════
+let _sharePayload = null;
+let _shareSelectedTarget = null;
+let _shareRecipientItems = [];
+
+function parseShareParams() {
+  const p = new URLSearchParams(window.location.search);
+  if (!p.get('app') && !p.get('title')) return null;
+  return {
+    app:   p.get('app')   || '',
+    title: p.get('title') || '',
+    url:   p.get('url')   || '',
+    desc:  p.get('desc')  || '',
+    thumb: p.get('thumb') || ''
+  };
+}
+
+async function handleShareParam() {
+  const payload = parseShareParams();
+  if (!payload || !payload.title) return;
+  _sharePayload = payload;
+  // Give contacts/groups time to load, then show modal
+  setTimeout(openShareModal, 900);
+}
+
+function openShareModal() {
+  if (!_sharePayload) return;
+  const appBadges = {lighttunes:'🎵', orcamint:'🏪', topten:'📊'};
+  const appNames  = {lighttunes:'LightTunes', orcamint:'OrcaMint', topten:'Top Ten'};
+  const badge   = appBadges[_sharePayload.app] || '🔗';
+  const appName = appNames[_sharePayload.app]  || _sharePayload.app || 'App';
+
+  const preview = document.getElementById('share-card-preview');
+  if (preview) {
+    preview.innerHTML =
+      '<div style="background:rgba(155,127,232,0.15);padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)">'
+      + '<span style="font-size:18px">' + badge + '</span>'
+      + '<span style="font-size:13px;font-weight:700;color:var(--purple)">' + escapeHtml(appName) + '</span>'
+      + '</div>'
+      + '<div style="padding:14px">'
+      + '<div style="font-size:15px;font-weight:700;margin-bottom:4px">' + escapeHtml(_sharePayload.title) + '</div>'
+      + (_sharePayload.desc  ? '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">' + escapeHtml(_sharePayload.desc) + '</div>' : '')
+      + (_sharePayload.thumb ? '<img src="' + escapeHtml(_sharePayload.thumb) + '" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;display:block;margin-bottom:8px" loading="lazy">' : '')
+      + (_sharePayload.url   ? '<span style="display:inline-block;background:var(--purple);color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600">Open →</span>' : '')
+      + '</div>';
+  }
+
+  _shareSelectedTarget = null;
+  const searchEl = document.getElementById('share-search-input');
+  if (searchEl) searchEl.value = '';
+  const errEl = document.getElementById('share-send-error');
+  if (errEl) errEl.style.display = 'none';
+  const sendBtn = document.getElementById('share-send-btn');
+  if (sendBtn) { sendBtn.style.opacity = '0.45'; sendBtn.style.pointerEvents = 'none'; }
+
+  renderShareRecipients('');
+  document.getElementById('share-forward-modal').style.display = 'flex';
+
+  // Clean URL so modal won't reopen on refresh
+  window.history.replaceState({}, '', window.location.pathname);
+}
+
+function renderShareRecipients(query) {
+  const q = query.toLowerCase();
+  const approved = contacts.filter(c => c.status === 'approved');
+  _shareRecipientItems = [
+    ...approved.filter(c =>
+      !q || (c.handle||'').toLowerCase().includes(q) || c.wallet.toLowerCase().includes(q)
+    ).map(c => ({type:'dm', wallet:c.wallet, name:c.handle||shortenWallet(c.wallet)})),
+    ...groups.filter(g =>
+      !q || (g.name||'').toLowerCase().includes(q)
+    ).map(g => ({type:'group', id:g.id, name:g.name}))
+  ];
+
+  const list = document.getElementById('share-recipient-list');
+  if (!list) return;
+  if (_shareRecipientItems.length === 0) {
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text2);font-size:15px">No contacts or groups found</div>';
+    return;
+  }
+  list.innerHTML = _shareRecipientItems.map((item, i) => {
+    const sel = _shareSelectedTarget &&
+      ((item.type === 'dm'    && _shareSelectedTarget.wallet === item.wallet) ||
+       (item.type === 'group' && _shareSelectedTarget.id    === item.id));
+    return '<div onclick="selectShareTarget(' + i + ')" style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:10px;cursor:pointer;background:' + (sel ? 'rgba(155,127,232,0.18)' : 'var(--card)') + ';border:1px solid ' + (sel ? 'var(--purple)' : 'transparent') + ';transition:all .15s">'
+      + '<div style="width:38px;height:38px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0">'
+      + (item.type === 'group' ? '👥' : escapeHtml(avatarLetter(item.name)))
+      + '</div>'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(item.name) + '</div>'
+      + '<div style="font-size:12px;color:var(--text2)">' + (item.type === 'group' ? 'Group' : 'DM') + '</div>'
+      + '</div>'
+      + (sel ? '<span style="color:var(--purple);font-size:18px;font-weight:700">✓</span>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function selectShareTarget(idx) {
+  _shareSelectedTarget = _shareRecipientItems[idx] || null;
+  renderShareRecipients(document.getElementById('share-search-input')?.value || '');
+  const sendBtn = document.getElementById('share-send-btn');
+  if (sendBtn && _shareSelectedTarget) {
+    sendBtn.style.opacity = '1';
+    sendBtn.style.pointerEvents = 'auto';
+  }
+}
+
+async function sendShareCard() {
+  if (!_sharePayload || !_shareSelectedTarget || !socket) {
+    const e = document.getElementById('share-send-error');
+    if (e) { e.textContent = 'Please select a recipient'; e.style.display = 'block'; }
+    return;
+  }
+  const content = JSON.stringify(_sharePayload);
+  if (_shareSelectedTarget.type === 'group') {
+    socket.emit('send_group_message', {wallet, group_id: _shareSelectedTarget.id, content, type: 'share_card'});
+  } else {
+    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: _shareSelectedTarget.wallet, content, type: 'share_card'});
+    appendMessage({sender_wallet: wallet, content, type: 'share_card', msg_type: 'share_card', created_at: Math.floor(Date.now()/1000)});
+    scrollToBottom();
+  }
+  const targetName = _shareSelectedTarget.name;
+  closeShareModal();
+  showToast('✅ Shared to ' + targetName + '!');
+}
+
+function closeShareModal() {
+  document.getElementById('share-forward-modal').style.display = 'none';
+  _sharePayload = null;
+  _shareSelectedTarget = null;
+  _shareRecipientItems = [];
 }
 
 async function handleInviteParam() {
@@ -3974,6 +4145,7 @@ window.addEventListener('load', async () => {
       loadGroups();
       loadMemories();
       handleInviteParam();
+      handleShareParam();
     }
   }
   // ── 2. Silent web3 reconnect (Trust Wallet / injected wallet)
@@ -3983,7 +4155,7 @@ window.addEventListener('load', async () => {
       if (accounts.length > 0) {
         const addr = accounts[0].toLowerCase();
         if (addr !== wallet) { wallet = addr; onWalletConnected(); }
-        else { connectSocket(); handleInviteParam(); }
+        else { connectSocket(); handleInviteParam(); handleShareParam(); }
       }
     } catch(e) {}
   }
