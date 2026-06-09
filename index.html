@@ -2319,7 +2319,12 @@ async function getLocalStream() {
     });
     stream.getAudioTracks().forEach(t => { t.enabled = true; });
     const atracks = stream.getAudioTracks();
-    showToast('Mic: ' + (atracks.length ? atracks.length + ' track ✓' : '0 tracks ✗ — allow mic in Trust Wallet settings'), 5000);
+    if (!atracks.length) {
+      // Mic blocked — force an alert the user cannot miss
+      alert('⚠️ MICROPHONE BLOCKED (0 tracks)\n\nAudio will not work.\n\nFix: Go to Android Settings → Apps → Trust Wallet → Permissions → Microphone → Allow\n\nThen close and reopen Trust Wallet.\n\nTap OK to continue the call without audio.');
+    } else {
+      alert('✅ Microphone OK (' + atracks.length + ' track captured)\n\nIf you still hear no audio after connecting, the issue is playback — tap OK to continue.');
+    }
     return stream;
   } catch(err) {
     console.error('getUserMedia failed:', err);
