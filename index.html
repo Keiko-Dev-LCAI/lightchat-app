@@ -5444,7 +5444,7 @@ function initLanguage() {
 var _origLoadSettings = loadSettings;
 loadSettings = function() {
   _origLoadSettings();
-  if (!('autoTranslate' in settings)) settings.autoTranslate = false;
+  if (!('autoTranslate' in settings)) settings.autoTranslate = true;
 };
 
 // Patch showSettings to also restore autoTranslate toggle
@@ -5472,8 +5472,6 @@ async function translateText(text, targetLang) {
 }
 
 function addTranslateButton(wrapEl, originalText) {
-  // wrapEl = innerDiv (contains .msg-bubble + .msg-time)
-  // Append translate button INSIDE the bubble itself, not below timestamp
   var bubble = wrapEl.querySelector('.msg-bubble');
   var target = bubble || wrapEl;
   var outer = document.createElement('div');
@@ -5481,41 +5479,47 @@ function addTranslateButton(wrapEl, originalText) {
 
   var btn = document.createElement('button');
   btn.className = 'translate-btn';
-  btn.textContent = t('translate');
-  var done = false;
+  btn.textContent = '🌐 Translate';
   var tDiv = null;
+  var pickerRow = null;
 
-  btn.onclick = async function() {
-    if (done) {
-      if (tDiv) tDiv.style.display = tDiv.style.display === 'none' ? '' : 'none';
-      btn.textContent = (tDiv && tDiv.style.display === 'none') ? t('translate') : '🌐 Hide';
+  btn.onclick = function() {
+    // If translation already shown, toggle it
+    if (tDiv) {
+      tDiv.style.display = tDiv.style.display === 'none' ? '' : 'none';
+      btn.textContent = (tDiv.style.display === 'none') ? '🌐 Translate' : '🌐 Hide';
       return;
     }
-    // ── Premium gate ──
-    var _pAccess = await checkCallAccess().catch(function() { return {subscribed: false}; });
-    if (!_pAccess.subscribed && !_isPremiumWhitelisted()) {
-      showToast('⭐ Auto-translate is a Premium feature — upgrade for $1/month');
-      showUpgradeModal(null);
-      return;
-    }
-    btn.textContent = t('translating');
-    btn.disabled = true;
-    var result = await translateText(originalText, currentLang);
-    btn.disabled = false;
-    if (result && result.toLowerCase() !== originalText.toLowerCase()) {
-      tDiv = document.createElement('div');
-      tDiv.className = 'translated-text';
-      tDiv.textContent = result;
-      outer.appendChild(tDiv);
-      done = true;
-      btn.textContent = '🌐 Hide';
-    } else {
-      // Same language or no translation available — mark done silently
-      btn.textContent = '✓';
-      btn.title = 'Already in your language';
-      btn.disabled = true;
-      done = true;
-    }
+    // If picker already open, close it
+    if (pickerRow) { pickerRow.remove(); pickerRow = null; return; }
+    // Show language picker flags
+    pickerRow = document.createElement('div');
+    pickerRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:6px';
+    [['zh','🇨🇳'],['en','🇺🇸'],['es','🇪🇸'],['fr','🇫🇷'],['ja','🇯🇵'],['ko','🇰🇷']].forEach(function(pair) {
+      var lb = document.createElement('button');
+      lb.className = 'translate-btn';
+      lb.textContent = pair[1];
+      lb.style.cssText = 'font-size:22px;padding:2px 8px';
+      lb.onclick = async function(e) {
+        e.stopPropagation();
+        if (pickerRow) { pickerRow.remove(); pickerRow = null; }
+        btn.textContent = '🌐 …';
+        btn.disabled = true;
+        var result = await translateText(originalText, pair[0]);
+        btn.disabled = false;
+        if (result) {
+          tDiv = document.createElement('div');
+          tDiv.className = 'translated-text';
+          tDiv.textContent = result;
+          outer.appendChild(tDiv);
+          btn.textContent = '🌐 Hide';
+        } else {
+          btn.textContent = '🌐 Translate';
+        }
+      };
+      pickerRow.appendChild(lb);
+    });
+    outer.appendChild(pickerRow);
   };
   outer.appendChild(btn);
   target.appendChild(outer);
@@ -5535,22 +5539,23 @@ appendMessage = function(msg, senderHandle) {
     // Add translate button
     var innerDiv = wrap.firstElementChild;
     if (innerDiv) {
-      // Auto-translate if enabled AND user is premium
+      // Always add translate button
+      addTranslateButton(innerDiv, msg.content);
+      // Auto-translate if enabled (premium): run and fill in translation automatically
       if (settings.autoTranslate) {
         (async function() {
           var _atAccess = await checkCallAccess().catch(function() { return {subscribed: false}; });
-          if (!_atAccess.subscribed && !_isPremiumWhitelisted()) return; // silently skip if not premium
+          if (!_atAccess.subscribed && !_isPremiumWhitelisted()) return;
           var result = await translateText(msg.content, currentLang);
           if (result && result.toLowerCase() !== msg.content.toLowerCase()) {
-            var tDiv = document.createElement('div');
-            tDiv.className = 'translated-text';
-            tDiv.textContent = result;
             var _atBubble = innerDiv.querySelector('.msg-bubble');
-            (_atBubble || innerDiv).appendChild(tDiv);
+            var _atTarget = _atBubble || innerDiv;
+            var atDiv = document.createElement('div');
+            atDiv.className = 'translated-text';
+            atDiv.textContent = result;
+            _atTarget.appendChild(atDiv);
           }
         })();
-      } else {
-        addTranslateButton(innerDiv, msg.content);
       }
     }
   }
