@@ -2331,12 +2331,9 @@ async function getLocalStream() {
   } catch(e) {
     // mic failed — continue with video only, alert so user sees it
   }
-  // Diagnostic alert — cannot be missed
   const atracks = videoStream.getAudioTracks();
   if (!atracks.length) {
-    alert('⚠️ MICROPHONE BLOCKED (0 tracks)\n\nAudio will not work.\n\nFix: Android Settings → Apps → Trust Wallet → Permissions → Microphone → Allow\n\nThen close & reopen Trust Wallet.\n\nTap OK to continue without audio.');
-  } else {
-    alert('✅ Mic OK — ' + atracks.length + ' track captured.\n\nTap OK to continue. If no audio after connecting, the problem is playback.');
+    showToast('⚠️ Mic blocked — go to Android Settings → Apps → Trust Wallet → Permissions → Microphone → Allow', 8000);
   }
   return videoStream;
 }
