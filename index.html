@@ -2018,12 +2018,26 @@ async function sendLcaiGift() {
 // RINGTONES
 // ════════════════════════════════
 let ringInterval = null, ringAudioEl = null, callTimeoutId = null;
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === 'closed') {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume().catch(() => {});
+  return _audioCtx;
+}
+// Unlock audio context on any user tap (required by iOS)
+document.addEventListener('click', function unlockAudio() {
+  getAudioCtx();
+  document.removeEventListener('click', unlockAudio, true);
+}, true);
 
 const RING_INTERVALS = {classic: 4200, chime: 3200, modern: 2400, lightchat: 3000};
 
 function playBuiltinRingOnce(tone) {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
+    if (!ctx) return;
     const now = ctx.currentTime;
 
     if (tone === 'classic') {
@@ -2069,8 +2083,7 @@ function playBuiltinRingOnce(tone) {
       });
     }
 
-    // Let the AudioContext close itself after sounds finish
-    setTimeout(() => { try { ctx.close(); } catch(e) {} }, 3000);
+    // Shared AudioContext stays open for reuse
   } catch(e) {}
 }
 
@@ -2350,6 +2363,10 @@ async function acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
   stopRinging();
+  // Unlock remote video audio NOW during user gesture — must be synchronous before any await
+  const _rv = document.getElementById('remote-video');
+  if (_rv) { _rv.muted = false; _rv.play().catch(() => {}); }
+  if (_audioCtx) _audioCtx.resume().catch(() => {});
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
     localStream = await getLocalStream();
@@ -2417,6 +2434,8 @@ function cleanupCall() {
   document.getElementById('call-active-overlay').style.display = 'none';
   const lv = document.getElementById('local-video'); if (lv) lv.srcObject = null;
   const rv = document.getElementById('remote-video'); if (rv) rv.srcObject = null;
+  // Re-join socket room so incoming calls work after call ends
+  if (socket && wallet) setTimeout(() => { if (socket && wallet) socket.emit('auth', {wallet}); }, 300);
 }
 
 function toggleMute() {
