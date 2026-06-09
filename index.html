@@ -1203,8 +1203,8 @@ body {
 </div>
 
 <div id="call-active-overlay">
-  <video id="remote-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;background:#000"></video>
-  <audio id="remote-audio" autoplay playsinline></audio>
+  <video id="remote-video" autoplay playsinline style="width:100%;height:100%;object-fit:cover;background:#000"></video>
+  <audio id="remote-audio" autoplay></audio>
   <video id="local-video" autoplay playsinline muted style="position:absolute;top:20px;right:20px;width:120px;height:160px;border-radius:12px;object-fit:cover;border:2px solid var(--purple);background:#111"></video>
   <div style="position:absolute;bottom:0;left:0;right:0;padding:28px 32px 36px;display:flex;flex-direction:column;align-items:center;gap:18px;background:linear-gradient(transparent,rgba(0,0,0,0.9))">
     <div style="display:flex;justify-content:center;gap:28px">
@@ -2288,19 +2288,24 @@ const ICE_SERVERS = [
 ];
 
 function onRemoteTrack(e) {
-  if (e.track.kind === 'video') {
-    const rv = document.getElementById('remote-video');
-    if (!rv) return;
+  // Add all tracks to video element (handles video display + keeps working across browsers)
+  const rv = document.getElementById('remote-video');
+  if (rv) {
     if (!rv.srcObject) rv.srcObject = new MediaStream();
     rv.srcObject.addTrack(e.track);
+    rv.autoplay = true;
+    rv.playsInline = true;
     rv.play().catch(() => {});
-  } else if (e.track.kind === 'audio') {
+  }
+  // ALSO route audio to dedicated <audio> element — bypasses iOS muted-video autoplay block
+  if (e.track.kind === 'audio') {
     const ra = document.getElementById('remote-audio');
-    if (!ra) return;
-    if (!ra.srcObject) ra.srcObject = new MediaStream();
-    ra.srcObject.addTrack(e.track);
-    ra.muted = false;
-    ra.play().catch(() => {});
+    if (ra) {
+      if (!ra.srcObject) ra.srcObject = new MediaStream();
+      ra.srcObject.addTrack(e.track);
+      ra.muted = false;
+      ra.play().catch(() => {});
+    }
   }
 }
 
