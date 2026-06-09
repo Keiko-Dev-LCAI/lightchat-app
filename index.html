@@ -971,13 +971,7 @@ body {
 
 /* ── Voice AI floating button ── */
 #voice-ai-fab {
-  position: fixed; bottom: 90px; right: 18px;
-  width: 56px; height: 56px;
-  background: var(--purple); border: none; border-radius: 50%;
-  color: #fff; font-size: 24px; cursor: pointer; z-index: 400;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 20px rgba(155,127,232,0.45);
-  transition: background 0.15s, transform 0.15s;
+  display: none; /* Voice AI disabled — Web Speech API unreliable on mobile */
 }
 #voice-ai-fab:hover, #voice-ai-fab:active { background: var(--purple-dark); transform: scale(1.08); }
 @media (min-width: 768px) { #voice-ai-fab { bottom: 32px; right: 32px; } }
