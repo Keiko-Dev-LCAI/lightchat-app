@@ -1110,9 +1110,9 @@ def api_verify_subscription():
         to_addr = (tx.get('to') or '').lower()
         if to_addr != OWNER_WALLET:
             return jsonify({'error': 'This transaction was not sent to the LightChat subscription address'}), 400
-        # Verify value: must be >= $3 worth of LCAI
+        # Verify value: must be >= $1 worth of LCAI
         price = get_lcai_price()
-        required_lcai = 3.0 / price
+        required_lcai = 1.0 / price
         required_wei = int(required_lcai * 1e18)
         tx_value = int(tx.get('value', '0x0'), 16)
         if tx_value < required_wei:
