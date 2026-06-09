@@ -6,6 +6,9 @@
 <title>LightChat</title>
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- WalletConnect / Reown AppKit — defer keeps page fast, ready before window.load -->
+<script defer src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.3/dist/index.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 :root {
@@ -1217,6 +1220,41 @@ body {
 
 <div id="toast"></div>
 
+<!-- ── WALLETCONNECT / REOWN APPKIT MODAL ── -->
+<div id="wc-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:600;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 24px;width:100%;max-width:390px;position:relative">
+    <button onclick="closeWCModal()" style="position:absolute;top:14px;right:18px;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;line-height:1;padding:4px 8px">✕</button>
+    <div style="font-size:26px;font-weight:700;text-align:center;margin-bottom:6px">🔗 Connect Wallet</div>
+    <div id="wc-modal-sub" style="font-size:17px;color:var(--text2);text-align:center;margin-bottom:22px">Connecting…</div>
+    <!-- Loading state -->
+    <div id="wc-loading" style="text-align:center;padding:30px 0;color:var(--text2);font-size:17px">
+      <div style="font-size:40px;margin-bottom:12px">⏳</div>
+      Preparing connection…
+    </div>
+    <!-- Desktop: QR code -->
+    <div id="wc-qr-section" style="display:none;flex-direction:column;align-items:center;gap:14px">
+      <div id="wc-qr-canvas" style="background:#fff;padding:14px;border-radius:14px;display:inline-block"></div>
+      <button onclick="wcCopyUri()" style="background:var(--bg);border:1px solid var(--border);border-radius:12px;color:var(--text2);font-size:17px;padding:13px 20px;cursor:pointer;width:100%">📋 Copy link</button>
+    </div>
+    <!-- Mobile: deep links -->
+    <div id="wc-deeplink-section" style="display:none;flex-direction:column;gap:11px">
+      <button onclick="wcOpenWallet('trust')" style="display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 20px;cursor:pointer;width:100%;color:var(--text);font-size:19px;font-weight:600">
+        <span style="font-size:28px">🔐</span><span>Trust Wallet</span>
+      </button>
+      <button onclick="wcOpenWallet('metamask')" style="display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 20px;cursor:pointer;width:100%;color:var(--text);font-size:19px;font-weight:600">
+        <span style="font-size:28px">🦊</span><span>MetaMask</span>
+      </button>
+      <button onclick="wcOpenWallet('rainbow')" style="display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 20px;cursor:pointer;width:100%;color:var(--text);font-size:19px;font-weight:600">
+        <span style="font-size:28px">🌈</span><span>Rainbow</span>
+      </button>
+      <button onclick="wcCopyUri()" style="display:flex;align-items:center;gap:14px;background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 20px;cursor:pointer;width:100%;color:var(--text2);font-size:19px;font-weight:500">
+        <span style="font-size:28px">📋</span><span>Copy link</span>
+      </button>
+    </div>
+    <div style="text-align:center;margin-top:18px;font-size:13px;color:var(--text2);opacity:0.7">Powered by WalletConnect · Reown AppKit</div>
+  </div>
+</div>
+
 <script>
 const BACKEND = 'https://web-production-bc64f.up.railway.app';
 const APP_URL = window.location.origin + window.location.pathname.replace('index.html','');
@@ -1226,17 +1264,26 @@ let currentChat = null, contacts = [], unreadCounts = {};
 let searchFoundWallet = null;
 
 async function connectWallet() {
-  if (!window.ethereum) {
-    showToast('Please open in your wallet browser (Trust Wallet)');
+  // ── Path 1: injected wallet (Trust Wallet in-app browser, MetaMask, etc.)
+  if (window.ethereum) {
+    try {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
+      const signer = provider.getSigner();
+      wallet = (await signer.getAddress()).toLowerCase();
+      onWalletConnected();
+    } catch(e) { showToast('Connection cancelled'); }
+    return; // stay in injected-wallet path regardless of outcome
+  }
+  // ── Path 2: WalletConnect / Reown AppKit (Safari, Chrome, any real browser)
+  if (wcProvider && wcProvider.accounts && wcProvider.accounts.length > 0) {
+    // Active WC session already exists — restore silently
+    wallet = wcProvider.accounts[0].toLowerCase();
+    localStorage.setItem('lc_wallet', wallet);
+    onWalletConnected();
     return;
   }
-  try {
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    await provider.send('eth_requestAccounts', []);
-    const signer = provider.getSigner();
-    wallet = (await signer.getAddress()).toLowerCase();
-    onWalletConnected();
-  } catch(e) { showToast('Connection cancelled'); }
+  connectViaWalletConnect();
 }
 
 async function onWalletConnected() {
@@ -2520,29 +2567,190 @@ function toggleCamera() {
   if (t) { t.enabled = !t.enabled; document.getElementById('cam-btn').textContent = t.enabled ? '📷' : '🚫'; }
 }
 
+// ════════════════════════════════
+// WALLETCONNECT / REOWN APPKIT
+// ════════════════════════════════
+let wcProvider = null;
+let _wcUri = null;
+
+async function initWalletConnect() {
+  try {
+    const lib = window['@walletconnect/ethereum-provider'];
+    if (!lib) { console.warn('WC lib not loaded yet'); return; }
+    const Provider = lib.EthereumProvider || lib.default;
+    if (!Provider) { console.warn('EthereumProvider not found in WC lib'); return; }
+
+    wcProvider = await Provider.init({
+      projectId: '3c6a0da53258912a28923198ddac3333',
+      chains: [9200],
+      optionalChains: [1, 56, 137],
+      showQrModal: false,   // we manage the modal ourselves
+      rpcMap: { 9200: 'https://node1.lightchain.ai' },
+      metadata: {
+        name: 'LightChat',
+        description: 'Real-time chat & video calls on Lightchain',
+        url: 'https://keiko-dev-lcai.github.io/lightchat-app/',
+        icons: ['https://keiko-dev-lcai.github.io/lightchat-app/favicon.ico']
+      }
+    });
+
+    // Account change (fires when user switches wallet or on approval return)
+    wcProvider.on('accountsChanged', function(accounts) {
+      if (accounts && accounts.length > 0) {
+        const addr = accounts[0].toLowerCase();
+        if (addr !== wallet) {
+          wallet = addr;
+          localStorage.setItem('lc_wallet', wallet);
+          closeWCModal();
+          onWalletConnected();
+        }
+      }
+    });
+
+    wcProvider.on('disconnect', function() {
+      // Session ended — keep local state intact; user can reconnect
+    });
+
+    // If WC has a persisted session and we have no localStorage wallet, save it
+    if (wcProvider.accounts && wcProvider.accounts.length > 0) {
+      if (!localStorage.getItem('lc_wallet')) {
+        localStorage.setItem('lc_wallet', wcProvider.accounts[0].toLowerCase());
+      }
+    }
+  } catch(e) {
+    console.warn('WalletConnect init error:', e && e.message ? e.message : e);
+  }
+}
+
+async function connectViaWalletConnect() {
+  if (!wcProvider) {
+    showToast('WalletConnect loading — try again in a moment');
+    return;
+  }
+
+  _wcUri = null;
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  _showWCModal(isMobile);
+
+  // display_uri fires almost immediately with the WC URI
+  wcProvider.once('display_uri', function(uri) {
+    _wcUri = uri;
+    if (isMobile) {
+      _wcShowDeepLinks();
+    } else {
+      _wcShowQR(uri);
+    }
+  });
+
+  try {
+    await wcProvider.connect();
+    const accounts = wcProvider.accounts;
+    if (accounts && accounts.length > 0) {
+      wallet = accounts[0].toLowerCase();
+      localStorage.setItem('lc_wallet', wallet);
+      closeWCModal();
+      onWalletConnected();
+    }
+  } catch(e) {
+    closeWCModal();
+    const msg = (e && e.message) ? e.message : '';
+    if (!msg.includes('User rejected') && !msg.includes('reset') && !msg.includes('closed')) {
+      showToast('Connection failed — try again');
+    }
+  }
+}
+
+function _showWCModal(isMobile) {
+  document.getElementById('wc-modal').style.display = 'flex';
+  document.getElementById('wc-loading').style.display = 'block';
+  document.getElementById('wc-qr-section').style.display = 'none';
+  document.getElementById('wc-deeplink-section').style.display = 'none';
+  document.getElementById('wc-modal-sub').textContent = isMobile
+    ? 'Opening your wallet…'
+    : 'Scan with your wallet app';
+}
+
+function closeWCModal() {
+  document.getElementById('wc-modal').style.display = 'none';
+  _wcUri = null;
+}
+
+function _wcShowDeepLinks() {
+  document.getElementById('wc-loading').style.display = 'none';
+  document.getElementById('wc-deeplink-section').style.display = 'flex';
+  document.getElementById('wc-modal-sub').textContent = 'Tap to open in your wallet';
+}
+
+function _wcShowQR(uri) {
+  document.getElementById('wc-loading').style.display = 'none';
+  document.getElementById('wc-qr-section').style.display = 'flex';
+  const el = document.getElementById('wc-qr-canvas');
+  el.innerHTML = '';
+  try {
+    if (window.QRCode) {
+      new QRCode(el, { text: uri, width: 220, height: 220,
+        colorDark: '#000000', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M });
+    } else {
+      el.style.cssText = 'background:#fff;padding:14px;border-radius:14px;max-width:280px;word-break:break-all;font-size:11px;color:#333';
+      el.textContent = uri;
+    }
+  } catch(err) {
+    el.textContent = uri;
+  }
+}
+
+function wcOpenWallet(type) {
+  if (!_wcUri) { showToast('Connection not ready yet, please wait'); return; }
+  const enc = encodeURIComponent(_wcUri);
+  let link = '';
+  if (type === 'trust')    link = 'https://link.trustwallet.com/wc?uri=' + enc;
+  else if (type === 'metamask') link = 'https://metamask.app.link/wc?uri=' + enc;
+  else if (type === 'rainbow')  link = 'https://rnbwapp.com/wc?uri=' + enc;
+  if (link) window.location.href = link;
+}
+
+function wcCopyUri() {
+  if (!_wcUri) { showToast('Link not ready yet'); return; }
+  navigator.clipboard.writeText(_wcUri)
+    .then(() => showToast('WalletConnect link copied!'))
+    .catch(() => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = _wcUri;
+        ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Link copied!');
+      } catch(err) { showToast('Could not copy — try long-press'); }
+    });
+}
+
 window.addEventListener('load', async () => {
   loadSettings();
   registerServiceWorker();
   initPicker();
-  // Try to restore session from localStorage first (instant — no popup)
+  // ── 1. Restore from localStorage (instant — no popup)
   const saved = localStorage.getItem('lc_wallet');
   if (saved) {
     wallet = saved;
     const resp = await fetch(BACKEND + '/handle/' + wallet).then(r => r.json()).catch(() => ({}));
     if (resp.handle) {
       myHandle = resp.handle;
-      // Show connected UI immediately
       document.getElementById('connect-btn') && (document.getElementById('connect-btn').style.display = 'none');
       document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'block');
       document.getElementById('sidebar-connect-btn') && (document.getElementById('sidebar-connect-btn').style.display = 'none');
       document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
       updateUI();
+      connectSocket();   // connect socket for all users (WC and injected alike)
       loadContacts();
       loadMemories();
       handleInviteParam();
     }
   }
-  // Also try silent web3 reconnect in background
+  // ── 2. Silent web3 reconnect (Trust Wallet / injected wallet)
   if (window.ethereum) {
     try {
       const accounts = await new ethers.providers.Web3Provider(window.ethereum).listAccounts();
@@ -2552,6 +2760,13 @@ window.addEventListener('load', async () => {
         else { connectSocket(); handleInviteParam(); }
       }
     } catch(e) {}
+  }
+  // ── 3. Init WalletConnect + restore any active WC session (Safari / Chrome users)
+  await initWalletConnect();
+  if (!wallet && wcProvider && wcProvider.accounts && wcProvider.accounts.length > 0) {
+    wallet = wcProvider.accounts[0].toLowerCase();
+    localStorage.setItem('lc_wallet', wallet);
+    onWalletConnected();
   }
 });
 </script>
