@@ -315,11 +315,16 @@ body {
 .msg-bubble-wrap { display: flex; width: 100%; }
 .msg-bubble-wrap.out { justify-content: flex-end; }
 .msg-bubble-wrap.in { justify-content: flex-start; }
-.msg-bubble {
+/* The direct div child is the flex item — constrain it here so flex
+   shrinking can't compress it below the longest word */
+.msg-bubble-wrap > div {
   max-width: 88%;
   min-width: min-content;
-  width: -webkit-fit-content;
-  width: fit-content;
+  -webkit-min-width: min-content;
+}
+.msg-bubble {
+  max-width: 100%;
+  min-width: 0;
   padding: 13px 18px;
   border-radius: 20px;
   font-size: 20px;
