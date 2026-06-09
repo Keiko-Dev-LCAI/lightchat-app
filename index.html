@@ -12,8 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="LightChat">
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<!-- WalletConnect / Reown AppKit — defer keeps page fast, ready before window.load -->
-<script defer src="https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.3/dist/index.umd.min.js"></script>
+<!-- WalletConnect loaded on-demand (842KB — only fetch when user taps Connect) -->
 <script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -2628,17 +2627,30 @@ async function initWalletConnect() {
   }
 }
 
+async function loadWCLibrary() {
+  // Already loaded
+  if (window['@walletconnect/ethereum-provider']) return true;
+  // Dynamically inject the script and wait for it
+  return new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.17.3/dist/index.umd.min.js';
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+}
+
 async function connectViaWalletConnect() {
   if (!wcProvider) {
-    // Library may still be loading — wait up to 5s for it
-    showToast('Connecting…');
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      await initWalletConnect();
-      if (wcProvider) break;
+    showToast('Loading wallet connector…');
+    const loaded = await loadWCLibrary();
+    if (!loaded) {
+      showToast('Could not load WalletConnect — check your connection');
+      return;
     }
+    await initWalletConnect();
     if (!wcProvider) {
-      showToast('WalletConnect unavailable — please reload and try again');
+      showToast('WalletConnect failed to start — please reload');
       return;
     }
   }
@@ -2776,12 +2788,15 @@ window.addEventListener('load', async () => {
       }
     } catch(e) {}
   }
-  // ── 3. Init WalletConnect + restore any active WC session (Safari / Chrome users)
-  await initWalletConnect();
-  if (!wallet && wcProvider && wcProvider.accounts && wcProvider.accounts.length > 0) {
-    wallet = wcProvider.accounts[0].toLowerCase();
-    localStorage.setItem('lc_wallet', wallet);
-    onWalletConnected();
+  // ── 3. Restore any active WC session in background (non-blocking)
+  if (!window.ethereum) {
+    loadWCLibrary().then(() => initWalletConnect()).then(() => {
+      if (!wallet && wcProvider && wcProvider.accounts && wcProvider.accounts.length > 0) {
+        wallet = wcProvider.accounts[0].toLowerCase();
+        localStorage.setItem('lc_wallet', wallet);
+        onWalletConnected();
+      }
+    }).catch(() => {});
   }
 });
 </script>
