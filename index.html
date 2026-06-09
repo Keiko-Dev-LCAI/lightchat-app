@@ -2297,14 +2297,15 @@ function onRemoteTrack(e) {
     rv.playsInline = true;
     rv.play().catch(() => {});
   }
-  // ALSO route audio to dedicated <audio> element — bypasses iOS muted-video autoplay block
+  // ALSO route audio to dedicated <audio> element — iOS audio autoplay workaround
   if (e.track.kind === 'audio') {
     const ra = document.getElementById('remote-audio');
     if (ra) {
+      // srcObject was pre-assigned as empty MediaStream during user gesture — just add the track
       if (!ra.srcObject) ra.srcObject = new MediaStream();
       ra.srcObject.addTrack(e.track);
       ra.muted = false;
-      ra.play().catch(() => {});
+      // Don't re-call play() — element is already playing from the gesture-time unlock
     }
   }
 }
@@ -2341,14 +2342,14 @@ async function startVideoCall() {
   callState = 'calling';
   document.getElementById('call-calling-name').textContent = currentChat.handle;
   document.getElementById('call-calling-overlay').style.display = 'flex';
-  // Unlock audio element during user gesture before async ops
+  // Unlock audio element during user gesture with empty stream — iOS requires a source to truly unlock
   const _ra2 = document.getElementById('remote-audio');
-  if (_ra2) { _ra2.muted = false; _ra2.play().catch(() => {}); }
+  if (_ra2) { _ra2.srcObject = new MediaStream(); _ra2.muted = false; _ra2.play().catch(() => {}); }
   try {
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
-    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
+    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS, iceTransportPolicy: 'relay'});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.ontrack = onRemoteTrack;
@@ -2377,11 +2378,11 @@ async function acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
   stopRinging();
-  // Unlock audio elements NOW during user gesture — must be synchronous before any await
+  // Unlock audio element NOW during user gesture with an empty stream — iOS requires this
   const _rv = document.getElementById('remote-video');
   const _ra = document.getElementById('remote-audio');
   if (_rv) _rv.play().catch(() => {});
-  if (_ra) { _ra.muted = false; _ra.play().catch(() => {}); }
+  if (_ra) { _ra.srcObject = new MediaStream(); _ra.muted = false; _ra.play().catch(() => {}); }
   if (_audioCtx) _audioCtx.resume().catch(() => {});
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
@@ -2389,7 +2390,7 @@ async function acceptCall() {
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
     document.getElementById('call-active-overlay').style.display = 'flex';
-    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
+    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS, iceTransportPolicy: 'relay'});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.ontrack = onRemoteTrack;
