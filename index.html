@@ -484,7 +484,7 @@ body {
   flex-shrink: 0;
 }
 .panel-title { font-size: 24px; font-weight: 700; flex: 1; }
-.panel-content { flex: 1; overflow-y: auto; padding: 22px; }
+.panel-content { flex: 1; overflow-y: scroll; -webkit-overflow-scrolling: touch; padding: 22px; min-height: 0; }
 
 /* ── Forms ── */
 .form-group { margin-bottom: 20px; }
@@ -1045,13 +1045,13 @@ body {
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <div class="me-menu-item" style="cursor:default">
+      <div class="me-menu-item" style="cursor:default" id="push-settings-row">
         <div class="me-menu-icon">🔔</div>
         <div style="flex:1">
           <div style="font-size:22px;font-weight:600">Push Notifications</div>
-          <div style="font-size:17px;color:var(--text2);margin-top:4px">Notify when app is in background</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px" id="push-settings-sub">Notify when app is in background</div>
         </div>
-        <label class="toggle-switch">
+        <label class="toggle-switch" id="push-toggle-label">
           <input type="checkbox" id="setting-push" onchange="toggleSetting('pushNotifs')">
           <span class="toggle-slider"></span>
         </label>
@@ -2184,6 +2184,17 @@ function showSettings() {
   document.getElementById('setting-sound').checked = settings.sound;
   document.getElementById('setting-push').checked = settings.pushNotifs;
   updateRingtoneUI();
+  // Show push support status
+  const pushSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
+  const pushLabel = document.getElementById('push-toggle-label');
+  const pushSub = document.getElementById('push-settings-sub');
+  if (!pushSupported) {
+    if (pushLabel) pushLabel.style.display = 'none';
+    if (pushSub) { pushSub.textContent = 'Not available in this browser'; pushSub.style.color = 'var(--red)'; }
+  } else {
+    if (pushLabel) pushLabel.style.display = '';
+    if (pushSub) { pushSub.textContent = 'Notify when app is in background'; pushSub.style.color = ''; }
+  }
   document.getElementById('settings-panel').classList.add('open');
 }
 function closeSettings() { document.getElementById('settings-panel').classList.remove('open'); }
