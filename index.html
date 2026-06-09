@@ -2284,42 +2284,32 @@ function onRemoteTrack(e) {
 }
 
 async function getLocalStream() {
-  // Try combined video+audio first (works on most browsers)
+  // Request camera first — Trust Wallet shows its own Allow dialog for each
+  let videoStream;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+  } catch(e) {
+    alert('Camera permission required.\n\nIn Trust Wallet tap OK on the Allow Camera prompt.');
+    throw e;
+  }
+  // Then request mic separately
+  try {
+    const audioStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    stream.getAudioTracks().forEach(track => { track.enabled = true; });
-    return stream;
-  } catch(combinedErr) {
-    // Combined failed (Trust Wallet shows dialogs one at a time) — try separately
-    try {
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-        });
-        audioStream.getAudioTracks().forEach(t => { t.enabled = true; videoStream.addTrack(t); });
-      } catch(audioErr) {
-        showToast('Microphone not available — other person won\'t hear you', 4000);
-      }
-      return videoStream;
-    } catch(videoErr) {
-      if (videoErr.name === 'NotAllowedError' || videoErr.name === 'PermissionDeniedError') {
-        alert('Camera permission is required.\n\nIn Trust Wallet: tap OK on every Allow prompt.');
-      }
-      throw videoErr;
-    }
+    audioStream.getAudioTracks().forEach(t => { t.enabled = true; videoStream.addTrack(t); });
+  } catch(e) {
+    showToast('Mic not available — other person won\'t hear you', 4000);
   }
+  return videoStream;
 }
 
 async function startVideoCall() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   if (!currentChat) { showToast('Open a chat first'); return; }
-  if (!socket || !socket.connected) { connectSocket(); showToast('Reconnecting... try again in 2 seconds'); return; }
+  if (!socket) { connectSocket(); showToast('Reconnecting — try again in 2 seconds'); return; }
   if (callState) { showToast('Already in a call'); return; }
   // Lock state IMMEDIATELY — prevents multiple taps stacking up permission dialogs
   callState = 'calling';
