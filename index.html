@@ -1205,10 +1205,12 @@ body {
 <div id="call-active-overlay">
   <video id="remote-video" autoplay playsinline style="flex:1;width:100%;object-fit:cover;background:#111"></video>
   <video id="local-video" autoplay playsinline muted style="position:absolute;top:20px;right:20px;width:120px;height:160px;border-radius:12px;object-fit:cover;border:2px solid var(--purple);background:#111"></video>
-  <div style="position:absolute;bottom:0;left:0;right:0;padding:32px;display:flex;justify-content:center;gap:28px;background:linear-gradient(transparent,rgba(0,0,0,0.85))">
-    <button id="mute-btn" onclick="toggleMute()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">🎤</button>
-    <button onclick="endCall()" style="width:76px;height:76px;border-radius:50%;background:var(--red);border:none;font-size:30px;cursor:pointer">📵</button>
-    <button id="cam-btn" onclick="toggleCamera()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">📷</button>
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:28px 32px 36px;display:flex;flex-direction:column;align-items:center;gap:18px;background:linear-gradient(transparent,rgba(0,0,0,0.9))">
+    <div style="display:flex;justify-content:center;gap:28px">
+      <button id="mute-btn" onclick="toggleMute()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">🎤</button>
+      <button id="cam-btn" onclick="toggleCamera()" style="width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,0.18);border:none;font-size:28px;cursor:pointer">📷</button>
+    </div>
+    <button onclick="endCall()" style="width:100%;max-width:260px;padding:18px;border-radius:50px;background:var(--red);border:none;font-size:24px;font-weight:700;color:#fff;cursor:pointer;letter-spacing:0.5px">📵 End Call</button>
   </div>
 </div>
 
@@ -2262,7 +2264,19 @@ function playNotificationSound() {
 // WEBRTC VIDEO CALL
 // ════════════════════════════════
 let peerConnection = null, localStream = null, callState = null;
+let iceCandidateQueue = [];
 const ICE_SERVERS = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
+
+function onRemoteTrack(e) {
+  const rv = document.getElementById('remote-video');
+  // Some devices send e.streams, others only e.track
+  if (e.streams && e.streams[0]) {
+    rv.srcObject = e.streams[0];
+  } else {
+    if (!rv.srcObject) rv.srcObject = new MediaStream();
+    rv.srcObject.addTrack(e.track);
+  }
+}
 
 async function getLocalStream() {
   // Request camera and mic SEPARATELY so Chrome shows a dialog for each one
@@ -2286,7 +2300,7 @@ async function startVideoCall() {
     peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
-    peerConnection.ontrack = e => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+    peerConnection.ontrack = onRemoteTrack;
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
     socket.emit('call_offer', {caller_wallet: wallet, callee_wallet: currentChat.wallet, offer});
@@ -2328,8 +2342,13 @@ async function acceptCall() {
     peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
-    peerConnection.ontrack = e => { document.getElementById('remote-video').srcObject = e.streams[0]; };
+    peerConnection.ontrack = onRemoteTrack;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+    // Flush any ICE candidates that arrived before peer connection was ready
+    for (const c of iceCandidateQueue) {
+      try { await peerConnection.addIceCandidate(new RTCIceCandidate(c)); } catch(e) {}
+    }
+    iceCandidateQueue = [];
     const answer = await peerConnection.createAnswer();
     await peerConnection.setLocalDescription(answer);
     socket.emit('call_answer', {caller_wallet: data.caller_wallet, callee_wallet: wallet, answer});
@@ -2356,7 +2375,8 @@ async function handleCallAnswer(data) {
 }
 
 async function handleIceCandidate(data) {
-  if (!peerConnection || !data.candidate) return;
+  if (!data.candidate) return;
+  if (!peerConnection) { iceCandidateQueue.push(data.candidate); return; }
   try { await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) {}
 }
 
@@ -2379,7 +2399,7 @@ function cleanupCall() {
   stopRinging();
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   if (peerConnection) { peerConnection.close(); peerConnection = null; }
-  callState = null; window._pendingCallOffer = null;
+  callState = null; window._pendingCallOffer = null; iceCandidateQueue = [];
   document.getElementById('call-incoming-overlay').style.display = 'none';
   document.getElementById('call-calling-overlay').style.display = 'none';
   document.getElementById('call-active-overlay').style.display = 'none';
