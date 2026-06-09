@@ -2387,7 +2387,10 @@ async function openChat(contactWallet, handle) {
   if (socket) socket.emit('join_chat', {wallet, contact_wallet: contactWallet});
   const msgs = await fetch(BACKEND + '/messages/' + wallet + '/' + contactWallet).then(r => r.json()).catch(() => []);
   msgs.forEach(m => appendMessage(m));
+  // Scroll after animation settles (chat-view slides in over ~300ms)
   scrollToBottom();
+  setTimeout(scrollToBottom, 50);
+  setTimeout(scrollToBottom, 300);
   document.getElementById('chat-input').focus();
   updateChatList();
 }
@@ -5077,6 +5080,7 @@ async function openGroupChat(groupId, memberCount) {
   }
 
   document.getElementById('chat-input').focus();
+  setTimeout(scrollToBottom, 300);
   renderGroupList();
 }
 
