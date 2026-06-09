@@ -2312,25 +2312,33 @@ function onRemoteTrack(e) {
 }
 
 async function getLocalStream() {
+  // Step 1: camera only — Trust Wallet handles this fine
+  let videoStream;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+    });
+  } catch(e) {
+    alert('Camera permission required.\n\nIn Trust Wallet tap OK on the Allow Camera prompt.');
+    throw e;
+  }
+  // Step 2: mic separately — Trust Wallet shows a second Allow dialog
+  try {
+    const audioStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    stream.getAudioTracks().forEach(t => { t.enabled = true; });
-    const atracks = stream.getAudioTracks();
-    if (!atracks.length) {
-      // Mic blocked — force an alert the user cannot miss
-      alert('⚠️ MICROPHONE BLOCKED (0 tracks)\n\nAudio will not work.\n\nFix: Go to Android Settings → Apps → Trust Wallet → Permissions → Microphone → Allow\n\nThen close and reopen Trust Wallet.\n\nTap OK to continue the call without audio.');
-    } else {
-      alert('✅ Microphone OK (' + atracks.length + ' track captured)\n\nIf you still hear no audio after connecting, the issue is playback — tap OK to continue.');
-    }
-    return stream;
-  } catch(err) {
-    console.error('getUserMedia failed:', err);
-    alert('Camera + Microphone permission is required.\n\nPlease tap ALLOW on both when prompted.');
-    throw err;
+    audioStream.getAudioTracks().forEach(t => { t.enabled = true; videoStream.addTrack(t); });
+  } catch(e) {
+    // mic failed — continue with video only, alert so user sees it
   }
+  // Diagnostic alert — cannot be missed
+  const atracks = videoStream.getAudioTracks();
+  if (!atracks.length) {
+    alert('⚠️ MICROPHONE BLOCKED (0 tracks)\n\nAudio will not work.\n\nFix: Android Settings → Apps → Trust Wallet → Permissions → Microphone → Allow\n\nThen close & reopen Trust Wallet.\n\nTap OK to continue without audio.');
+  } else {
+    alert('✅ Mic OK — ' + atracks.length + ' track captured.\n\nTap OK to continue. If no audio after connecting, the problem is playback.');
+  }
+  return videoStream;
 }
 
 async function startVideoCall() {
