@@ -128,6 +128,17 @@ def init_db():
             timestamp INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS calendar_events (
+            id TEXT PRIMARY KEY,
+            wallet TEXT NOT NULL,
+            title TEXT NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER,
+            notes TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '#9b7fe8',
+            shared_with TEXT NOT NULL DEFAULT '[]',
+            reminder_minutes INTEGER NOT NULL DEFAULT 30
+        );
     ''')
     conn.commit()
     conn.close()
@@ -1205,6 +1216,9 @@ def on_group_peer_signal(data):
 OWNER_WALLET = '0x6518fd07b3da01b17bd37d7c40f9a5e3c87a09ba'
 FREE_CALLS_LIMIT = 5
 
+# Handles that always get premium access (testing / internal accounts)
+PREMIUM_WHITELIST = {'@keiko326', '@bin1977'}
+
 _lcai_price_cache = {'price': 0.004, 'ts': 0}
 
 
@@ -1273,6 +1287,11 @@ def api_call_access(wallet):
     w = wallet.lower().strip()
     now = int(time.time())
     conn = get_db()
+    # Check whitelist first
+    handle_row = conn.execute('SELECT handle FROM handles WHERE wallet = ?', (w,)).fetchone()
+    if handle_row and handle_row['handle'] in PREMIUM_WHITELIST:
+        conn.close()
+        return jsonify({'allowed': True, 'free_remaining': 99, 'subscribed': True, 'expires_at': None})
     sub = conn.execute('SELECT expires_at FROM subscriptions WHERE wallet = ?', (w,)).fetchone()
     subscribed = bool(sub and sub['expires_at'] and sub['expires_at'] > now)
     expires_at = sub['expires_at'] if sub else None
@@ -1324,6 +1343,12 @@ def api_verify_subscription():
     tx_hash = (data.get('tx_hash') or '').strip()
     if not w or not tx_hash:
         return jsonify({'error': 'wallet and tx_hash required'}), 400
+    # Whitelist bypass
+    conn_wl = get_db()
+    handle_wl = conn_wl.execute('SELECT handle FROM handles WHERE wallet = ?', (w,)).fetchone()
+    conn_wl.close()
+    if handle_wl and handle_wl['handle'] in PREMIUM_WHITELIST:
+        return jsonify({'success': True, 'isPremium': True, 'expires_at': None, 'whitelisted': True})
     try:
         result = lightchain_rpc('eth_getTransactionByHash', [tx_hash])
         tx = result.get('result')
@@ -1536,6 +1561,154 @@ def on_watch_sync(data):
         'action': action,
         'time': time_pos
     }, room=party_id)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# CALENDAR EVENTS
+# ══════════════════════════════════════════════════════════════════════
+
+@app.route('/api/calendar')
+def api_get_calendar():
+    wallet_q = request.args.get('wallet', '').lower().strip()
+    month_q  = request.args.get('month', '')  # e.g. "2026-06"
+    if not wallet_q:
+        return jsonify({'error': 'wallet required'}), 400
+    conn = get_db()
+    try:
+        if month_q:
+            try:
+                import calendar as _cal
+                from datetime import datetime as _dt
+                yr, mo = int(month_q[:4]), int(month_q[5:7])
+                first_day = int(_dt(yr, mo, 1).timestamp())
+                last_day_num = _cal.monthrange(yr, mo)[1]
+                last_day = int(_dt(yr, mo, last_day_num, 23, 59, 59).timestamp())
+                rows = conn.execute(
+                    '''SELECT * FROM calendar_events WHERE wallet = ?
+                       AND start_time >= ? AND start_time <= ?
+                       ORDER BY start_time ASC''',
+                    (wallet_q, first_day, last_day)
+                ).fetchall()
+            except Exception:
+                rows = conn.execute(
+                    'SELECT * FROM calendar_events WHERE wallet = ? ORDER BY start_time ASC',
+                    (wallet_q,)
+                ).fetchall()
+        else:
+            rows = conn.execute(
+                'SELECT * FROM calendar_events WHERE wallet = ? ORDER BY start_time ASC',
+                (wallet_q,)
+            ).fetchall()
+        return jsonify([dict(r) for r in rows])
+    finally:
+        conn.close()
+
+
+@app.route('/api/calendar', methods=['POST'])
+def api_create_calendar():
+    data = request.json or {}
+    wallet_b   = data.get('wallet', '').lower().strip()
+    title      = data.get('title', '').strip()
+    start_time = data.get('start_time')
+    if not wallet_b or not title or not start_time:
+        return jsonify({'error': 'wallet, title, start_time required'}), 400
+    ev_id = str(uuid.uuid4())
+    conn = get_db()
+    try:
+        conn.execute(
+            '''INSERT INTO calendar_events
+               (id, wallet, title, start_time, end_time, notes, color, shared_with, reminder_minutes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (ev_id, wallet_b, title,
+             int(start_time),
+             int(data['end_time']) if data.get('end_time') else None,
+             data.get('notes', ''),
+             data.get('color', '#9b7fe8'),
+             json.dumps(data.get('shared_with', [])),
+             int(data.get('reminder_minutes', 30)))
+        )
+        conn.commit()
+        return jsonify({'id': ev_id, 'created': True})
+    finally:
+        conn.close()
+
+
+@app.route('/api/calendar/<ev_id>', methods=['PUT'])
+def api_update_calendar(ev_id):
+    data     = request.json or {}
+    wallet_b = data.get('wallet', '').lower().strip()
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT wallet FROM calendar_events WHERE id = ?', (ev_id,)
+        ).fetchone()
+        if not row or row['wallet'] != wallet_b:
+            return jsonify({'error': 'not found or unauthorized'}), 404
+        fields, vals = [], []
+        for field in ['title', 'notes', 'color']:
+            if field in data:
+                fields.append(field + ' = ?'); vals.append(data[field])
+        for field in ['start_time', 'end_time', 'reminder_minutes']:
+            if field in data:
+                fields.append(field + ' = ?')
+                vals.append(int(data[field]) if data[field] is not None else None)
+        if 'shared_with' in data:
+            fields.append('shared_with = ?'); vals.append(json.dumps(data['shared_with']))
+        if not fields:
+            return jsonify({'updated': False})
+        vals.append(ev_id)
+        conn.execute('UPDATE calendar_events SET ' + ', '.join(fields) + ' WHERE id = ?', vals)
+        conn.commit()
+        return jsonify({'updated': True})
+    finally:
+        conn.close()
+
+
+@app.route('/api/calendar/<ev_id>', methods=['DELETE'])
+def api_delete_calendar(ev_id):
+    wallet_b = request.args.get('wallet', '').lower().strip()
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT wallet FROM calendar_events WHERE id = ?', (ev_id,)
+        ).fetchone()
+        if not row or row['wallet'] != wallet_b:
+            return jsonify({'error': 'not found or unauthorized'}), 404
+        conn.execute('DELETE FROM calendar_events WHERE id = ?', (ev_id,))
+        conn.commit()
+        return jsonify({'deleted': True})
+    finally:
+        conn.close()
+
+
+@app.route('/api/calendar/<ev_id>/share', methods=['POST'])
+def api_share_calendar(ev_id):
+    data         = request.json or {}
+    wallet_b     = data.get('wallet', '').lower().strip()
+    share_wallet = data.get('share_with', '').lower().strip()
+    if not wallet_b or not share_wallet:
+        return jsonify({'error': 'wallet and share_with required'}), 400
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT * FROM calendar_events WHERE id = ?', (ev_id,)
+        ).fetchone()
+        if not row or row['wallet'] != wallet_b:
+            return jsonify({'error': 'not found or unauthorized'}), 404
+        ev = dict(row)
+        socketio.emit('calendar_invite', {
+            'event_id': ev_id,
+            'title': ev['title'],
+            'start_time': ev['start_time'],
+            'end_time': ev['end_time'],
+            'notes': ev['notes'],
+            'color': ev['color'],
+            'from_wallet': wallet_b,
+            'from_handle': get_handle_for(wallet_b)
+        }, room=share_wallet)
+        return jsonify({'shared': True})
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':
