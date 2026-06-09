@@ -2623,7 +2623,9 @@ async function initWalletConnect() {
       }
     }
   } catch(e) {
-    console.warn('WalletConnect init error:', e && e.message ? e.message : e);
+    const msg = e && e.message ? e.message : String(e);
+    console.warn('WalletConnect init error:', msg);
+    showToast('WC error: ' + msg.slice(0, 80));
   }
 }
 
