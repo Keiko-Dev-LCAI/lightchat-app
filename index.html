@@ -2349,7 +2349,7 @@ async function startVideoCall() {
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
-    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS, iceTransportPolicy: 'relay'});
+    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.ontrack = onRemoteTrack;
@@ -2390,7 +2390,7 @@ async function acceptCall() {
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
     document.getElementById('call-active-overlay').style.display = 'flex';
-    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS, iceTransportPolicy: 'relay'});
+    peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
     peerConnection.ontrack = onRemoteTrack;
