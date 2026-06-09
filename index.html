@@ -5541,11 +5541,9 @@ appendMessage = function(msg, senderHandle) {
     if (innerDiv) {
       // Always add translate button
       addTranslateButton(innerDiv, msg.content);
-      // Auto-translate if enabled (premium): run and fill in translation automatically
-      if (settings.autoTranslate) {
+      // Auto-translate: runs automatically whenever language is non-English
+      if (currentLang && currentLang !== 'en') {
         (async function() {
-          var _atAccess = await checkCallAccess().catch(function() { return {subscribed: false}; });
-          if (!_atAccess.subscribed && !_isPremiumWhitelisted()) return;
           var result = await translateText(msg.content, currentLang);
           if (result && result.toLowerCase() !== msg.content.toLowerCase()) {
             var _atBubble = innerDiv.querySelector('.msg-bubble');
