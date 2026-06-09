@@ -1253,7 +1253,6 @@ let currentChat = null, contacts = [], unreadCounts = {};
 let searchFoundWallet = null;
 
 async function connectWallet() {
-  showToast('ethereum: ' + (window.ethereum ? 'YES' : 'NO'));
   // ── Path 1: injected wallet (Trust Wallet in-app browser, MetaMask, etc.)
   if (window.ethereum) {
     try {
