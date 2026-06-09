@@ -1362,6 +1362,7 @@ body {
   <div class="chat-input-bar">
     <button class="attach-btn" id="picker-toggle-btn" onclick="togglePicker()">＋</button>
     <input class="chat-input" id="chat-input" type="text" placeholder="Message..." maxlength="1000"
+      autocomplete="off" autocorrect="off" autocapitalize="sentences"
       onkeydown="if(event.key==='Enter')sendMessage()">
     <button class="mic-btn" id="mic-btn" title="Hold to record voice message">🎤</button>
     <button class="send-btn" onclick="sendMessage()">➤</button>
@@ -1486,6 +1487,36 @@ body {
     <div class="panel-title">⚙️ Settings</div>
   </div>
   <div class="panel-content">
+    <!-- Language (first — most visible) -->
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
+      <div class="me-menu-item" style="cursor:default">
+        <div class="me-menu-icon">🌐</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:600" data-i18n="language">Language</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px" id="lang-current-display">English</div>
+        </div>
+        <select id="lang-selector" onchange="setLanguage(this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:18px;padding:8px 12px;cursor:pointer">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+        </select>
+      </div>
+      <div class="me-menu-item" style="cursor:default">
+        <div class="me-menu-icon">🔄</div>
+        <div style="flex:1">
+          <div style="font-size:22px;font-weight:600" data-i18n="auto_translate">Auto-translate messages</div>
+          <div style="font-size:17px;color:var(--text2);margin-top:4px">Translate incoming messages automatically</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="setting-autoTranslate" onchange="toggleSetting('autoTranslate')">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+    <!-- Sound & Notifications -->
     <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
       <div class="me-menu-item" style="cursor:default">
         <div class="me-menu-icon">🔊</div>
@@ -1510,32 +1541,6 @@ body {
         </label>
       </div>
     </div>
-      <div class="me-menu-item" style="cursor:default">
-        <div class="me-menu-icon">🌐</div>
-        <div style="flex:1">
-          <div style="font-size:22px;font-weight:600" data-i18n="language">Language</div>
-          <div style="font-size:17px;color:var(--text2);margin-top:4px" id="lang-current-display">English</div>
-        </div>
-        <select id="lang-selector" onchange="setLanguage(this.value)" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:18px;padding:8px 12px;cursor:pointer">
-          <option value="en">English</option>
-          <option value="zh">中文</option>
-          <option value="es">Español</option>
-          <option value="fr">Français</option>
-          <option value="ja">日本語</option>
-          <option value="ko">한국어</option>
-        </select>
-      </div>
-      <div class="me-menu-item" style="cursor:default">
-        <div class="me-menu-icon">🌐</div>
-        <div style="flex:1">
-          <div style="font-size:22px;font-weight:600" data-i18n="auto_translate">Auto-translate messages</div>
-          <div style="font-size:17px;color:var(--text2);margin-top:4px">Translate incoming messages automatically</div>
-        </div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="setting-autoTranslate" onchange="toggleSetting('autoTranslate')">
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
     </div>
     <div style="color:var(--text2);font-size:18px;line-height:1.7;padding:0 4px">
       Push notifications let LightChat ping you when someone messages or calls you and the app is in the background. Works on Android and on iPhone when LightChat is added to your Home Screen from Safari. Not supported in Trust Wallet's browser on iPhone.
