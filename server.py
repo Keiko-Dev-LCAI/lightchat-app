@@ -521,6 +521,12 @@ def download_chat_image(image_id):
 import urllib.request as _urllib_req
 from urllib.parse import urlparse as _urlparse
 
+try:
+    import requests as _requests
+    _REQUESTS_AVAILABLE = True
+except ImportError:
+    _REQUESTS_AVAILABLE = False
+
 @app.route('/proxy-gif')
 def proxy_gif():
     url = request.args.get('url', '')
@@ -978,6 +984,30 @@ def api_confirm_gift():
         return jsonify({'success': True, 'tx_hash': tx_hash})
     except Exception as e:
         return jsonify({'error': 'Could not verify transaction: ' + str(e)}), 500
+
+
+_TURN_FALLBACK = [
+    {'urls': 'stun:stun.l.google.com:19302'},
+    {'urls': 'stun:stun1.l.google.com:19302'},
+    {'urls': 'turn:openrelay.metered.ca:80',               'username': 'openrelayproject', 'credential': 'openrelayproject'},
+    {'urls': 'turn:openrelay.metered.ca:443',              'username': 'openrelayproject', 'credential': 'openrelayproject'},
+    {'urls': 'turn:openrelay.metered.ca:443?transport=tcp','username': 'openrelayproject', 'credential': 'openrelayproject'},
+]
+
+@app.route('/api/turn-credentials')
+def api_turn_credentials():
+    api_key = os.environ.get('METERED_API_KEY', '')
+    if not api_key or not _REQUESTS_AVAILABLE:
+        return jsonify(_TURN_FALLBACK)
+    try:
+        resp = _requests.get(
+            f'https://lightchat.metered.live/api/v1/turn/credentials?apiKey={api_key}',
+            timeout=10
+        )
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except Exception:
+        return jsonify(_TURN_FALLBACK)
 
 
 if __name__ == '__main__':
