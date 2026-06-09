@@ -484,6 +484,54 @@ def get_chat_image(image_id):
     resp.headers['Cache-Control'] = 'public, max-age=3600'
     return resp
 
+@app.route('/chat-image/<int:image_id>/download')
+def download_chat_image(image_id):
+    conn = get_db()
+    now = int(time.time())
+    row = conn.execute(
+        'SELECT image_data, image_type FROM chat_images WHERE id = ? AND expires_at > ?',
+        (image_id, now)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'error': 'not found'}), 404
+    img_bytes = base64.b64decode(row['image_data'])
+    resp = make_response(img_bytes)
+    resp.headers['Content-Type'] = row['image_type']
+    resp.headers['Content-Disposition'] = 'attachment; filename="photo.jpg"'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+import urllib.request as _urllib_req
+from urllib.parse import urlparse as _urlparse
+
+@app.route('/proxy-gif')
+def proxy_gif():
+    url = request.args.get('url', '')
+    name = request.args.get('name', 'image.gif')
+    if not url:
+        return jsonify({'error': 'no url'}), 400
+    # Only allow Tenor domains
+    try:
+        host = _urlparse(url).hostname or ''
+    except Exception:
+        host = ''
+    if not (host.endswith('tenor.com') or host.endswith('tenor.co') or 'tenor' in host):
+        return jsonify({'error': 'domain not allowed'}), 403
+    try:
+        req = _urllib_req.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            data = r.read()
+            content_type = r.headers.get('Content-Type', 'image/gif')
+        resp = make_response(data)
+        resp.headers['Content-Type'] = content_type
+        safe_name = name.replace('"', '\\"')
+        resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        return resp
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/chat-file', methods=['POST'])
 def post_chat_file():
     data = request.json or {}

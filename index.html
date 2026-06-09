@@ -595,7 +595,8 @@ body {
   font-size: 18px; font-weight: 600;
   z-index: 999;
   opacity: 0; transition: opacity 0.3s;
-  white-space: nowrap; pointer-events: none;
+  max-width: 80vw; text-align: center;
+  white-space: normal; pointer-events: none;
 }
 #toast.show { opacity: 1; }
 
@@ -1463,10 +1464,13 @@ function appendMessage(msg) {
     wrap.innerHTML = '<div><div style="font-size:80px;line-height:1;padding:6px 2px">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
   } else if (t === 'gif') {
     const gifUrl = escapeHtml(msg.content);
-    wrap.innerHTML = '<div><img src="' + gifUrl + '" class="msg-img" loading="lazy"><button class="msg-dl-btn" onclick="downloadFromUrl(\'' + gifUrl + '\',\'animated.gif\')">⬇️ Save GIF</button><div class="msg-time">' + time + '</div></div>';
+    const gifProxy = BACKEND + '/proxy-gif?url=' + encodeURIComponent(msg.content) + '&name=animated.gif';
+    wrap.innerHTML = '<div><img src="' + gifUrl + '" class="msg-img" loading="lazy"><a href="' + gifProxy + '" download="animated.gif" class="msg-dl-btn">⬇️ Save GIF</a><div class="msg-time">' + time + '</div></div>';
   } else if (t === 'image') {
-    const imgSrc = BACKEND + '/chat-image/' + escapeHtml(msg.content);
-    wrap.innerHTML = '<div><img src="' + imgSrc + '" class="msg-img" loading="lazy" onclick="downloadFromUrl(\'' + imgSrc + '\',\'photo.jpg\')"><button class="msg-dl-btn" onclick="downloadFromUrl(\'' + imgSrc + '\',\'photo.jpg\')">⬇️ Save Photo</button><div class="msg-time">' + time + '</div></div>';
+    const imgId = escapeHtml(msg.content);
+    const imgSrc = BACKEND + '/chat-image/' + imgId;
+    const imgDl = BACKEND + '/chat-image/' + imgId + '/download';
+    wrap.innerHTML = '<div><img src="' + imgSrc + '" class="msg-img" loading="lazy"><a href="' + imgDl + '" download="photo.jpg" class="msg-dl-btn">⬇️ Save Photo</a><div class="msg-time">' + time + '</div></div>';
   } else if (t === 'file') {
     let f = {}; try { f = JSON.parse(msg.content); } catch(e) {}
     const sizeStr = f.file_size ? (f.file_size > 1048576 ? (f.file_size/1048576).toFixed(1)+' MB' : Math.ceil(f.file_size/1024)+' KB') : '';
