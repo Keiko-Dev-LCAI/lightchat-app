@@ -11,6 +11,7 @@ import re
 import threading
 import json
 import base64
+import uuid
 
 try:
     from pywebpush import webpush, WebPushException
@@ -122,6 +123,12 @@ def cleanup_messages():
             conn.execute('DELETE FROM chat_files WHERE expires_at < ?', (int(time.time()),))
             conn.commit()
             conn.close()
+            # Clean up expired in-memory voice messages
+            now_ts = int(time.time())
+            with _voice_lock:
+                expired = [k for k, v in _voice_store.items() if v['expires_at'] < now_ts]
+                for k in expired:
+                    del _voice_store[k]
         except Exception:
             pass
 
@@ -580,6 +587,34 @@ def get_chat_file(file_id):
     resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
     return resp
 
+@app.route('/chat-voice', methods=['POST'])
+def post_chat_voice():
+    audio_data = request.data
+    content_type = request.headers.get('Content-Type', 'audio/webm')
+    if not audio_data:
+        return jsonify({'error': 'no audio data'}), 400
+    voice_id = str(uuid.uuid4())
+    expires_at = int(time.time()) + 86400  # 24-hour TTL
+    with _voice_lock:
+        _voice_store[voice_id] = {
+            'data': audio_data,
+            'content_type': content_type,
+            'expires_at': expires_at
+        }
+    return jsonify({'url': '/voice/' + voice_id})
+
+@app.route('/voice/<voice_id>')
+def get_chat_voice(voice_id):
+    with _voice_lock:
+        entry = _voice_store.get(voice_id)
+    if not entry or entry['expires_at'] < int(time.time()):
+        return jsonify({'error': 'not found'}), 404
+    resp = make_response(entry['data'])
+    resp.headers['Content-Type'] = entry['content_type']
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
 @app.route('/messages/<wallet>/<contact_wallet>')
 def get_messages(wallet, contact_wallet):
     room = get_room(wallet, contact_wallet)
@@ -591,6 +626,10 @@ def get_messages(wallet, contact_wallet):
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+# In-memory voice message store: {uuid_str: {'data': bytes, 'content_type': str, 'expires_at': int}}
+_voice_store = {}
+_voice_lock = threading.Lock()
 
 # Buffer for pending call offers — callee may be backgrounded/disconnected when call arrives
 # {callee_wallet: {caller_wallet, handle, offer}}

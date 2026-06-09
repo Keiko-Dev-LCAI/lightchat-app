@@ -615,6 +615,92 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+/* ── Mic button ── */
+.mic-btn {
+  background: var(--purple-dark);
+  border: none;
+  border-radius: 50%;
+  width: 52px; height: 52px;
+  min-width: 52px; min-height: 52px;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.15s;
+}
+.mic-btn:hover { background: var(--purple); }
+.mic-btn.recording {
+  background: var(--red);
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(224,85,85,0.5); }
+  50% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(224,85,85,0); }
+}
+
+/* ── Voice message pill ── */
+.voice-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--purple-dark);
+  border-radius: 28px;
+  padding: 10px 14px;
+  min-width: 180px;
+  max-width: 250px;
+  cursor: default;
+}
+.voice-bars {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  height: 22px;
+}
+.voice-bars span {
+  display: block;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.55);
+  transform-origin: bottom center;
+}
+.voice-bars span:nth-child(1) { height: 7px; }
+.voice-bars span:nth-child(2) { height: 13px; }
+.voice-bars span:nth-child(3) { height: 18px; }
+.voice-bars span:nth-child(4) { height: 11px; }
+.voice-bars span:nth-child(5) { height: 6px; }
+.voice-pill.playing .voice-bars span {
+  animation: vbar-pulse 0.7s ease-in-out infinite alternate;
+}
+.voice-pill.playing .voice-bars span:nth-child(1) { animation-delay: 0.0s; }
+.voice-pill.playing .voice-bars span:nth-child(2) { animation-delay: 0.15s; }
+.voice-pill.playing .voice-bars span:nth-child(3) { animation-delay: 0.3s; }
+.voice-pill.playing .voice-bars span:nth-child(4) { animation-delay: 0.45s; }
+.voice-pill.playing .voice-bars span:nth-child(5) { animation-delay: 0.6s; }
+@keyframes vbar-pulse {
+  from { transform: scaleY(0.35); opacity: 0.5; }
+  to   { transform: scaleY(1.3);  opacity: 1;   }
+}
+.voice-duration { font-size: 13px; color: rgba(255,255,255,0.8); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.voice-play-btn {
+  background: rgba(255,255,255,0.22);
+  border: none;
+  border-radius: 50%;
+  width: 34px; height: 34px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+}
+.voice-play-btn:hover { background: rgba(255,255,255,0.38); }
+
 /* ── Attach button ── */
 .attach-btn { background: none; border: none; color: var(--text2); font-size: 30px; cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; }
 .attach-btn:hover, .attach-btn.active { color: var(--purple); }
@@ -918,6 +1004,7 @@ body {
     <button class="attach-btn" id="picker-toggle-btn" onclick="togglePicker()">＋</button>
     <input class="chat-input" id="chat-input" type="text" placeholder="Message..." maxlength="1000"
       onkeydown="if(event.key==='Enter')sendMessage()">
+    <button class="mic-btn" id="mic-btn" title="Hold to record voice message">🎤</button>
     <button class="send-btn" onclick="sendMessage()">➤</button>
   </div>
 </div>
@@ -1588,6 +1675,23 @@ function appendMessage(msg) {
     let g = {}; try { g = JSON.parse(msg.content); } catch(e) {}
     const rad = isOut ? 'border-bottom-right-radius:5px' : 'border-bottom-left-radius:5px';
     wrap.innerHTML = '<div><div style="background:linear-gradient(135deg,#6b4fc4,#9b7fe8);padding:22px 28px;border-radius:20px;min-width:190px;text-align:center;' + rad + '"><div style="font-size:52px">💜</div><div style="font-size:22px;font-weight:700;color:#fff;margin:8px 0">' + (g.amount || '?') + ' LCAI</div><div style="font-size:15px;color:rgba(255,255,255,0.8);margin-bottom:10px">' + (isOut ? 'You sent a gift' : 'Sent you a gift') + '</div>' + (g.txHash ? '<a href="https://scan.lightchain.ai/tx/' + g.txHash + '" target="_blank" style="font-size:13px;color:rgba(255,255,255,0.75);text-decoration:underline">View on Lightscan ↗</a>' : '') + '</div><div class="msg-time">' + time + '</div></div>';
+  } else if (t === 'voice') {
+    let v = {}; try { v = JSON.parse(msg.content); } catch(e) {}
+    const vDur = Math.round(v.duration || 0);
+    const vMins = String(Math.floor(vDur / 60)).padStart(2, '0');
+    const vSecs = String(vDur % 60).padStart(2, '0');
+    const vId = 'vp' + Date.now() + '_' + Math.floor(Math.random() * 99999);
+    wrap.innerHTML = '<div>'
+      + '<div class="voice-pill" id="' + vId + '">'
+      + '<span style="font-size:20px;flex-shrink:0">🎤</span>'
+      + '<div class="voice-bars"><span></span><span></span><span></span><span></span><span></span></div>'
+      + '<span class="voice-duration">' + vMins + ':' + vSecs + '</span>'
+      + '<button class="voice-play-btn" onclick="toggleVoicePlay(\'' + vId + '\')">▶</button>'
+      + '</div>'
+      + '<div class="msg-time">' + time + '</div></div>';
+    // Set audio URL safely via dataset (no inline escaping risks)
+    const vpEl = wrap.querySelector('#' + vId);
+    if (vpEl) vpEl.dataset.audioUrl = v.url || '';
   } else {
     wrap.innerHTML = '<div><div class="msg-bubble ' + (isOut ? 'out' : 'in') + '">' + escapeHtml(msg.content) + '</div><div class="msg-time">' + time + '</div></div>';
   }
@@ -2676,6 +2780,38 @@ function connectPastedAddress() {
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('wc-addr-input');
   if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') connectPastedAddress(); });
+
+  // ── Mic button: hold to record, release to send ──
+  const micBtn = document.getElementById('mic-btn');
+  if (micBtn) {
+    // Prevent context menu on long-press (mobile)
+    micBtn.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+    // Mouse (desktop)
+    micBtn.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      startVoiceRecording();
+    });
+    document.addEventListener('mouseup', function() {
+      stopAndSendVoiceRecording();
+    });
+
+    // Touch (Android Chrome & iOS Safari)
+    micBtn.addEventListener('touchstart', function(e) {
+      e.preventDefault(); // prevent duplicate mousedown firing
+      startVoiceRecording();
+    }, {passive: false});
+
+    micBtn.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      stopAndSendVoiceRecording();
+    }, {passive: false});
+
+    micBtn.addEventListener('touchcancel', function(e) {
+      e.preventDefault();
+      stopAndSendVoiceRecording();
+    }, {passive: false});
+  }
 });
 
 function wcCopyUri() { /* legacy stub — no longer used */ }
@@ -2854,6 +2990,153 @@ async function confirmGiftFromDeeplink() {
     errEl.style.display = 'block';
     btn.textContent = '✓ Confirm Gift'; btn.disabled = false;
   }
+}
+
+// ════════════════════════════════
+// VOICE MESSAGES
+// ════════════════════════════════
+let _voiceMR = null;       // MediaRecorder instance
+let _voiceChunks = [];     // recorded audio chunks
+let _voiceTimer = null;    // interval timer for duration display
+let _voiceSeconds = 0;     // current recording duration in seconds
+let _voiceDuration = 0;    // captured duration at stop time
+let _voiceAudios = {};     // { voiceId: Audio element }
+
+function getMicMimeType() {
+  var types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
+  for (var i = 0; i < types.length; i++) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(types[i])) return types[i];
+  }
+  return '';
+}
+
+async function startVoiceRecording() {
+  if (!wallet || !currentChat || !socket) { showToast('Open a chat first'); return; }
+  if (_voiceMR && _voiceMR.state !== 'inactive') return;
+  if (typeof MediaRecorder === 'undefined') { showToast('Voice messages not supported in this browser'); return; }
+
+  var stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}});
+  } catch(e) {
+    showToast('Microphone access denied');
+    return;
+  }
+
+  var mimeType = getMicMimeType();
+  try {
+    _voiceMR = mimeType ? new MediaRecorder(stream, {mimeType: mimeType}) : new MediaRecorder(stream);
+  } catch(e) {
+    _voiceMR = new MediaRecorder(stream);
+  }
+
+  var actualMime = _voiceMR.mimeType || mimeType || 'audio/webm';
+  _voiceChunks = [];
+  _voiceSeconds = 0;
+
+  _voiceMR.ondataavailable = function(e) { if (e.data && e.data.size > 0) _voiceChunks.push(e.data); };
+  _voiceMR.onstop = (function(mime) {
+    return async function() {
+      stream.getTracks().forEach(function(t) { t.stop(); });
+      await sendVoiceBlob(_voiceChunks, mime, _voiceDuration);
+    };
+  })(actualMime);
+
+  _voiceMR.start(100); // collect chunks every 100ms
+
+  var micBtn = document.getElementById('mic-btn');
+  var chatInput = document.getElementById('chat-input');
+  if (micBtn) micBtn.classList.add('recording');
+  if (chatInput) { chatInput.disabled = true; chatInput.placeholder = '🔴 00:00'; }
+
+  _voiceTimer = setInterval(function() {
+    _voiceSeconds++;
+    var m = String(Math.floor(_voiceSeconds / 60)).padStart(2, '0');
+    var s = String(_voiceSeconds % 60).padStart(2, '0');
+    if (chatInput) chatInput.placeholder = '🔴 ' + m + ':' + s;
+    if (_voiceSeconds >= 120) stopAndSendVoiceRecording(); // 2-minute max
+  }, 1000);
+}
+
+function stopAndSendVoiceRecording() {
+  if (!_voiceMR || _voiceMR.state === 'inactive') return;
+  clearInterval(_voiceTimer);
+  _voiceTimer = null;
+  _voiceDuration = _voiceSeconds;
+  _voiceSeconds = 0;
+  try { _voiceMR.stop(); } catch(e) {}
+  _voiceMR = null;
+  var micBtn = document.getElementById('mic-btn');
+  var chatInput = document.getElementById('chat-input');
+  if (micBtn) micBtn.classList.remove('recording');
+  if (chatInput) { chatInput.disabled = false; chatInput.placeholder = 'Message...'; }
+}
+
+async function sendVoiceBlob(chunks, mimeType, duration) {
+  if (!chunks || !chunks.length) return;
+  var blob = new Blob(chunks, {type: mimeType});
+  if (blob.size < 200) return; // too small — ignore accidental taps
+  showToast('Sending voice message...');
+  try {
+    var resp = await fetch(BACKEND + '/chat-voice', {
+      method: 'POST',
+      headers: {'Content-Type': mimeType},
+      body: blob
+    }).then(function(r) { return r.json(); }).catch(function() { return {error: 'Upload failed'}; });
+
+    if (resp.error || !resp.url) { showToast('Voice message failed'); return; }
+    var vContent = JSON.stringify({url: BACKEND + resp.url, duration: duration || 1});
+    appendMessage({sender_wallet: wallet, content: vContent, type: 'voice', msg_type: 'voice', created_at: Math.floor(Date.now() / 1000)});
+    scrollToBottom();
+    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: vContent, type: 'voice'});
+  } catch(e) {
+    showToast('Voice message failed');
+  }
+}
+
+function toggleVoicePlay(vId) {
+  var pill = document.getElementById(vId);
+  if (!pill) return;
+  var audioUrl = pill.dataset.audioUrl;
+  if (!audioUrl) { showToast('Audio not available'); return; }
+  var btn = pill.querySelector('.voice-play-btn');
+
+  // Already playing → pause
+  if (_voiceAudios[vId] && !_voiceAudios[vId].paused) {
+    _voiceAudios[vId].pause();
+    if (btn) btn.textContent = '▶';
+    pill.classList.remove('playing');
+    return;
+  }
+
+  // Stop any other playing voice message
+  Object.keys(_voiceAudios).forEach(function(id) {
+    if (id !== vId && _voiceAudios[id] && !_voiceAudios[id].paused) {
+      _voiceAudios[id].pause();
+      var op = document.getElementById(id);
+      if (op) {
+        var ob = op.querySelector('.voice-play-btn');
+        if (ob) ob.textContent = '▶';
+        op.classList.remove('playing');
+      }
+    }
+  });
+
+  // Create Audio element on first play
+  if (!_voiceAudios[vId]) {
+    _voiceAudios[vId] = new Audio(audioUrl);
+    _voiceAudios[vId].onended = function() {
+      if (btn) btn.textContent = '▶';
+      pill.classList.remove('playing');
+    };
+  }
+
+  _voiceAudios[vId].play().then(function() {
+    if (btn) btn.textContent = '⏸';
+    pill.classList.add('playing');
+  }).catch(function() {
+    showToast('Could not play voice message');
+  });
 }
 
 window.addEventListener('load', async () => {
