@@ -2288,24 +2288,34 @@ const ICE_SERVERS = [
 ];
 
 function onRemoteTrack(e) {
-  // Add all tracks to video element (handles video display + keeps working across browsers)
+  // Use e.streams[0] if available — it's the live MediaStream the peer is sending (most reliable)
+  const remoteStream = (e.streams && e.streams[0]) ? e.streams[0] : null;
   const rv = document.getElementById('remote-video');
   if (rv) {
-    if (!rv.srcObject) rv.srcObject = new MediaStream();
-    rv.srcObject.addTrack(e.track);
+    if (remoteStream) {
+      // Assign the whole stream — contains both video+audio tracks together
+      if (rv.srcObject !== remoteStream) rv.srcObject = remoteStream;
+    } else {
+      if (!rv.srcObject) rv.srcObject = new MediaStream();
+      rv.srcObject.addTrack(e.track);
+    }
+    rv.muted = false;
     rv.autoplay = true;
     rv.playsInline = true;
     rv.play().catch(() => {});
   }
-  // ALSO route audio to dedicated <audio> element — iOS audio autoplay workaround
+  // ALSO assign to <audio> element for iOS double-coverage
   if (e.track.kind === 'audio') {
     const ra = document.getElementById('remote-audio');
     if (ra) {
-      // srcObject was pre-assigned as empty MediaStream during user gesture — just add the track
-      if (!ra.srcObject) ra.srcObject = new MediaStream();
-      ra.srcObject.addTrack(e.track);
+      if (remoteStream) {
+        if (ra.srcObject !== remoteStream) ra.srcObject = remoteStream;
+      } else {
+        if (!ra.srcObject) ra.srcObject = new MediaStream();
+        ra.srcObject.addTrack(e.track);
+      }
       ra.muted = false;
-      // Don't re-call play() — element is already playing from the gesture-time unlock
+      ra.play().catch(() => {});  // Re-call play — required on some iOS versions after srcObject change
     }
   }
 }
@@ -2328,8 +2338,11 @@ async function getLocalStream() {
     });
     audioStream.getAudioTracks().forEach(t => { t.enabled = true; videoStream.addTrack(t); });
   } catch(e) {
-    showToast('Mic not available — other person won\'t hear you', 4000);
+    showToast('Mic blocked — tap Allow Microphone if prompted', 4000);
   }
+  // DIAGNOSTIC: show mic capture result so we know if capture or playback is the problem
+  const atracks = videoStream.getAudioTracks();
+  showToast('Mic: ' + (atracks.length ? atracks.length + ' track ✓' : '0 tracks ✗ — allow mic in Trust Wallet'), 5000);
   return videoStream;
 }
 
@@ -2342,8 +2355,11 @@ async function startVideoCall() {
   callState = 'calling';
   document.getElementById('call-calling-name').textContent = currentChat.handle;
   document.getElementById('call-calling-overlay').style.display = 'flex';
-  // Unlock audio element during user gesture with empty stream — iOS requires a source to truly unlock
+  // Unlock BOTH remote-video and remote-audio during user gesture with empty streams
+  // iOS requires the element to have a valid source + play() called within gesture to unlock audio
+  const _rv2 = document.getElementById('remote-video');
   const _ra2 = document.getElementById('remote-audio');
+  if (_rv2) { _rv2.srcObject = new MediaStream(); _rv2.muted = false; _rv2.playsInline = true; _rv2.play().catch(() => {}); }
   if (_ra2) { _ra2.srcObject = new MediaStream(); _ra2.muted = false; _ra2.play().catch(() => {}); }
   try {
     localStream = await getLocalStream();
@@ -2352,6 +2368,10 @@ async function startVideoCall() {
     peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
+    peerConnection.oniceconnectionstatechange = () => {
+      const s = peerConnection && peerConnection.iceConnectionState;
+      if (s === 'connected' || s === 'completed') showToast('📞 Connected!', 2000);
+    };
     peerConnection.ontrack = onRemoteTrack;
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
@@ -2378,10 +2398,11 @@ async function acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
   stopRinging();
-  // Unlock audio element NOW during user gesture with an empty stream — iOS requires this
+  // Unlock BOTH remote-video and remote-audio during user gesture
+  // CRITICAL: must assign srcObject = new MediaStream() BEFORE play() — iOS ignores play() on element with no source
   const _rv = document.getElementById('remote-video');
   const _ra = document.getElementById('remote-audio');
-  if (_rv) _rv.play().catch(() => {});
+  if (_rv) { _rv.srcObject = new MediaStream(); _rv.muted = false; _rv.playsInline = true; _rv.play().catch(() => {}); }
   if (_ra) { _ra.srcObject = new MediaStream(); _ra.muted = false; _ra.play().catch(() => {}); }
   if (_audioCtx) _audioCtx.resume().catch(() => {});
   document.getElementById('call-incoming-overlay').style.display = 'none';
@@ -2393,6 +2414,10 @@ async function acceptCall() {
     peerConnection = new RTCPeerConnection({iceServers: ICE_SERVERS});
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
     peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
+    peerConnection.oniceconnectionstatechange = () => {
+      const s = peerConnection && peerConnection.iceConnectionState;
+      if (s === 'connected' || s === 'completed') showToast('📞 Connected!', 2000);
+    };
     peerConnection.ontrack = onRemoteTrack;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
     // Flush any ICE candidates that arrived before peer connection was ready
