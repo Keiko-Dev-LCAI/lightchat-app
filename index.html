@@ -14,6 +14,17 @@
 <meta name="apple-mobile-web-app-title" content="LightChat">
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+// OrcaVault V2 — on-chain Memories
+const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
+const ORCAVAULT_V2_ABI = [
+  "function initMemory(string title, string description, string mediaType, uint256 totalChunks, string template) external returns (uint256)",
+  "function addChunk(uint256 memoryId, uint256 chunkIndex, string chunkData) external",
+  "event MemoryCreated(uint256 indexed memoryId, address indexed owner, string title, string description, string mediaType, uint256 totalChunks, string template, uint256 timestamp)"
+];
+const LIGHTSCAN_TX = 'https://lightscan.lightchain.ai/tx/';
+const ORCAVAULT_CHUNK_SIZE = 90000;
+</script>
 <script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -1692,7 +1703,7 @@ body {
       ⏳ <strong>Cloud memories delete automatically after 90 days.</strong> If you want this memory saved forever, choose On-Chain.
     </div>
     <div id="storage-chain-warning" style="background:rgba(155,127,232,0.12);border:1px solid var(--purple);border-radius:14px;padding:16px 18px;font-size:17px;color:var(--purple);line-height:1.65;margin-bottom:20px;display:none">
-      ⛓️ <strong>On-chain memories are permanent and can never be deleted.</strong> A small amount of LCAI is required — coming soon!
+      ⛓️ <strong>On-chain memories are permanent and can never be deleted.</strong> A small LCAI gas fee is required. Your Trust Wallet will ask you to confirm.
     </div>
 
     <div class="modal-error" id="memory-post-error"></div>
@@ -3486,19 +3497,91 @@ async function compressImage(file) {
   });
 }
 
+// ── On-chain Memory upload via OrcaVault V2 ──
+async function doOnChainMemory(caption, base64data, imageType) {
+  if (!window.ethereum) throw new Error('Trust Wallet required for on-chain storage');
+  const provider = new ethers.providers.Web3Provider(window.ethereum);
+  const signer = provider.getSigner();
+  const contract = new ethers.Contract(ORCAVAULT_V2_ADDRESS, ORCAVAULT_V2_ABI, signer);
+
+  const dataURI = 'data:' + (imageType || 'image/jpeg') + ';base64,' + base64data;
+  const chunks = [];
+  for (let i = 0; i < dataURI.length; i += ORCAVAULT_CHUNK_SIZE) {
+    chunks.push(dataURI.slice(i, i + ORCAVAULT_CHUNK_SIZE));
+  }
+  const totalChunks = chunks.length;
+
+  const btn = document.getElementById('memory-post-btn');
+  btn.textContent = 'Confirm in wallet…';
+
+  // Step 1 — initMemory (wallet signs)
+  const initTx = await contract.initMemory(caption || 'Memory', '', 'image', totalChunks, '');
+  btn.textContent = 'Saving to chain…';
+  const initReceipt = await initTx.wait();
+
+  let memoryId = null;
+  for (const log of initReceipt.logs) {
+    try {
+      const parsed = contract.interface.parseLog(log);
+      if (parsed && parsed.name === 'MemoryCreated') { memoryId = Number(parsed.args[0]); break; }
+    } catch(e) {}
+  }
+  if (memoryId === null) throw new Error('MemoryCreated event not found');
+
+  // Step 2 — addChunk for each piece
+  let lastTxHash = initReceipt.transactionHash;
+  for (let i = 0; i < totalChunks; i++) {
+    btn.textContent = 'Chunk ' + (i + 1) + ' of ' + totalChunks + '…';
+    const chunkTx = await contract.addChunk(memoryId, i, chunks[i]);
+    const chunkReceipt = await chunkTx.wait();
+    lastTxHash = chunkReceipt.transactionHash || chunkTx.hash;
+  }
+
+  return { memoryId, txHash: lastTxHash };
+}
+
 async function submitMemoryPost() {
   const caption = document.getElementById('memory-caption-input').value.trim();
   const errEl = document.getElementById('memory-post-error');
   if (!caption && !memoryPhotoData) { errEl.textContent = 'Add a photo/video or caption'; errEl.style.display = 'block'; return; }
-  if (selectedStorage === 'chain') { showToast('On-chain storage coming soon! Posting to Cloud for now.'); }
 
   const btn = document.getElementById('memory-post-btn');
   btn.textContent = 'Posting...'; btn.disabled = true;
   errEl.style.display = 'none';
 
+  // ── On-chain path (photo only — videos stay cloud for now) ──
+  if (selectedStorage === 'chain' && memoryPhotoData && !memoryIsVideo) {
+    if (!window.ethereum) {
+      errEl.textContent = 'On-chain storage requires Trust Wallet. Switch to Cloud or open in Trust Wallet.';
+      errEl.style.display = 'block';
+      btn.textContent = '📸 Post Memory'; btn.disabled = false;
+      return;
+    }
+    try {
+      const { memoryId, txHash } = await doOnChainMemory(caption, memoryPhotoData, memoryPhotoType);
+      // Also save to Railway for feed display (no expiry — permanent)
+      const resp = await fetch(BACKEND + '/post-memory', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wallet, caption, image_data: memoryPhotoData, image_type: memoryPhotoType || 'image/jpeg', storage_type: 'chain', chain_memory_id: memoryId})
+      }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
+      btn.textContent = '📸 Post Memory'; btn.disabled = false;
+      if (resp.error) { errEl.textContent = resp.error; errEl.style.display = 'block'; return; }
+      closeMemoryPostPanel();
+      showToast('⛓️ Memory saved on-chain! ID: ' + memoryId);
+      loadMemories();
+      switchTab('memories');
+    } catch(err) {
+      btn.textContent = '📸 Post Memory'; btn.disabled = false;
+      errEl.textContent = err.message || 'On-chain upload failed';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
+
+  // ── Cloud path ──
   let resp;
   if (memoryIsVideo && memoryPhotoData) {
-    // Upload video via binary POST
     resp = await fetch(BACKEND + '/post-memory-video', {
       method: 'POST',
       headers: {
@@ -3509,11 +3592,10 @@ async function submitMemoryPost() {
       body: memoryPhotoData
     }).then(r => r.json()).catch(() => ({error: 'Upload failed'}));
   } else {
-    const storage = selectedStorage === 'chain' ? 'cloud' : selectedStorage;
     resp = await fetch(BACKEND + '/post-memory', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({wallet, caption, image_data: memoryPhotoData || '', image_type: memoryPhotoType || '', storage_type: storage})
+      body: JSON.stringify({wallet, caption, image_data: memoryPhotoData || '', image_type: memoryPhotoType || '', storage_type: 'cloud'})
     }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
   }
 
@@ -3541,8 +3623,11 @@ function renderMemoriesFeed(posts) {
   }
   feed.innerHTML = posts.map(m => {
     const daysLeft = m.expires_at ? Math.max(0, Math.round((m.expires_at - Date.now()/1000) / 86400)) : null;
+    const chainLink = (m.storage_type === 'chain' && m.chain_memory_id != null)
+      ? ' &nbsp;<a href="https://lightscan.lightchain.ai/address/' + ORCAVAULT_V2_ADDRESS + '" target="_blank" style="color:var(--purple);font-size:14px">View on chain ↗</a>'
+      : '';
     const badge = m.storage_type === 'chain'
-      ? '<span style="color:var(--purple);font-weight:600">⛓️ Permanent</span>'
+      ? '<span style="color:var(--purple);font-weight:600">⛓️ Permanent</span>' + chainLink
       : '<span style="color:var(--gold);font-weight:600">⏳ ' + daysLeft + ' days left</span>';
     const isOwn = m.wallet === wallet;
     const name = m.handle || shortenWallet(m.wallet);
