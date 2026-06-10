@@ -2482,12 +2482,7 @@ function appendMessage(msg, senderHandle) {
     const sizeStr = f.file_size ? (f.file_size > 1048576 ? (f.file_size/1048576).toFixed(1)+' MB' : Math.ceil(f.file_size/1024)+' KB') : '';
     const fileUrl = BACKEND + '/chat-file/' + (f.file_id || '');
     const safeName = escapeHtml(f.file_name || 'file');
-    const fileExt = (f.file_name || '').split('.').pop().toLowerCase();
-    if (['jpg','jpeg','png','gif','webp'].includes(fileExt)) {
-      wrap.innerHTML = '<div><img src="' + fileUrl + '" class="msg-img" loading="lazy"><a href="' + fileUrl + '" download="' + safeName + '" class="msg-dl-btn">⬇️ Save Photo</a><div class="msg-time">' + time + '</div></div>';
-    } else {
-      wrap.innerHTML = '<div><div class="file-card"><div style="font-size:32px">📄</div><div class="file-card-name">' + safeName + '</div><div class="file-card-size">' + sizeStr + '</div><a href="' + fileUrl + '" download="' + safeName + '" style="display:block;margin-top:10px;color:var(--purple);font-size:16px;font-weight:600;text-decoration:none">⬇️ Download</a></div><div class="msg-time">' + time + '</div></div>';
-    }
+    wrap.innerHTML = '<div><div class="file-card"><div style="font-size:32px">📄</div><div class="file-card-name">' + safeName + '</div><div class="file-card-size">' + sizeStr + '</div><a href="' + fileUrl + '" download="' + safeName + '" style="display:block;margin-top:10px;color:var(--purple);font-size:16px;font-weight:600;text-decoration:none">⬇️ Download</a></div><div class="msg-time">' + time + '</div></div>';
   } else if (t === 'lcai_gift') {
     let g = {}; try { g = JSON.parse(msg.content); } catch(e) {}
     const rad = isOut ? 'border-bottom-right-radius:5px' : 'border-bottom-left-radius:5px';
@@ -3313,6 +3308,11 @@ async function sendChatFile(input) {
   const file = input.files[0];
   if (!file) return;
   if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); input.value = ''; return; }
+  // Route image files through the photo system so they display inline
+  const fileExtLc = (file.name || '').split('.').pop().toLowerCase();
+  if (['jpg','jpeg','png','gif','webp'].includes(fileExtLc) || (file.type || '').startsWith('image/')) {
+    return sendChatPhoto(input);
+  }
   if (file.size > 10 * 1024 * 1024) { showToast('File too large — max 10 MB'); input.value = ''; return; }
   showToast('Uploading file...');
   try {
