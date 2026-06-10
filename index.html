@@ -4169,6 +4169,18 @@ async function registerServiceWorker() {
   try { swRegistration = await navigator.serviceWorker.register('./sw.js'); } catch(e) {}
 }
 
+// Listen for messages from the service worker (e.g. incoming call tapped from push notification)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'incoming_call_tap') {
+      handleCallOffer({
+        caller_wallet: event.data.caller_wallet,
+        handle: event.data.caller_handle
+      });
+    }
+  });
+}
+
 function urlBase64ToUint8Array(b64) {
   const padding = '='.repeat((4 - b64.length % 4) % 4);
   const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
