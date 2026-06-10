@@ -644,6 +644,7 @@ def get_chat_file(file_id):
     file_bytes = base64.b64decode(row['file_data'])
     resp = make_response(file_bytes)
     resp.headers['Content-Type'] = row['file_type']
+    resp.headers['Access-Control-Allow-Origin'] = '*'
     safe_name = row['file_name'].replace('"', '\\"')
     resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
     return resp
