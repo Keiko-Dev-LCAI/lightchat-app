@@ -154,6 +154,15 @@ try:
 except Exception:
     pass  # Column already exists
 
+# Migrate memories table: add chain_memory_id column for on-chain storage
+try:
+    _mig_conn = get_db()
+    _mig_conn.execute('ALTER TABLE memories ADD COLUMN chain_memory_id INTEGER')
+    _mig_conn.commit()
+    _mig_conn.close()
+except Exception:
+    pass  # Column already exists
+
 def cleanup_messages():
     while True:
         time.sleep(60)
@@ -478,6 +487,7 @@ def post_memory():
     image_data = data.get('image_data', '')
     image_type = data.get('image_type', '')
     storage_type = data.get('storage_type', 'cloud')
+    chain_memory_id = data.get('chain_memory_id', None)
 
     if not wallet:
         return jsonify({'error': 'wallet required'}), 400
@@ -489,8 +499,8 @@ def post_memory():
 
     conn = get_db()
     cursor = conn.execute(
-        'INSERT INTO memories (wallet, caption, image_data, image_type, storage_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        (wallet, caption, image_data or None, image_type or None, storage_type, now, expires_at)
+        'INSERT INTO memories (wallet, caption, image_data, image_type, storage_type, chain_memory_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        (wallet, caption, image_data or None, image_type or None, storage_type, chain_memory_id, now, expires_at)
     )
     memory_id = cursor.lastrowid
     conn.commit()
@@ -505,7 +515,8 @@ def get_memories(wallet):
     rows = conn.execute('''
         SELECT m.id, m.wallet, m.caption, m.image_data, m.image_type,
                m.storage_type, m.created_at, m.expires_at, h.handle,
-               COALESCE(m.media_type, 'image') as media_type
+               COALESCE(m.media_type, 'image') as media_type,
+               m.chain_memory_id
         FROM memories m
         LEFT JOIN handles h ON h.wallet = m.wallet
         WHERE m.wallet IN (
