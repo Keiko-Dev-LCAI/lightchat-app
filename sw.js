@@ -1,5 +1,22 @@
-// LightChat Service Worker — push notifications
+// LightChat Service Worker — push notifications + PWA lifecycle
 
+// ── Lifecycle: install & activate immediately so the SW takes control fast ──
+self.addEventListener('install', function(event) {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', function(event) {
+  // Claim all open clients so the new SW is active right away
+  event.waitUntil(clients.claim());
+});
+
+// ── Fetch handler (required for iOS to treat this as a fully active SW) ──
+// We don't do offline caching — just pass every request straight through.
+self.addEventListener('fetch', function(event) {
+  event.respondWith(fetch(event.request));
+});
+
+// ── Push: show a notification when the server sends a push message ──
 self.addEventListener('push', function(event) {
   let data = { title: 'LightChat', body: 'New message' };
   try {
@@ -10,8 +27,8 @@ self.addEventListener('push', function(event) {
 
   const options = {
     body: data.body,
-    icon: 'https://lightchat.chat/icon-192.png',
-    badge: 'https://lightchat.chat/icon-192.png',
+    icon: '/lightchat-icon.png',
+    badge: '/lightchat-icon.png',
     tag: 'lightchat-message',
     renotify: true,
     vibrate: [200, 100, 200],
@@ -23,6 +40,7 @@ self.addEventListener('push', function(event) {
   );
 });
 
+// ── Notification click: focus the app or open it ──
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url)
