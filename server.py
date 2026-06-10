@@ -649,6 +649,33 @@ def get_chat_file(file_id):
     resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
     return resp
 
+@app.route('/chat-file/<int:file_id>/to-image', methods=['POST'])
+def file_to_image(file_id):
+    """Re-save a file as a chat image so it can be forwarded inline."""
+    data = request.json or {}
+    wallet = data.get('wallet', '').lower().strip()
+    if not wallet:
+        return jsonify({'error': 'wallet required'}), 400
+    conn = get_db()
+    now = int(time.time())
+    row = conn.execute(
+        'SELECT file_data, file_type FROM chat_files WHERE id = ? AND expires_at > ?',
+        (file_id, now)
+    ).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'error': 'not found'}), 404
+    cursor = conn.execute(
+        'INSERT INTO chat_images (wallet, image_data, image_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
+        (wallet, row['file_data'], row['file_type'], now, now + 86400)
+    )
+    image_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    resp = jsonify({'image_id': image_id})
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
 @app.route('/chat-voice', methods=['POST'])
 def post_chat_voice():
     audio_data = request.data
