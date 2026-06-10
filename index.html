@@ -2988,7 +2988,7 @@ function ctxForwardMsg() {
     let f = {}; try { f = JSON.parse(c); } catch(e) {}
     const fUrl = BACKEND + '/chat-file/' + (f.file_id || '');
     _sharePayload = {app: '', title: '📄 ' + (f.file_name || 'File'), url: fUrl, desc: '', thumb: ''};
-    _forwardOverride = {type: 'text', content: '📄 ' + (f.file_name || 'File') + ': ' + fUrl};
+    _forwardOverride = {type: 'file', content: c};
   } else if (t === 'gif') {
     _sharePayload = {app: '', title: 'GIF', url: c, desc: '', thumb: c};
     _forwardOverride = {type: 'gif', content: c};
