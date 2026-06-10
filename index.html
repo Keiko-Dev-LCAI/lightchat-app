@@ -2577,9 +2577,23 @@ function appendMessage(msg, senderHandle) {
   }
   attachMsgContextMenu(wrap, msg, senderHandle || '');
   area.appendChild(wrap);
+  // Always scroll to the newest message; rAF lets the browser finish layout first
+  scrollToBottom();
+  // Re-scroll when images / videos finish loading — they expand the container height
+  wrap.querySelectorAll('img').forEach(function(img) {
+    img.addEventListener('load', scrollToBottom, {once: true});
+  });
+  wrap.querySelectorAll('video').forEach(function(vid) {
+    vid.addEventListener('loadedmetadata', scrollToBottom, {once: true});
+  });
 }
 
-function scrollToBottom() { const a = document.getElementById('messages-area'); a.scrollTop = a.scrollHeight; }
+function scrollToBottom() {
+  requestAnimationFrame(function() {
+    var a = document.getElementById('messages-area');
+    if (a) a.scrollTop = a.scrollHeight;
+  });
+}
 
 async function searchHandle() {
   const raw = document.getElementById('search-handle-input').value.trim();
@@ -4170,9 +4184,12 @@ async function enablePushNotifications() {
   try {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') { showToast('Notifications blocked — check browser settings'); document.getElementById('setting-push').checked = false; return; }
-    if (!swRegistration) { showToast('Service worker not ready, try again'); document.getElementById('setting-push').checked = false; return; }
+    // navigator.serviceWorker.ready waits until the SW is fully active —
+    // this is required on iOS where register() resolves before the SW is usable
+    const registration = await navigator.serviceWorker.ready;
+    swRegistration = registration;
     const { publicKey } = await fetch(BACKEND + '/vapid-public-key').then(r => r.json());
-    const sub = await swRegistration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey)});
+    const sub = await registration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey)});
     await fetch(BACKEND + '/subscribe', {method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({wallet, subscription: sub.toJSON()})});
     settings.pushNotifs = true;
     saveSettings();
