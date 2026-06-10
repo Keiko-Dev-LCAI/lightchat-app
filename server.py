@@ -646,7 +646,11 @@ def get_chat_file(file_id):
     resp.headers['Content-Type'] = row['file_type']
     resp.headers['Access-Control-Allow-Origin'] = '*'
     safe_name = row['file_name'].replace('"', '\\"')
-    resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+    # Images render inline; other files force download
+    if row['file_type'].startswith('image/'):
+        resp.headers['Content-Disposition'] = f'inline; filename="{safe_name}"'
+    else:
+        resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
     return resp
 
 @app.route('/chat-file/<int:file_id>/to-image', methods=['POST'])
