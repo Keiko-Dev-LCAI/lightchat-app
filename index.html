@@ -2795,32 +2795,8 @@ let _ctxMenuTimer  = null;
 let _ctxDismissTimer = null;
 
 function attachMsgContextMenu(wrapEl, msg, handle) {
-  var _didLongPress = false;
-
-  // ── Mobile long press ──
-  // passive:true — never blocks scroll. Long press still works via timer.
-  wrapEl.addEventListener('touchstart', (e) => {
-    if (e.target.closest('button, a, input, select, .voice-play-btn')) return;
-    _didLongPress = false;
-    const touch = e.touches[0];
-    const px = touch.clientX, py = touch.clientY;
-    clearTimeout(_ctxMenuTimer);
-    _ctxMenuTimer = setTimeout(() => {
-      _didLongPress = true;
-      showMsgContextMenu(wrapEl, px, py);
-    }, 600);
-  }, { passive: true });
-
-  wrapEl.addEventListener('touchend',  () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
-  wrapEl.addEventListener('touchmove', () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
-
-  // Capture the synthetic click the browser fires after a long-press BEFORE it
-  // reaches the document-level dismiss handler — so the menu stays open.
-  wrapEl.addEventListener('click', (e) => {
-    if (_didLongPress) { e.stopPropagation(); _didLongPress = false; }
-  }, true);
-
-  // ── Desktop right-click ──
+  // Mobile long-press removed — was blocking scroll on Android.
+  // Desktop right-click still works.
   wrapEl.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     showMsgContextMenu(wrapEl, e.clientX, e.clientY);
