@@ -2989,27 +2989,19 @@ function ctxForwardMsg() {
     const fUrl = BACKEND + '/chat-file/' + (f.file_id || '');
     const fExt = (f.file_name || '').split('.').pop().toLowerCase();
     if (['jpg','jpeg','png','gif','webp'].includes(fExt)) {
-      // Re-upload through /chat-image so it sends as a proper inline photo
+      // Convert to a chat image server-side so it forwards inline
       showToast('Preparing photo…');
       (async function() {
         try {
-          const imgResp = await fetch(fUrl);
-          const blob = await imgResp.blob();
-          const b64 = await new Promise(function(res) {
-            var rd = new FileReader();
-            rd.onloadend = function() { res(rd.result); };
-            rd.readAsDataURL(blob);
-          });
-          const imgType = blob.type || 'image/png';
-          const uploadResp = await fetch(BACKEND + '/chat-image', {
+          const convertResp = await fetch(BACKEND + '/chat-file/' + (f.file_id || '') + '/to-image', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({wallet: wallet, image_data: b64, image_type: imgType})
+            body: JSON.stringify({wallet: wallet})
           }).then(function(r) { return r.json(); }).catch(function() { return null; });
-          if (uploadResp && uploadResp.image_id) {
-            var newImgUrl = BACKEND + '/chat-image/' + uploadResp.image_id;
+          if (convertResp && convertResp.image_id) {
+            var newImgUrl = BACKEND + '/chat-image/' + convertResp.image_id;
             _sharePayload = {app: '', title: '📷 Photo', url: newImgUrl, desc: '', thumb: newImgUrl};
-            _forwardOverride = {type: 'image', content: String(uploadResp.image_id)};
+            _forwardOverride = {type: 'image', content: String(convertResp.image_id)};
             openShareModal();
           } else {
             showToast('Could not prepare photo');
