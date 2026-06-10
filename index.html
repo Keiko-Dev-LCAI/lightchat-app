@@ -661,6 +661,15 @@ body {
   touch-action: none;
 }
 #msg-ctx-menu.ctx-visible { display: flex; }
+#memory-ctx-menu {
+  position: fixed; z-index: 950;
+  background: rgba(18,18,38,0.97); border: 1px solid var(--border); border-radius: 20px;
+  padding: 6px 4px; display: none; flex-direction: row; gap: 2px;
+  box-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 0 0 1px rgba(155,127,232,0.18);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  min-width: 160px; pointer-events: auto; user-select: none; -webkit-user-select: none;
+}
+#memory-ctx-menu.ctx-visible { display: flex; }
 .ctx-btn {
   flex: 1;
   display: flex;
@@ -1942,6 +1951,18 @@ body {
     <span>Memories</span>
   </button>
   <button class="ctx-btn" id="ctx-fwd-btn" onclick="ctxForwardMsg()">
+    <span class="ctx-btn-icon">↗️</span>
+    <span>Forward</span>
+  </button>
+</div>
+
+<!-- ── MEMORY CONTEXT MENU ── -->
+<div id="memory-ctx-menu" role="menu" aria-label="Memory actions">
+  <button class="ctx-btn" id="mem-ctx-copy-btn" onclick="memCtxCopy()">
+    <span class="ctx-btn-icon">📋</span>
+    <span>Copy</span>
+  </button>
+  <button class="ctx-btn" onclick="memCtxForward()">
     <span class="ctx-btn-icon">↗️</span>
     <span>Forward</span>
   </button>
@@ -3536,7 +3557,7 @@ function renderMemoriesFeed(posts) {
       mediaHtml = `<img class="memory-image" src="data:${m.image_type};base64,${m.image_data}" alt="memory">`;
     }
     const dlBtn = (!isVideoMemory && m.image_data) ? `<button onclick="downloadMemoryPhoto(${m.id})" class="msg-dl-btn" style="font-size:15px;padding:6px 0">⬇️ Save Photo</button>` : '';
-    return `<div class="memory-post">
+    return `<div class="memory-post" data-memory-id="${m.id}">
       <div class="memory-post-header">
         <div class="chat-avatar" style="width:48px;height:48px;font-size:20px">${avatarLetter(m.handle)}</div>
         <div style="flex:1;min-width:0">
@@ -3549,6 +3570,95 @@ function renderMemoriesFeed(posts) {
       ${m.caption ? `<div class="memory-caption">${escapeHtml(m.caption)}</div>` : ''}
     </div>`;
   }).join('');
+}
+
+// ════════════════════════════════════════════════════════════════
+// MEMORY CONTEXT MENU — long-press to Forward / Copy
+// ════════════════════════════════════════════════════════════════
+let _memCtxPost = null;
+let _memCtxDismissTimer = null;
+
+function initMemoryContextMenu() {
+  const feed = document.getElementById('memories-feed');
+  if (!feed || feed.dataset.ctxReady) return;
+  feed.dataset.ctxReady = '1';
+  feed.addEventListener('contextmenu', function(e) {
+    const postEl = e.target.closest('.memory-post[data-memory-id]');
+    if (!postEl) return;
+    e.preventDefault();
+    const postId = parseInt(postEl.dataset.memoryId);
+    const post = memoriesCache.find(function(p) { return p.id === postId; });
+    if (post) showMemoryContextMenu(post, e.clientX, e.clientY);
+  });
+  document.addEventListener('click', function(e) {
+    const menu = document.getElementById('memory-ctx-menu');
+    if (menu && menu.classList.contains('ctx-visible') && !menu.contains(e.target)) {
+      hideMemoryContextMenu();
+    }
+  }, true);
+}
+
+function showMemoryContextMenu(post, px, py) {
+  _memCtxPost = post;
+  const menu = document.getElementById('memory-ctx-menu');
+  const copyBtn = document.getElementById('mem-ctx-copy-btn');
+  if (copyBtn) copyBtn.style.display = post.caption ? '' : 'none';
+  menu.classList.add('ctx-visible');
+  const mw = menu.offsetWidth || 160;
+  const mh = menu.offsetHeight || 72;
+  var left = Math.max(8, Math.min(px - mw / 2, window.innerWidth - mw - 8));
+  var top  = Math.max(8, py - mh - 14);
+  if (top < 8) top = Math.min(py + 24, window.innerHeight - mh - 8);
+  menu.style.left = left + 'px';
+  menu.style.top  = top  + 'px';
+  clearTimeout(_memCtxDismissTimer);
+  _memCtxDismissTimer = setTimeout(hideMemoryContextMenu, 4000);
+}
+
+function hideMemoryContextMenu() {
+  clearTimeout(_memCtxDismissTimer);
+  var menu = document.getElementById('memory-ctx-menu');
+  if (menu) menu.classList.remove('ctx-visible');
+  _memCtxPost = null;
+}
+
+function memCtxCopy() {
+  var post = _memCtxPost;
+  hideMemoryContextMenu();
+  if (!post || !post.caption) return;
+  navigator.clipboard.writeText(post.caption).then(function() { showToast('Copied!'); }).catch(function() { showToast('Could not copy'); });
+}
+
+async function memCtxForward() {
+  var post = _memCtxPost;
+  hideMemoryContextMenu();
+  if (!post || !wallet) { showToast('Connect wallet first'); return; }
+  if (post.image_data && post.media_type !== 'video') {
+    showToast('Preparing photo…');
+    try {
+      var uploadResp = await fetch(BACKEND + '/chat-image', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({wallet: wallet, image_data: post.image_data, image_type: post.image_type || 'image/jpeg'})
+      }).then(function(r) { return r.json(); }).catch(function() { return null; });
+      if (uploadResp && uploadResp.image_id) {
+        var imgUrl = BACKEND + '/chat-image/' + uploadResp.image_id;
+        _sharePayload = {app: '', title: '📷 Photo', url: imgUrl, desc: '', thumb: imgUrl};
+        _forwardOverride = {type: 'image', content: String(uploadResp.image_id)};
+        openShareModal();
+      } else {
+        showToast('Could not prepare photo');
+      }
+    } catch(err) {
+      showToast('Could not forward photo');
+    }
+  } else if (post.caption) {
+    _sharePayload = {app: '', title: post.caption, url: '', desc: '', thumb: ''};
+    _forwardOverride = {type: 'text', content: post.caption};
+    openShareModal();
+  } else {
+    showToast('Nothing to forward');
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -5199,6 +5309,7 @@ window.addEventListener('load', async () => {
   loadSettings();
   registerServiceWorker();
   initPicker();
+  initMemoryContextMenu();
   // ── 1. Restore from localStorage (instant — no popup)
   const saved = localStorage.getItem('lc_wallet');
   if (saved) {
