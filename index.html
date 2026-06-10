@@ -336,7 +336,7 @@ body {
 }
 .msg-bubble.out { background: var(--bubble-out); color: #fff; border-bottom-right-radius: 5px; }
 .msg-bubble.in { background: var(--bubble-in); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
-.msg-bubble-wrap { -webkit-user-select: none; user-select: none; }
+.msg-bubble-wrap { -webkit-user-select: none; user-select: none; touch-action: pan-y; }
 .msg-time { font-size: 13px; color: var(--text2); margin-top: 4px; text-align: right; }
 
 .chat-input-bar {
@@ -2795,19 +2795,32 @@ let _ctxMenuTimer  = null;
 let _ctxDismissTimer = null;
 
 function attachMsgContextMenu(wrapEl, msg, handle) {
+  var _didLongPress = false;
+
   // ── Mobile long press ──
+  // touch-action: pan-y on wrapEl means vertical scroll always works even with
+  // e.preventDefault() — the browser ignores preventDefault for the pan gesture.
   wrapEl.addEventListener('touchstart', (e) => {
-    // Don't intercept interactive children
     if (e.target.closest('button, a, input, select, .voice-play-btn')) return;
-    // NOTE: no e.preventDefault() here — it blocks scroll on Android
+    e.preventDefault(); // prevents text-selection magnifier; scroll still works via touch-action:pan-y
+    _didLongPress = false;
     const touch = e.touches[0];
     const px = touch.clientX, py = touch.clientY;
     clearTimeout(_ctxMenuTimer);
-    _ctxMenuTimer = setTimeout(() => showMsgContextMenu(wrapEl, px, py), 500);
-  }, { passive: true });
+    _ctxMenuTimer = setTimeout(() => {
+      _didLongPress = true;
+      showMsgContextMenu(wrapEl, px, py);
+    }, 600);
+  }, { passive: false });
 
   wrapEl.addEventListener('touchend',  () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
   wrapEl.addEventListener('touchmove', () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
+
+  // Absorb the synthetic click the browser fires after a long-press so it
+  // doesn't immediately dismiss the context menu we just showed.
+  wrapEl.addEventListener('click', (e) => {
+    if (_didLongPress) { e.stopPropagation(); _didLongPress = false; }
+  }, true);
 
   // ── Desktop right-click ──
   wrapEl.addEventListener('contextmenu', (e) => {
