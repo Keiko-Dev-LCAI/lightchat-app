@@ -336,7 +336,7 @@ body {
 }
 .msg-bubble.out { background: var(--bubble-out); color: #fff; border-bottom-right-radius: 5px; }
 .msg-bubble.in { background: var(--bubble-in); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
-.msg-bubble-wrap { -webkit-user-select: none; user-select: none; touch-action: pan-y; }
+.msg-bubble-wrap { -webkit-user-select: none; user-select: none; }
 .msg-time { font-size: 13px; color: var(--text2); margin-top: 4px; text-align: right; }
 
 .chat-input-bar {
@@ -2798,11 +2798,9 @@ function attachMsgContextMenu(wrapEl, msg, handle) {
   var _didLongPress = false;
 
   // ── Mobile long press ──
-  // touch-action: pan-y on wrapEl means vertical scroll always works even with
-  // e.preventDefault() — the browser ignores preventDefault for the pan gesture.
+  // passive:true — never blocks scroll. Long press still works via timer.
   wrapEl.addEventListener('touchstart', (e) => {
     if (e.target.closest('button, a, input, select, .voice-play-btn')) return;
-    e.preventDefault(); // prevents text-selection magnifier; scroll still works via touch-action:pan-y
     _didLongPress = false;
     const touch = e.touches[0];
     const px = touch.clientX, py = touch.clientY;
@@ -2811,13 +2809,13 @@ function attachMsgContextMenu(wrapEl, msg, handle) {
       _didLongPress = true;
       showMsgContextMenu(wrapEl, px, py);
     }, 600);
-  }, { passive: false });
+  }, { passive: true });
 
   wrapEl.addEventListener('touchend',  () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
   wrapEl.addEventListener('touchmove', () => { clearTimeout(_ctxMenuTimer); }, { passive: true });
 
-  // Absorb the synthetic click the browser fires after a long-press so it
-  // doesn't immediately dismiss the context menu we just showed.
+  // Capture the synthetic click the browser fires after a long-press BEFORE it
+  // reaches the document-level dismiss handler — so the menu stays open.
   wrapEl.addEventListener('click', (e) => {
     if (_didLongPress) { e.stopPropagation(); _didLongPress = false; }
   }, true);
