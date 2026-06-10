@@ -2987,6 +2987,39 @@ function ctxForwardMsg() {
   } else if (t === 'file') {
     let f = {}; try { f = JSON.parse(c); } catch(e) {}
     const fUrl = BACKEND + '/chat-file/' + (f.file_id || '');
+    const fExt = (f.file_name || '').split('.').pop().toLowerCase();
+    if (['jpg','jpeg','png','gif','webp'].includes(fExt)) {
+      // Re-upload through /chat-image so it sends as a proper inline photo
+      showToast('Preparing photo…');
+      (async function() {
+        try {
+          const imgResp = await fetch(fUrl);
+          const blob = await imgResp.blob();
+          const b64 = await new Promise(function(res) {
+            var rd = new FileReader();
+            rd.onloadend = function() { res(rd.result); };
+            rd.readAsDataURL(blob);
+          });
+          const imgType = blob.type || 'image/png';
+          const uploadResp = await fetch(BACKEND + '/chat-image', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({wallet: wallet, image_data: b64, image_type: imgType})
+          }).then(function(r) { return r.json(); }).catch(function() { return null; });
+          if (uploadResp && uploadResp.image_id) {
+            var newImgUrl = BACKEND + '/chat-image/' + uploadResp.image_id;
+            _sharePayload = {app: '', title: '📷 Photo', url: newImgUrl, desc: '', thumb: newImgUrl};
+            _forwardOverride = {type: 'image', content: String(uploadResp.image_id)};
+            openShareModal();
+          } else {
+            showToast('Could not prepare photo');
+          }
+        } catch(err) {
+          showToast('Could not forward photo');
+        }
+      })();
+      return;
+    }
     _sharePayload = {app: '', title: '📄 ' + (f.file_name || 'File'), url: fUrl, desc: '', thumb: ''};
     _forwardOverride = {type: 'file', content: c};
   } else if (t === 'gif') {
