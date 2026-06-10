@@ -1693,7 +1693,7 @@ body {
         <div style="text-align:center;padding:18px 10px">
           <div style="font-size:38px">⛓️</div>
           <div style="font-size:18px;font-weight:700;margin-top:6px">On-Chain</div>
-          <div style="font-size:14px;color:var(--text2);margin-top:4px">Costs LCAI</div>
+          <div style="font-size:14px;color:var(--purple);margin-top:4px;font-weight:600">⭐ Premium</div>
         </div>
       </label>
     </div>
@@ -3551,6 +3551,15 @@ async function submitMemoryPost() {
 
   // ── On-chain path (photo only — videos stay cloud for now) ──
   if (selectedStorage === 'chain' && memoryPhotoData && !memoryIsVideo) {
+    // Premium gate — on-chain storage is a premium feature
+    if (!_isPremiumWhitelisted()) {
+      const access = await checkCallAccess().catch(() => ({allowed: false, subscribed: false}));
+      if (!access.subscribed) {
+        btn.textContent = '📸 Post Memory'; btn.disabled = false;
+        showUpgradeModal(null);
+        return;
+      }
+    }
     if (!window.ethereum) {
       errEl.textContent = 'On-chain storage requires Trust Wallet. Switch to Cloud or open in Trust Wallet.';
       errEl.style.display = 'block';
