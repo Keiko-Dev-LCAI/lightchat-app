@@ -203,7 +203,7 @@ def get_handle_for(wallet, conn=None):
         conn.close()
     return row['handle'] if row else wallet[:8] + '...'
 
-def send_push_notification(to_wallet, title, body):
+def send_push_notification(to_wallet, title, body, extra_data=None):
     if not PUSH_AVAILABLE:
         return
     try:
@@ -213,7 +213,10 @@ def send_push_notification(to_wallet, title, body):
             (to_wallet.lower(),)
         ).fetchall()
         conn.close()
-        payload = json.dumps({'title': title, 'body': body})
+        payload_dict = {'title': title, 'body': body}
+        if extra_data:
+            payload_dict['data'] = extra_data
+        payload = json.dumps(payload_dict)
         for row in rows:
             try:
                 sub = json.loads(row['subscription'])
@@ -949,7 +952,12 @@ def on_call_offer(data):
     # Emit to callee room (works if they're currently connected)
     emit('call_offer', call_data, room=callee)
     # Push notification to wake up callee if their tab is backgrounded
-    eventlet.spawn(send_push_notification, callee, caller_handle, '📞 Incoming video call from ' + caller_handle)
+    eventlet.spawn(send_push_notification, callee, '📞 Incoming call', 'From ' + caller_handle, {
+        'type': 'incoming_call',
+        'caller_wallet': caller,
+        'caller_handle': caller_handle,
+        'url': 'https://lightchat.chat'
+    })
 
 @socketio.on('call_answer')
 def on_call_answer(data):
