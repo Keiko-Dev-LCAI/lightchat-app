@@ -1,0 +1,21 @@
+{
+  "name": "LightChat",
+  "short_name": "LightChat",
+  "description": "Decentralized chat on the Lightchain network",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1a",
+  "theme_color": "#7c5fc9",
+  "icons": [
+    {
+      "src": "lightchat-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "lightchat-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
