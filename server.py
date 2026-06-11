@@ -191,6 +191,11 @@ def cleanup_messages():
 
 threading.Thread(target=cleanup_messages, daemon=True).start()
 
+# Sentinel value meaning "this message never expires" (year 3000).
+# Using a far-future timestamp avoids schema changes while keeping
+# all existing expires_at > now queries working correctly.
+NEVER_EXPIRES = 32503680000
+
 def get_room(w1, w2):
     return '_'.join(sorted([w1.lower(), w2.lower()]))
 
@@ -545,7 +550,7 @@ def post_chat_image():
     conn = get_db()
     cursor = conn.execute(
         'INSERT INTO chat_images (wallet, image_data, image_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
-        (wallet, image_data, image_type, now, now + 86400)
+        (wallet, image_data, image_type, now, NEVER_EXPIRES)
     )
     image_id = cursor.lastrowid
     conn.commit()
@@ -637,7 +642,7 @@ def post_chat_file():
     conn = get_db()
     cursor = conn.execute(
         'INSERT INTO chat_files (wallet, file_name, file_data, file_type, file_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        (wallet, file_name, file_data, file_type, file_size, now, now + 86400)
+        (wallet, file_name, file_data, file_type, file_size, now, NEVER_EXPIRES)
     )
     file_id = cursor.lastrowid
     conn.commit()
@@ -685,7 +690,7 @@ def file_to_image(file_id):
         return jsonify({'error': 'not found'}), 404
     cursor = conn.execute(
         'INSERT INTO chat_images (wallet, image_data, image_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',
-        (wallet, row['file_data'], row['file_type'], now, now + 86400)
+        (wallet, row['file_data'], row['file_type'], now, NEVER_EXPIRES)
     )
     image_id = cursor.lastrowid
     conn.commit()
@@ -905,7 +910,7 @@ def on_send_message(data):
 
     room = get_room(sender, recipient)
     now = int(time.time())
-    expires_at = now + (24 * 60 * 60)
+    expires_at = NEVER_EXPIRES
 
     cursor = conn.execute(
         'INSERT INTO messages (room, sender_wallet, content, msg_type, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -1081,7 +1086,7 @@ def on_send_group_message(data):
         emit('error', {'message': 'Not a group member'})
         return
     now = int(time.time())
-    expires_at = now + 86400
+    expires_at = NEVER_EXPIRES
     msg_id = str(uuid.uuid4())
     conn.execute(
         'INSERT INTO group_messages (id, group_id, sender_wallet, content, type, timestamp, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -1758,6 +1763,38 @@ def api_share_calendar(ev_id):
             'from_handle': get_handle_for(wallet_b)
         }, room=share_wallet)
         return jsonify({'shared': True})
+    finally:
+        conn.close()
+
+
+@app.route('/clear-history', methods=['POST'])
+def clear_history():
+    data = request.json or {}
+    wallet_req = data.get('wallet', '').lower().strip()
+    contact_wallet = data.get('contact_wallet', '').lower().strip()
+    clear_all = bool(data.get('clear_all', False))
+
+    if not wallet_req:
+        return jsonify({'error': 'wallet required'}), 400
+
+    conn = get_db()
+    try:
+        if clear_all:
+            # Clear messages with ALL contacts; contacts themselves are kept
+            approved = conn.execute(
+                'SELECT contact_wallet FROM contacts WHERE wallet = ? AND status = ?',
+                (wallet_req, 'approved')
+            ).fetchall()
+            for row in approved:
+                room = get_room(wallet_req, row['contact_wallet'])
+                conn.execute('DELETE FROM messages WHERE room = ?', (room,))
+        elif contact_wallet:
+            room = get_room(wallet_req, contact_wallet)
+            conn.execute('DELETE FROM messages WHERE room = ?', (room,))
+        else:
+            return jsonify({'error': 'contact_wallet or clear_all required'}), 400
+        conn.commit()
+        return jsonify({'cleared': True})
     finally:
         conn.close()
 

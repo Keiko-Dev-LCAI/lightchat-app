@@ -314,6 +314,35 @@ body {
 }
 .chat-header-name { font-size: 22px; font-weight: 700; }
 .chat-header-wallet { font-size: 15px; color: var(--text2); }
+.chat-more-menu {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 220px;
+  z-index: 300;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  overflow: hidden;
+}
+.chat-more-menu.open { display: block; }
+.chat-more-menu button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 16px 22px;
+  text-align: left;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+.chat-more-menu button:last-child { border-bottom: none; }
+.chat-more-menu button:hover { background: rgba(255,255,255,.06); }
+.chat-more-menu button.danger { color: #e85555; }
 .messages-area {
   flex: 1;
   min-height: 0;
@@ -1362,9 +1391,27 @@ body {
     <button id="chat-call-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
     <button id="chat-group-call-btn" style="display:none;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startGroupVideoCall()" title="Group Video Call">📹</button>
     <button id="chat-gift-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="showGiftModal()">💜</button>
+    <div id="chat-more-wrap" style="position:relative;display:none">
+      <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px;line-height:1" onclick="toggleChatMenu(event)" title="More options">⋮</button>
+      <div id="chat-more-menu" class="chat-more-menu">
+        <button onclick="confirmClearHistory(false)">🗑 Clear This Chat</button>
+        <button class="danger" onclick="confirmClearHistory(true)">🗑 Clear All Chats</button>
+      </div>
+    </div>
   </div>
   <div class="messages-area" id="messages-area">
-    <div style="text-align:center;color:var(--text2);font-size:20px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>
+  </div>
+
+  <!-- Clear history confirmation modal -->
+  <div id="clear-history-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center">
+    <div style="background:var(--card);border-radius:18px;padding:32px 28px;max-width:360px;width:90%;border:1px solid var(--border)">
+      <div style="font-size:22px;font-weight:700;margin-bottom:14px">Clear Chat History</div>
+      <div id="clear-history-msg" style="font-size:18px;color:var(--text2);margin-bottom:28px;line-height:1.5"></div>
+      <div style="display:flex;gap:14px">
+        <button onclick="document.getElementById('clear-history-modal').style.display='none'" style="flex:1;padding:14px;border-radius:12px;border:1px solid var(--border);background:none;color:var(--text);font-size:18px;cursor:pointer">Cancel</button>
+        <button onclick="doClearHistory()" style="flex:1;padding:14px;border-radius:12px;border:none;background:#e85555;color:#fff;font-size:18px;font-weight:700;cursor:pointer">Clear</button>
+      </div>
+    </div>
   </div>
   <!-- ── EMOJI / STICKER / GIF / PHOTO / FILE PICKER ── -->
   <div id="picker-panel">
@@ -1392,7 +1439,6 @@ body {
       <div style="display:flex;flex-direction:column;gap:14px;padding:16px">
         <button class="primary-btn" onclick="pickChatPhoto('camera')">📷 Take a Photo</button>
         <button class="primary-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="pickChatPhoto('gallery')">🖼️ Choose from Gallery</button>
-        <div style="font-size:15px;color:var(--text2);text-align:center">Photos auto-delete after 24 hours</div>
         <input type="file" id="chat-camera-input" accept="image/*" capture="environment" style="display:none" onchange="sendChatPhoto(this)">
         <input type="file" id="chat-gallery-input" accept="image/*" style="display:none" onchange="sendChatPhoto(this)">
       </div>
@@ -1400,11 +1446,11 @@ body {
     <div id="picker-file" class="picker-content">
       <div style="display:flex;flex-direction:column;gap:14px;padding:16px">
         <button class="primary-btn" onclick="document.getElementById('chat-file-input').click()">📁 Choose File</button>
-        <div style="font-size:15px;color:var(--text2);text-align:center">Any file type &nbsp;·&nbsp; Max 10 MB &nbsp;·&nbsp; Deletes after 24 hours</div>
+        <div style="font-size:15px;color:var(--text2);text-align:center">Any file type &nbsp;·&nbsp; Max 10 MB</div>
         <input type="file" id="chat-file-input" style="display:none" onchange="sendChatFile(this)">
         <div style="border-top:1px solid var(--border);margin:4px 0"></div>
         <button class="primary-btn" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="document.getElementById('chat-video-input').click()">🎥 Send Video</button>
-        <div style="font-size:15px;color:var(--text2);text-align:center">Videos from gallery &nbsp;·&nbsp; Max 50 MB &nbsp;·&nbsp; Deletes after 24 hours</div>
+        <div style="font-size:15px;color:var(--text2);text-align:center">Videos from gallery &nbsp;·&nbsp; Max 50 MB</div>
         <div id="video-size-warning" style="display:none;background:rgba(240,192,64,0.12);border:1px solid var(--gold);border-radius:12px;padding:10px 14px;font-size:14px;color:var(--gold)">⚠️ Video is large — may take a moment to upload</div>
         <input type="file" id="chat-video-input" accept="video/*" style="display:none" onchange="sendChatVideo(this)">
       </div>
@@ -2270,7 +2316,7 @@ function connectSocket() {
   socket.on('group_messages', (data) => {
     if (!isGroupChat || !currentGroupChat || currentGroupChat.id !== data.group_id) return;
     const area = document.getElementById('messages-area');
-    area.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Group messages auto-delete after 24 hours 🔒</div>';
+    area.innerHTML = '';
     (data.messages || []).forEach(m => appendMessage(m, m.sender_handle));
     scrollToBottom();
   });
@@ -2443,8 +2489,10 @@ async function openChat(contactWallet, handle) {
   unreadCounts[contactWallet] = 0;
   document.getElementById('chat-header-name').textContent = currentChat.handle;
   document.getElementById('chat-header-wallet').textContent = shortenWallet(contactWallet);
+  var mw = document.getElementById('chat-more-wrap');
+  if (mw) mw.style.display = '';
   document.getElementById('chat-view').classList.add('open');
-  document.getElementById('messages-area').innerHTML = '<div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Messages auto-delete after 24 hours 🔒</div>';
+  document.getElementById('messages-area').innerHTML = '';
   if (socket) socket.emit('join_chat', {wallet, contact_wallet: contactWallet});
   const msgs = await fetch(BACKEND + '/messages/' + wallet + '/' + contactWallet).then(r => r.json()).catch(() => []);
   msgs.forEach(m => appendMessage(m));
@@ -2462,9 +2510,70 @@ function closeChat() {
   var cb = document.getElementById('chat-call-btn');
   var gb = document.getElementById('chat-gift-btn');
   var gcb = document.getElementById('chat-group-call-btn');
+  var mw = document.getElementById('chat-more-wrap');
   if (cb) cb.style.display = '';
   if (gb) gb.style.display = '';
   if (gcb) gcb.style.display = 'none';
+  if (mw) { mw.style.display = 'none'; }
+  var menu = document.getElementById('chat-more-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+// ── Chat History Menu ──────────────────────────────────────────────────
+var _clearHistoryAll = false;
+
+function toggleChatMenu(evt) {
+  if (evt) evt.stopPropagation();
+  var menu = document.getElementById('chat-more-menu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+}
+
+// Close the dropdown if user taps anywhere else
+document.addEventListener('click', function(e) {
+  var menu = document.getElementById('chat-more-menu');
+  if (menu && menu.classList.contains('open')) {
+    var wrap = document.getElementById('chat-more-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  }
+});
+
+function confirmClearHistory(clearAll) {
+  _clearHistoryAll = clearAll;
+  var menu = document.getElementById('chat-more-menu');
+  if (menu) menu.classList.remove('open');
+  var msg = clearAll
+    ? 'Clear ALL chat history? Messages with every contact will be permanently deleted. Your contacts will not be removed.'
+    : 'Clear chat history with ' + (currentChat ? currentChat.handle : 'this contact') + '? Messages will be permanently deleted.';
+  var el = document.getElementById('clear-history-msg');
+  if (el) el.textContent = msg;
+  var modal = document.getElementById('clear-history-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+async function doClearHistory() {
+  var modal = document.getElementById('clear-history-modal');
+  if (modal) modal.style.display = 'none';
+  if (!wallet) { showToast('Wallet not connected'); return; }
+  try {
+    var body = {wallet: wallet, clear_all: _clearHistoryAll};
+    if (!_clearHistoryAll && currentChat) body.contact_wallet = currentChat.wallet;
+    var res = await fetch(BACKEND + '/clear-history', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    }).then(function(r) { return r.json(); });
+    if (res.cleared) {
+      document.getElementById('messages-area').innerHTML = '';
+      showToast(_clearHistoryAll ? 'All chat history cleared' : 'Chat history cleared');
+    } else {
+      showToast('Could not clear history');
+    }
+  } catch (e) {
+    showToast('Error clearing history');
+  }
 }
 
 function sendMessage() {
@@ -5347,12 +5456,14 @@ async function openGroupChat(groupId, memberCount) {
   var cb = document.getElementById('chat-call-btn');
   var gb = document.getElementById('chat-gift-btn');
   var gcb = document.getElementById('chat-group-call-btn');
+  var mw = document.getElementById('chat-more-wrap');
   if (cb) cb.style.display = 'none';
   if (gb) gb.style.display = 'none';
   if (gcb) gcb.style.display = memberCount >= 2 ? '' : 'none';
+  if (mw) mw.style.display = 'none';
 
   document.getElementById('chat-view').classList.add('open');
-  document.getElementById('messages-area').innerHTML = '<div style="text-align:center;color:var(--text2);font-size:16px;padding:20px 0">Group messages auto-delete after 24 hours 🔒</div>';
+  document.getElementById('messages-area').innerHTML = '';
 
   if (socket) {
     socket.emit('join_group', {group_id: groupId});
