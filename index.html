@@ -13,6 +13,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="LightChat">
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<script type="module">
+  try {
+    const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.3');
+    window.WCEthereumProvider = EthereumProvider;
+  } catch(e) { console.warn('WalletConnect unavailable:', e); }
+</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
@@ -2142,19 +2148,48 @@ let searchFoundWallet = null;
 let groups = [], currentGroupChat = null, isGroupChat = false, groupUnreadCounts = {};
 let selectedGroupMembers = [];
 
-async function connectWallet() {
-  // ── Path 1: injected wallet (Trust Wallet in-app browser, MetaMask, etc.)
-  if (window.ethereum) {
-    try {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      await provider.send('eth_requestAccounts', []);
-      const signer = provider.getSigner();
-      wallet = (await signer.getAddress()).toLowerCase();
-      onWalletConnected();
-    } catch(e) { showToast('Connection cancelled'); }
-    return; // stay in injected-wallet path regardless of outcome
+let _wcProv = null;
+
+async function connectViaWalletConnect() {
+  if (!window.WCEthereumProvider) { showToast('WalletConnect not loaded yet. Try again.'); return; }
+  try {
+    _wcProv = await window.WCEthereumProvider.init({
+      projectId: '3c6a0da53258912a28923198ddac3333',
+      chains: [9200], optionalChains: [1], showQrModal: true,
+      metadata: { name: 'LightChat', description: 'Encrypted Blockchain Messaging on Lightchain', url: 'https://lightchat.chat', icons: ['https://lightchat.chat/icon-192.png'] },
+      rpcMap: { 9200: 'https://rpc.mainnet.lightchain.ai' }
+    });
+    await _wcProv.enable();
+    window.ethereum = _wcProv;
+    await connectWithInjected();
+  } catch(e) {
+    if (!e || e.message?.includes('User rejected') || e.message?.includes('rejected') || e.code === 4001) return;
+    showToast('WalletConnect failed. Try a different wallet.');
   }
-  // ── Path 2: No injected wallet — show paste-address modal
+}
+
+async function connectWithInjected() {
+  try {
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send('eth_requestAccounts', []);
+    const signer = provider.getSigner();
+    wallet = (await signer.getAddress()).toLowerCase();
+    onWalletConnected();
+  } catch(e) { showToast('Connection cancelled'); }
+}
+
+async function connectWallet() {
+  // ── Path 1: injected wallet (Trust Wallet in-app browser, extension, or WalletConnect already set)
+  if (window.ethereum) {
+    await connectWithInjected();
+    return;
+  }
+  // ── Path 2: WalletConnect (QR on desktop, wallet app links on mobile)
+  if (window.WCEthereumProvider) {
+    await connectViaWalletConnect();
+    return;
+  }
+  // ── Path 3: No wallet at all — show paste-address modal
   openPasteAddressModal();
 }
 
