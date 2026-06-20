@@ -254,7 +254,15 @@ def send_push_notification(to_wallet, title, body, extra_data=None):
 
 @app.route('/health')
 def health():
-    return jsonify({'status': 'ok', 'service': 'LightChat'})
+    client = _get_aivm_client()
+    return jsonify({
+        'status': 'ok',
+        'service': 'LightChat',
+        'aivm_protocol': _AIVM_PROTOCOL,
+        'aivm_gateway': _AIVM_GATEWAY,
+        'aivm_ready': client is not None,
+        'job_registry': _AIVM_JOB_REG,
+    })
 
 STICKERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stickers')
 
@@ -1804,14 +1812,18 @@ def clear_history():
 # VOICE AI — AIVM Client + session memory
 # ════════════════════════════════════════════════════════════════════════════
 
-# Aligned with lightchain-protocol/lcai-chat-v2 + Keiko Chat (config/index.ts mainnet)
-_AIVM_GATEWAY  = "https://chat-api.mainnet.lightchain.ai"
-_AIVM_RELAY    = "wss://relay.mainnet.lightchain.ai/ws"
-_AIVM_RPC      = "https://rpc.mainnet.lightchain.ai"
-_AIVM_JOB_REG  = "0xfB15F90298e4CcD7106E76fFB5e520315cC42B0b"  # lcai-chat-v2 jobRegistryAddress
-_AIVM_AI_CFG   = "0x24D11533C354092ed6E18b964257819cE78Ce77D"  # lcai-chat-v2 aiConfigAddress
-_AIVM_JOB_FEE  = 20_000_000_000_000_000   # 0.02 LCAI in wei
-_AIVM_CHAIN_ID = 9200
+# AIVM protocol — aligned with lightchain-protocol/lcai-chat-v2 mainnet (config/index.ts)
+# Reference: https://github.com/lightchain-protocol/lcai-chat-v2
+# Flow: JWT auth → select/prepare session → on-chain createSession/submitJob → relay WS → decrypt
+_AIVM_PROTOCOL  = "lcai-chat-v2-mainnet"
+_AIVM_GATEWAY   = "https://chat-api.mainnet.lightchain.ai"
+_AIVM_RELAY     = "wss://relay.mainnet.lightchain.ai/ws"
+_AIVM_RPC       = "https://rpc.mainnet.lightchain.ai"
+_AIVM_JOB_REG   = "0xfB15F90298e4CcD7106E76fFB5e520315cC42B0b"
+_AIVM_AI_CFG    = "0x24D11533C354092ed6E18b964257819cE78Ce77D"
+_AIVM_WORKER_REG = "0x0000000000000000000000000000000000001002"
+_AIVM_JOB_FEE   = 20_000_000_000_000_000   # 0.02 LCAI in wei
+_AIVM_CHAIN_ID  = 9200
 
 _AIVM_ABI = [
     {
