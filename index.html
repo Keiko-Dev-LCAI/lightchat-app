@@ -78,6 +78,8 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
+    position: relative;
+    z-index: 150;
   }
   .sidebar-logo {
     padding: 32px 34px 26px;
@@ -3358,6 +3360,8 @@ async function confirmDeleteHandle() {
 }
 
 function switchTab(name) {
+  const chatEl = document.getElementById('chat-view');
+  if (chatEl && chatEl.classList.contains('open')) closeChat();
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
