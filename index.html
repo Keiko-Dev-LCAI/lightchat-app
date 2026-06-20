@@ -2791,7 +2791,10 @@ function appendMessage(msg, senderHandle) {
       + '<div class="msg-time">' + time + '</div></div>';
     // Set audio URL safely via dataset (no inline escaping risks)
     const vpEl = wrap.querySelector('#' + vId);
-    if (vpEl) vpEl.dataset.audioUrl = v.url || '';
+    if (vpEl) {
+      vpEl.dataset.audioUrl = v.url || '';
+      if (v.mime) vpEl.dataset.audioMime = v.mime;
+    }
   } else {
     // Text message: render with clickable URLs + YouTube/TikTok preview
     wrap.innerHTML = '<div>' + renderMsgBubble(msg.content, isOut) + '<div class="msg-time">' + time + '</div></div>';
@@ -5101,7 +5104,7 @@ async function sendVoiceBlob(chunks, mimeType, duration) {
     }).then(function(r) { return r.json(); }).catch(function() { return {error: 'Upload failed'}; });
 
     if (resp.error || !resp.url) { showToast('Voice message failed'); return; }
-    var vContent = JSON.stringify({url: BACKEND + resp.url, duration: duration || 1});
+    var vContent = JSON.stringify({url: BACKEND + resp.url, duration: duration || 1, mime: resp.mime || 'audio/mpeg'});
     appendMessage({sender_wallet: wallet, content: vContent, type: 'voice', msg_type: 'voice', created_at: Math.floor(Date.now() / 1000)});
     scrollToBottom();
     _emitMsg(vContent, 'voice');
@@ -5110,49 +5113,107 @@ async function sendVoiceBlob(chunks, mimeType, duration) {
   }
 }
 
-function toggleVoicePlay(vId) {
+function _stopVoicePlayback(vId) {
+  var entry = _voiceAudios[vId];
+  if (!entry) return;
+  if (entry._waSource) {
+    try { entry._waSource.stop(); } catch(e) {}
+    entry._waSource = null;
+  } else if (entry.pause) {
+    entry.pause();
+    try { entry.currentTime = 0; } catch(e) {}
+  }
+}
+
+function _resetVoicePill(vId) {
+  var pill = document.getElementById(vId);
+  if (!pill) return;
+  var btn = pill.querySelector('.voice-play-btn');
+  if (btn) btn.textContent = '▶';
+  pill.classList.remove('playing');
+}
+
+function _stopAllVoicePlayback(exceptId) {
+  Object.keys(_voiceAudios).forEach(function(id) {
+    if (id === exceptId) return;
+    var entry = _voiceAudios[id];
+    if (!entry) return;
+    if (entry._waSource || (entry.pause && !entry.paused)) {
+      _stopVoicePlayback(id);
+      _resetVoicePill(id);
+    }
+  });
+}
+
+async function _loadVoiceAudio(vId, audioUrl, mimeHint) {
+  var resp = await fetch(audioUrl, { mode: 'cors' });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  var ctype = (mimeHint || resp.headers.get('content-type') || 'audio/mpeg').split(';')[0].trim();
+  var blob = new Blob([await resp.arrayBuffer()], { type: ctype });
+  var objUrl = URL.createObjectURL(blob);
+  var audio = new Audio();
+  audio.preload = 'auto';
+  audio.src = objUrl;
+  audio._objUrl = objUrl;
+  audio.onended = function() { _resetVoicePill(vId); };
+  _voiceAudios[vId] = audio;
+  return audio;
+}
+
+async function _playVoiceWithWebAudio(vId, audioUrl) {
+  var resp = await fetch(audioUrl, { mode: 'cors' });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  var ctx = getAudioCtx();
+  var decoded = await ctx.decodeAudioData(await resp.arrayBuffer());
+  var src = ctx.createBufferSource();
+  src.buffer = decoded;
+  src.connect(ctx.destination);
+  src.onended = function() { _resetVoicePill(vId); };
+  _voiceAudios[vId] = { _waSource: src };
+  src.start(0);
+}
+
+async function toggleVoicePlay(vId) {
   var pill = document.getElementById(vId);
   if (!pill) return;
   var audioUrl = pill.dataset.audioUrl;
   if (!audioUrl) { showToast('Audio not available'); return; }
   var btn = pill.querySelector('.voice-play-btn');
+  var mimeHint = pill.dataset.audioMime || '';
+  getAudioCtx();
 
-  // Already playing → pause
-  if (_voiceAudios[vId] && !_voiceAudios[vId].paused) {
-    _voiceAudios[vId].pause();
-    if (btn) btn.textContent = '▶';
-    pill.classList.remove('playing');
+  var entry = _voiceAudios[vId];
+  if (entry && entry._waSource) {
+    _stopVoicePlayback(vId);
+    _resetVoicePill(vId);
+    return;
+  }
+  if (entry && entry.pause && !entry.paused) {
+    _stopVoicePlayback(vId);
+    _resetVoicePill(vId);
     return;
   }
 
-  // Stop any other playing voice message
-  Object.keys(_voiceAudios).forEach(function(id) {
-    if (id !== vId && _voiceAudios[id] && !_voiceAudios[id].paused) {
-      _voiceAudios[id].pause();
-      var op = document.getElementById(id);
-      if (op) {
-        var ob = op.querySelector('.voice-play-btn');
-        if (ob) ob.textContent = '▶';
-        op.classList.remove('playing');
-      }
+  _stopAllVoicePlayback(vId);
+
+  try {
+    if (!entry || (!entry.pause && !entry._waSource)) {
+      await _loadVoiceAudio(vId, audioUrl, mimeHint);
+      entry = _voiceAudios[vId];
     }
-  });
-
-  // Create Audio element on first play
-  if (!_voiceAudios[vId]) {
-    _voiceAudios[vId] = new Audio(audioUrl);
-    _voiceAudios[vId].onended = function() {
-      if (btn) btn.textContent = '▶';
-      pill.classList.remove('playing');
-    };
-  }
-
-  _voiceAudios[vId].play().then(function() {
+    await entry.play();
     if (btn) btn.textContent = '⏸';
     pill.classList.add('playing');
-  }).catch(function() {
-    showToast('Could not play voice message');
-  });
+  } catch (e1) {
+    try {
+      await _playVoiceWithWebAudio(vId, audioUrl);
+      if (btn) btn.textContent = '⏸';
+      pill.classList.add('playing');
+    } catch (e2) {
+      console.error('voice play failed:', e1, e2);
+      showToast('Could not play voice message');
+    }
+  }
 }
 
 // ════════════════════════════════
