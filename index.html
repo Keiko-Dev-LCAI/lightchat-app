@@ -2175,7 +2175,7 @@ function acceptTermsIfNeeded() {
   if (localStorage.getItem('lc_terms_accepted')) return Promise.resolve();
   return new Promise(resolve => {
     const modal = document.getElementById('terms-modal');
-    const btn = modal?.querySelector('.modal-btn');
+    const btn = document.getElementById('terms-accept-btn');
     if (!modal || !btn) { localStorage.setItem('lc_terms_accepted', '1'); resolve(); return; }
     modal.style.display = 'flex';
     btn.onclick = function() {
@@ -2236,6 +2236,21 @@ async function switchToLightchain(prov) {
   }
 }
 
+function isWalletInAppBrowser() {
+  const ua = navigator.userAgent;
+  return !!(window.ethereum && (
+    window.ethereum.isMetaMask || window.ethereum.isTrust ||
+    window.ethereum.isCoinbaseWallet || /TrustWallet|MetaMaskMobile/i.test(ua)
+  ));
+}
+
+function requestAccountsWithTimeout(prov, ms) {
+  return Promise.race([
+    prov.request({ method: 'eth_requestAccounts' }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms || 8000))
+  ]);
+}
+
 async function connectWithInjected() {
   const providers = window.ethereum?.providers?.length
     ? Array.from(window.ethereum.providers)
@@ -2245,17 +2260,19 @@ async function connectWithInjected() {
   for (const prov of providers) {
     _connectingInProgress = true;
     try {
-      const accounts = await prov.request({ method: 'eth_requestAccounts' });
+      const accounts = await requestAccountsWithTimeout(prov);
       if (!accounts?.length) continue;
       wallet = accounts[0].toLowerCase();
       _activeProvider = prov;
-      await switchToLightchain(prov);
       _connectingInProgress = false;
       await finishConnect();
       return true;
     } catch (e) {
       _connectingInProgress = false;
-      if (e?.code === 4001) return true;
+      if (e?.code === 4001) {
+        showToast('Connection cancelled');
+        return false;
+      }
     }
   }
   return false;
@@ -2267,6 +2284,10 @@ async function connectWallet() {
     if (isValidWallet(saved)) {
       wallet = saved.toLowerCase();
       await finishConnect();
+      return;
+    }
+    if (isMobileDevice() && !isWalletInAppBrowser()) {
+      openPasteAddressModal();
       return;
     }
     if (window.ethereum) {
@@ -6284,19 +6305,19 @@ function parseVoiceCommand(raw) {
   // Not a navigation command — send to Voice AI (AIVM)
   _voiceShowTranscript(raw);
   _voiceShowThinking();
-  fetch(BACKEND + ‘/api/voice-chat’, {
-    method: ‘POST’,
-    headers: {‘Content-Type’: ‘application/json’},
+  fetch(BACKEND + '/api/voice-chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({transcript: raw, session_id: VOICE_SESSION_ID})
   })
   .then(function(res) { return res.json(); })
   .then(function(data) {
     if (data.error) {
-      _voiceShowError(‘Error: ‘ + data.error);
+      _voiceShowError('Error: ' + data.error);
       return;
     }
     if (data.session_id) { VOICE_SESSION_ID = data.session_id; }
-    _voiceShowResponse(data.response || ‘’);
+    _voiceShowResponse(data.response || '');
     // Speak the response aloud if TTS is available
     if (window.speechSynthesis && data.response) {
       var utt = new SpeechSynthesisUtterance(data.response);
@@ -6306,8 +6327,8 @@ function parseVoiceCommand(raw) {
     }
   })
   .catch(function(err) {
-    console.error(‘[VoiceAI] fetch error:’, err);
-    _voiceShowError(‘Connection error — try again’);
+    console.error('[VoiceAI] fetch error:', err);
+    _voiceShowError('Connection error — try again');
   });
 }
 
