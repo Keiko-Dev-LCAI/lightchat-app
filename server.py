@@ -1804,10 +1804,12 @@ def clear_history():
 # VOICE AI — AIVM Client + session memory
 # ════════════════════════════════════════════════════════════════════════════
 
+# Aligned with lightchain-protocol/lcai-chat-v2 + Keiko Chat (config/index.ts mainnet)
 _AIVM_GATEWAY  = "https://chat-api.mainnet.lightchain.ai"
 _AIVM_RELAY    = "wss://relay.mainnet.lightchain.ai/ws"
 _AIVM_RPC      = "https://rpc.mainnet.lightchain.ai"
-_AIVM_JOB_REG  = "0xfB15F90298e4CcD7106E76fFB5e520315cC42B0b"
+_AIVM_JOB_REG  = "0xfB15F90298e4CcD7106E76fFB5e520315cC42B0b"  # lcai-chat-v2 jobRegistryAddress
+_AIVM_AI_CFG   = "0x24D11533C354092ed6E18b964257819cE78Ce77D"  # lcai-chat-v2 aiConfigAddress
 _AIVM_JOB_FEE  = 20_000_000_000_000_000   # 0.02 LCAI in wei
 _AIVM_CHAIN_ID = 9200
 
