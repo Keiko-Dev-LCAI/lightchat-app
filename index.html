@@ -1828,7 +1828,7 @@ body {
       By using LightChat, you agree to these terms.
     </div>
 
-    <button class="modal-btn" onclick="document.getElementById('terms-modal').style.display='none'" style="font-size:20px;padding:18px" data-i18n="terms_understand">✓ I Understand</button>
+    <button class="modal-btn" id="terms-accept-btn" style="font-size:20px;padding:18px" data-i18n="terms_understand">✓ I Understand</button>
   </div>
 </div>
 
@@ -2162,115 +2162,39 @@ function isValidWallet(addr) {
   return /^0x[0-9a-fA-F]{40}$/.test(addr || '');
 }
 
-async function connectWithInjected() {
-  if (!window.ethereum) return false;
-  _connectingInProgress = true;
-  _activeProvider = window.ethereum;
-  try {
-    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-    if (!accounts?.length) throw new Error('No accounts');
-    wallet = accounts[0].toLowerCase();
-
-    const chainHex = await window.ethereum.request({ method: 'eth_chainId' });
-    const chainId = parseInt(chainHex, 16);
-    if (chainId !== LC_CHAIN_ID) {
-      try {
-        await window.ethereum.request({
-          method: 'wallet_switchEthereumChain',
-          params: [{ chainId: '0x' + LC_CHAIN_ID.toString(16) }]
-        });
-      } catch (e) {
-        if (e.code === 4902) {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [{
-              chainId: '0x' + LC_CHAIN_ID.toString(16),
-              chainName: 'Lightchain AI',
-              nativeCurrency: { name: 'LCAI', symbol: 'LCAI', decimals: 18 },
-              rpcUrls: ['https://rpc.mainnet.lightchain.ai'],
-              blockExplorerUrls: ['https://mainnet.lightscan.app']
-            }]
-          });
-        } else { throw e; }
-      }
-    }
-    _connectingInProgress = false;
-    await onWalletConnected();
-    return true;
-  } catch (e) {
-    _connectingInProgress = false;
-    if (e?.code === 4001) return true;
-    return false;
-  }
-}
-
-async function connectViaWalletConnect() {
-  if (!window.WCEthereumProvider) { showToast('WalletConnect not loaded yet. Try again.'); return; }
-  try {
-    _wcProv = await window.WCEthereumProvider.init({
-      projectId: '3c6a0da53258912a28923198ddac3333',
-      chains: [LC_CHAIN_ID], optionalChains: [1], showQrModal: true,
-      metadata: { name: 'LightChat', description: 'Encrypted Blockchain Messaging on Lightchain', url: 'https://lightchat.chat', icons: ['https://lightchat.chat/icon-192.png'] },
-      rpcMap: { [LC_CHAIN_ID]: 'https://rpc.mainnet.lightchain.ai' }
-    });
-    await _wcProv.enable();
-    _activeProvider = _wcProv;
-    wallet = (_wcProv.accounts[0] || '').toLowerCase();
-    if (!wallet) throw new Error('No WC account');
-    await onWalletConnected();
-  } catch(e) {
-    if (!e || e.message?.includes('User rejected') || e.message?.includes('rejected') || e.code === 4001) return;
-    showToast('Could not connect. Try again.');
-  }
-}
-
-async function connectWallet() {
-  // Returning user — one tap, no popup (worked before session 124)
-  const saved = localStorage.getItem('lc_wallet');
-  if (isValidWallet(saved)) {
-    wallet = saved.toLowerCase();
-    await onWalletConnected();
-    return;
-  }
-
-  // Wallet in-app browser — one tap approve
-  if (window.ethereum) {
-    const ok = await connectWithInjected();
-    if (ok) return;
-    if (isMobileDevice()) { openPasteAddressModal(); return; }
-  }
-
-  // Mobile Safari/Chrome — simple paste-address flow (pre-session-124, what worked last week)
-  if (isMobileDevice()) {
-    openPasteAddressModal();
-    return;
-  }
-
-  // Desktop only — WalletConnect QR
-  if (window.WCEthereumProvider) {
-    await connectViaWalletConnect();
-    return;
-  }
-
-  openPasteAddressModal();
-}
-
-async function onWalletConnected() {
-  // Show Terms of Use on first connect (must accept before continuing)
-  if (!localStorage.getItem('lc_terms_accepted')) {
-    document.getElementById('terms-modal').style.display = 'flex';
-    document.getElementById('terms-modal').querySelector('.modal-btn').onclick = function() {
-      localStorage.setItem('lc_terms_accepted', '1');
-      document.getElementById('terms-modal').style.display = 'none';
-    };
-  }
-  // Persist wallet address across refreshes
-  localStorage.setItem('lc_wallet', wallet);
-
+function hideConnectUI() {
   document.getElementById('connect-btn') && (document.getElementById('connect-btn').style.display = 'none');
   document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'block');
   document.getElementById('sidebar-connect-btn') && (document.getElementById('sidebar-connect-btn').style.display = 'none');
   document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
+  const cta = document.getElementById('empty-cta-btn');
+  if (cta && wallet) cta.textContent = '👥 Add a Contact';
+}
+
+function acceptTermsIfNeeded() {
+  if (localStorage.getItem('lc_terms_accepted')) return Promise.resolve();
+  return new Promise(resolve => {
+    const modal = document.getElementById('terms-modal');
+    const btn = modal?.querySelector('.modal-btn');
+    if (!modal || !btn) { localStorage.setItem('lc_terms_accepted', '1'); resolve(); return; }
+    modal.style.display = 'flex';
+    btn.onclick = function() {
+      localStorage.setItem('lc_terms_accepted', '1');
+      modal.style.display = 'none';
+      resolve();
+    };
+  });
+}
+
+async function finishConnect() {
+  if (!isValidWallet(wallet)) {
+    showToast('Invalid wallet address');
+    return;
+  }
+  wallet = wallet.toLowerCase();
+  await acceptTermsIfNeeded();
+  localStorage.setItem('lc_wallet', wallet);
+  hideConnectUI();
 
   const resp = await fetch(BACKEND + '/handle/' + wallet).then(r => r.json()).catch(() => ({}));
   if (resp.handle) {
@@ -2286,6 +2210,78 @@ async function onWalletConnected() {
     showHandleModal();
   }
 }
+
+async function switchToLightchain(prov) {
+  const chainHex = await prov.request({ method: 'eth_chainId' });
+  const chainId = parseInt(chainHex, 16);
+  if (chainId === LC_CHAIN_ID) return;
+  try {
+    await prov.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0x' + LC_CHAIN_ID.toString(16) }]
+    });
+  } catch (e) {
+    if (e.code === 4902) {
+      await prov.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: '0x' + LC_CHAIN_ID.toString(16),
+          chainName: 'Lightchain AI',
+          nativeCurrency: { name: 'LCAI', symbol: 'LCAI', decimals: 18 },
+          rpcUrls: ['https://rpc.mainnet.lightchain.ai'],
+          blockExplorerUrls: ['https://mainnet.lightscan.app']
+        }]
+      });
+    } else { throw e; }
+  }
+}
+
+async function connectWithInjected() {
+  const providers = window.ethereum?.providers?.length
+    ? Array.from(window.ethereum.providers)
+    : (window.ethereum ? [window.ethereum] : []);
+  if (!providers.length) return false;
+
+  for (const prov of providers) {
+    _connectingInProgress = true;
+    try {
+      const accounts = await prov.request({ method: 'eth_requestAccounts' });
+      if (!accounts?.length) continue;
+      wallet = accounts[0].toLowerCase();
+      _activeProvider = prov;
+      await switchToLightchain(prov);
+      _connectingInProgress = false;
+      await finishConnect();
+      return true;
+    } catch (e) {
+      _connectingInProgress = false;
+      if (e?.code === 4001) return true;
+    }
+  }
+  return false;
+}
+
+async function connectWallet() {
+  try {
+    const saved = localStorage.getItem('lc_wallet');
+    if (isValidWallet(saved)) {
+      wallet = saved.toLowerCase();
+      await finishConnect();
+      return;
+    }
+    if (window.ethereum) {
+      const ok = await connectWithInjected();
+      if (ok) return;
+    }
+    openPasteAddressModal();
+  } catch (e) {
+    console.error('connectWallet:', e);
+    showToast('Could not connect — paste your wallet address');
+    openPasteAddressModal();
+  }
+}
+
+async function onWalletConnected() { await finishConnect(); }
 
 function showHandleModal() {
   document.getElementById('modal-wallet-display').textContent = wallet ? shortenWallet(wallet) : '';
@@ -4744,17 +4740,16 @@ function closeWCModal() {
   document.getElementById('wc-modal').style.display = 'none';
 }
 
-function connectPastedAddress() {
+async function connectPastedAddress() {
   const inp = document.getElementById('wc-addr-input');
   const raw = inp ? inp.value.trim() : '';
-  if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) {
+  if (!isValidWallet(raw)) {
     showToast('Please enter a valid 0x wallet address');
     return;
   }
   wallet = raw.toLowerCase();
-  localStorage.setItem('lc_wallet', wallet);
   closeWCModal();
-  onWalletConnected();
+  await finishConnect();
 }
 
 // Allow pressing Enter in the address input
@@ -5649,42 +5644,23 @@ window.addEventListener('load', async () => {
   registerServiceWorker();
   initPicker();
   initMemoryContextMenu();
-  // ── 1. Restore from localStorage (instant — no popup)
+  // Auto-restore session on refresh (no button tap needed)
   const saved = localStorage.getItem('lc_wallet');
-  if (saved) {
-    wallet = saved;
-    const resp = await fetch(BACKEND + '/handle/' + wallet).then(r => r.json()).catch(() => ({}));
-    if (resp.handle) {
-      myHandle = resp.handle;
-      document.getElementById('connect-btn') && (document.getElementById('connect-btn').style.display = 'none');
-      document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'block');
-      document.getElementById('sidebar-connect-btn') && (document.getElementById('sidebar-connect-btn').style.display = 'none');
-      document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
-      updateUI();
-      connectSocket();   // connect socket for all users (WC and injected alike)
-      loadContacts();
-      loadGroups();
-      loadMemories();
-      handleInviteParam();
-      handleShareParam();
-    } else if (saved) {
-      // Backend unreachable or handle not found — pre-fill modal so user just taps Connect
-      const inp = document.getElementById('wc-addr-input');
-      if (inp) inp.value = saved;
+  if (isValidWallet(saved)) {
+    wallet = saved.toLowerCase();
+    await finishConnect();
+  } else {
+    const prov = _activeProvider || window.ethereum;
+    if (prov) {
+      try {
+        const accounts = await prov.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          wallet = accounts[0].toLowerCase();
+          _activeProvider = prov;
+          await finishConnect();
+        }
+      } catch(e) {}
     }
-  }
-  // ── 2. Silent reconnect if wallet extension already authorized this site
-  const prov = _activeProvider || window.ethereum;
-  if (prov) {
-    try {
-      const accounts = await prov.request({ method: 'eth_accounts' });
-      if (accounts.length > 0) {
-        const addr = accounts[0].toLowerCase();
-        _activeProvider = prov;
-        if (addr !== wallet) { wallet = addr; await onWalletConnected(); }
-        else if (wallet) { connectSocket(); handleInviteParam(); handleShareParam(); }
-      }
-    } catch(e) {}
   }
 });
 
