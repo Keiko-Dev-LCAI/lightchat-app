@@ -790,7 +790,7 @@ def post_chat_voice():
         return jsonify({'error': 'no audio data'}), 400
     mp3_data, out_type = transcode_voice_to_mp3(audio_data, content_type)
     now = int(time.time())
-    expires_at = now + 86400 * 30  # 30-day TTL
+    expires_at = NEVER_EXPIRES
     conn = get_db()
     cursor = conn.execute(
         'INSERT INTO chat_voices (voice_data, content_type, created_at, expires_at) VALUES (?, ?, ?, ?)',
