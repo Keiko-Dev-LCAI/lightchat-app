@@ -13,6 +13,8 @@ import json
 import base64
 import uuid
 import secrets
+import subprocess
+import tempfile
 
 try:
     from pywebpush import webpush, WebPushException
@@ -110,6 +112,13 @@ def init_db():
             created_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS chat_voices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            voice_data TEXT NOT NULL,
+            content_type TEXT NOT NULL DEFAULT 'audio/mpeg',
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS call_usage (
             wallet TEXT PRIMARY KEY,
             free_calls_used INTEGER DEFAULT 0
@@ -185,6 +194,7 @@ def cleanup_messages():
             conn.execute('DELETE FROM memories WHERE expires_at IS NOT NULL AND expires_at < ?', (int(time.time()),))
             conn.execute('DELETE FROM chat_images WHERE expires_at < ?', (int(time.time()),))
             conn.execute('DELETE FROM chat_files WHERE expires_at < ?', (int(time.time()),))
+            conn.execute('DELETE FROM chat_voices WHERE expires_at < ?', (int(time.time()),))
             conn.execute('DELETE FROM group_messages WHERE expires_at < ?', (int(time.time()),))
             conn.commit()
             conn.close()
@@ -719,33 +729,100 @@ def file_to_image(file_id):
     resp.headers['Access-Control-Allow-Origin'] = '*'
     return resp
 
+def _voice_ext_for_type(content_type):
+    ct = (content_type or 'audio/webm').split(';')[0].strip().lower()
+    return {
+        'audio/webm': '.webm',
+        'audio/ogg': '.ogg',
+        'audio/mp4': '.m4a',
+        'audio/mpeg': '.mp3',
+        'audio/mp3': '.mp3',
+        'audio/x-m4a': '.m4a',
+        'audio/aac': '.aac',
+    }.get(ct, '.webm')
+
+
+def transcode_voice_to_mp3(audio_data, content_type):
+    """Convert any uploaded voice clip to MP3 for universal desktop/mobile playback."""
+    if not audio_data or len(audio_data) < 100:
+        return audio_data, (content_type or 'audio/webm').split(';')[0].strip()
+    in_suffix = _voice_ext_for_type(content_type)
+    in_path = out_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=in_suffix, delete=False) as inf:
+            inf.write(audio_data)
+            in_path = inf.name
+        out_path = in_path + '.mp3'
+        result = subprocess.run(
+            ['ffmpeg', '-y', '-i', in_path, '-vn', '-acodec', 'libmp3lame', '-q:a', '4', out_path],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode != 0 or not os.path.exists(out_path) or os.path.getsize(out_path) < 100:
+            return audio_data, (content_type or 'audio/webm').split(';')[0].strip()
+        with open(out_path, 'rb') as outf:
+            return outf.read(), 'audio/mpeg'
+    except Exception:
+        return audio_data, (content_type or 'audio/webm').split(';')[0].strip()
+    finally:
+        for path in (in_path, out_path):
+            if path and os.path.exists(path):
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+
+def _voice_response(audio_bytes, content_type):
+    resp = make_response(audio_bytes)
+    resp.headers['Content-Type'] = (content_type or 'audio/mpeg').split(';')[0].strip()
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Accept-Ranges'] = 'bytes'
+    return resp
+
+
 @app.route('/chat-voice', methods=['POST'])
 def post_chat_voice():
     audio_data = request.data
     content_type = request.headers.get('Content-Type', 'audio/webm')
     if not audio_data:
         return jsonify({'error': 'no audio data'}), 400
-    voice_id = str(uuid.uuid4())
-    expires_at = int(time.time()) + 86400  # 24-hour TTL
-    with _voice_lock:
-        _voice_store[voice_id] = {
-            'data': audio_data,
-            'content_type': content_type,
-            'expires_at': expires_at
-        }
-    return jsonify({'url': '/voice/' + voice_id})
+    mp3_data, out_type = transcode_voice_to_mp3(audio_data, content_type)
+    now = int(time.time())
+    expires_at = now + 86400 * 30  # 30-day TTL
+    conn = get_db()
+    cursor = conn.execute(
+        'INSERT INTO chat_voices (voice_data, content_type, created_at, expires_at) VALUES (?, ?, ?, ?)',
+        (base64.b64encode(mp3_data).decode('ascii'), out_type, now, expires_at)
+    )
+    voice_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    resp = jsonify({'url': '/voice/' + str(voice_id), 'mime': out_type})
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    return resp
+
 
 @app.route('/voice/<voice_id>')
 def get_chat_voice(voice_id):
+    now = int(time.time())
+    if voice_id.isdigit():
+        conn = get_db()
+        row = conn.execute(
+            'SELECT voice_data, content_type FROM chat_voices WHERE id = ? AND expires_at > ?',
+            (int(voice_id), now)
+        ).fetchone()
+        conn.close()
+        if row:
+            audio_bytes = base64.b64decode(row['voice_data'])
+            return _voice_response(audio_bytes, row['content_type'])
     with _voice_lock:
         entry = _voice_store.get(voice_id)
-    if not entry or entry['expires_at'] < int(time.time()):
+    if not entry or entry['expires_at'] < now:
         return jsonify({'error': 'not found'}), 404
-    resp = make_response(entry['data'])
-    resp.headers['Content-Type'] = entry['content_type']
-    resp.headers['Cache-Control'] = 'public, max-age=3600'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
-    return resp
+    mp3_data, out_type = transcode_voice_to_mp3(entry['data'], entry['content_type'])
+    return _voice_response(mp3_data, out_type)
 
 # ── Chat video endpoints ──────────────────────────────────────────────
 
