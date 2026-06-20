@@ -830,6 +830,8 @@ body {
   line-height: 1;
 }
 .voice-play-btn:hover { background: rgba(255,255,255,0.38); }
+.voice-pill.expired { opacity: 0.55; }
+.voice-pill.expired .voice-play-btn { cursor: not-allowed; opacity: 0.5; }
 
 /* ── Attach button ── */
 .attach-btn { background: none; border: none; color: var(--text2); font-size: 30px; cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0; }
@@ -2792,8 +2794,11 @@ function appendMessage(msg, senderHandle) {
     // Set audio URL safely via dataset (no inline escaping risks)
     const vpEl = wrap.querySelector('#' + vId);
     if (vpEl) {
-      vpEl.dataset.audioUrl = v.url || '';
+      var vUrl = v.url || '';
+      if (vUrl && vUrl.charAt(0) === '/') vUrl = BACKEND + vUrl;
+      vpEl.dataset.audioUrl = vUrl;
       if (v.mime) vpEl.dataset.audioMime = v.mime;
+      if (vUrl) checkVoiceAvailability(vId);
     }
   } else {
     // Text message: render with clickable URLs + YouTube/TikTok preview
@@ -5113,13 +5118,34 @@ async function sendVoiceBlob(chunks, mimeType, duration) {
   }
 }
 
+function _isVoiceAudioEl(entry) {
+  return entry && typeof entry.play === 'function' && typeof entry.pause === 'function';
+}
+
+function markVoiceExpired(vId) {
+  var pill = document.getElementById(vId);
+  if (!pill || pill.classList.contains('expired')) return;
+  pill.classList.add('expired');
+  pill.dataset.voiceExpired = '1';
+  var btn = pill.querySelector('.voice-play-btn');
+  if (btn) { btn.textContent = '⚠'; btn.title = 'Voice no longer available'; }
+}
+
+function checkVoiceAvailability(vId) {
+  var pill = document.getElementById(vId);
+  if (!pill || !pill.dataset.audioUrl || pill.dataset.voiceExpired === '1') return;
+  fetch(pill.dataset.audioUrl, { method: 'HEAD', mode: 'cors' })
+    .then(function(r) { if (!r.ok) markVoiceExpired(vId); })
+    .catch(function() { markVoiceExpired(vId); });
+}
+
 function _stopVoicePlayback(vId) {
   var entry = _voiceAudios[vId];
   if (!entry) return;
   if (entry._waSource) {
     try { entry._waSource.stop(); } catch(e) {}
     entry._waSource = null;
-  } else if (entry.pause) {
+  } else if (_isVoiceAudioEl(entry)) {
     entry.pause();
     try { entry.currentTime = 0; } catch(e) {}
   }
@@ -5138,7 +5164,7 @@ function _stopAllVoicePlayback(exceptId) {
     if (id === exceptId) return;
     var entry = _voiceAudios[id];
     if (!entry) return;
-    if (entry._waSource || (entry.pause && !entry.paused)) {
+    if (entry._waSource || (_isVoiceAudioEl(entry) && !entry.paused)) {
       _stopVoicePlayback(id);
       _resetVoicePill(id);
     }
@@ -5176,6 +5202,10 @@ async function _playVoiceWithWebAudio(vId, audioUrl) {
 async function toggleVoicePlay(vId) {
   var pill = document.getElementById(vId);
   if (!pill) return;
+  if (pill.dataset.voiceExpired === '1') {
+    showToast('Voice expired — ask them to resend');
+    return;
+  }
   var audioUrl = pill.dataset.audioUrl;
   if (!audioUrl) { showToast('Audio not available'); return; }
   var btn = pill.querySelector('.voice-play-btn');
@@ -5188,7 +5218,7 @@ async function toggleVoicePlay(vId) {
     _resetVoicePill(vId);
     return;
   }
-  if (entry && entry.pause && !entry.paused) {
+  if (_isVoiceAudioEl(entry) && !entry.paused) {
     _stopVoicePlayback(vId);
     _resetVoicePill(vId);
     return;
@@ -5197,7 +5227,7 @@ async function toggleVoicePlay(vId) {
   _stopAllVoicePlayback(vId);
 
   try {
-    if (!entry || (!entry.pause && !entry._waSource)) {
+    if (!_isVoiceAudioEl(entry) && !entry?._waSource) {
       await _loadVoiceAudio(vId, audioUrl, mimeHint);
       entry = _voiceAudios[vId];
     }
@@ -5211,7 +5241,13 @@ async function toggleVoicePlay(vId) {
       pill.classList.add('playing');
     } catch (e2) {
       console.error('voice play failed:', e1, e2);
-      showToast('Could not play voice message');
+      var msg = String(e1 && e1.message || e2 && e2.message || '');
+      if (msg.indexOf('HTTP 404') >= 0) {
+        markVoiceExpired(vId);
+        showToast('Voice expired — ask them to resend');
+      } else {
+        showToast('Could not play voice message');
+      }
     }
   }
 }
