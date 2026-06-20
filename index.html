@@ -610,6 +610,31 @@ body {
   padding: 20px;
 }
 #handle-modal.open { display: flex; }
+#lc-wallet-picker {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.88);
+  z-index: 550;
+  align-items: center; justify-content: center;
+  padding: 20px;
+}
+#lc-wallet-picker.open { display: flex; }
+.lc-wallet-opt {
+  display: flex; align-items: center; gap: 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+.lc-wallet-opt:hover { border-color: var(--purple); }
+.lc-wallet-opt.wc { background: rgba(155,127,232,0.08); border-color: var(--purple); }
 .modal-box {
   background: var(--card);
   border: 1px solid var(--border);
@@ -2054,6 +2079,31 @@ body {
 
 <div id="toast"></div>
 
+<!-- ── WALLET PICKER ── -->
+<div id="lc-wallet-picker">
+  <div class="modal-box" style="max-width:400px;position:relative">
+    <button onclick="closeWalletPicker()" style="position:absolute;top:14px;right:18px;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;line-height:1;padding:4px 8px">✕</button>
+    <div style="font-size:40px;text-align:center;margin-bottom:12px">🔗</div>
+    <div class="modal-title" style="margin-bottom:8px">Connect Wallet</div>
+    <div class="modal-sub" style="margin-bottom:20px">Choose your wallet to use LightChat on Lightchain.</div>
+    <div id="lc-wallet-list"></div>
+    <button class="lc-wallet-opt" onclick="copyLightChatLink()" id="lc-copy-link-btn" style="margin-bottom:10px">
+      <span style="font-size:28px;flex-shrink:0">🔗</span>
+      <div>
+        <div style="font-size:18px;font-weight:700">Copy Link</div>
+        <div style="font-size:14px;color:var(--text2)">Open this app inside your wallet browser</div>
+      </div>
+    </button>
+    <button class="lc-wallet-opt" onclick="closeWalletPicker();openPasteAddressModal();" style="margin-bottom:0">
+      <span style="font-size:28px;flex-shrink:0">📋</span>
+      <div>
+        <div style="font-size:18px;font-weight:700">Paste Address</div>
+        <div style="font-size:14px;color:var(--text2)">One-time setup if extension connect fails</div>
+      </div>
+    </button>
+  </div>
+</div>
+
 <!-- ── PASTE ADDRESS MODAL (Safari / Chrome users) ── -->
 <div id="wc-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.88);z-index:600;align-items:center;justify-content:center;padding:20px">
   <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:32px 24px;width:100%;max-width:390px;position:relative">
@@ -2062,7 +2112,7 @@ body {
     <div style="font-size:26px;font-weight:700;text-align:center;margin-bottom:8px">Connect Wallet</div>
     <div style="font-size:17px;color:var(--text2);text-align:center;margin-bottom:6px;line-height:1.5">This is a <strong style="color:var(--text)">one-time setup</strong>. After this, the app remembers you automatically.</div>
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 14px;margin-bottom:20px;font-size:16px;color:var(--text2);line-height:1.6">
-      <div style="margin-bottom:6px">1️⃣ Open <strong style="color:var(--text)">Trust Wallet</strong></div>
+      <div style="margin-bottom:6px">1️⃣ Open your <strong style="color:var(--text)">wallet app</strong></div>
       <div style="margin-bottom:6px">2️⃣ Tap your wallet name at the top</div>
       <div style="margin-bottom:6px">3️⃣ Tap <strong style="color:var(--text)">Copy Address</strong></div>
       <div>4️⃣ Come back here and paste below</div>
@@ -2148,49 +2198,169 @@ let searchFoundWallet = null;
 let groups = [], currentGroupChat = null, isGroupChat = false, groupUnreadCounts = {};
 let selectedGroupMembers = [];
 
+const LC_CHAIN_ID = 9200;
 let _wcProv = null;
+let _activeProvider = null;
+let _connectingInProgress = false;
+let _eip6963Providers = [];
+
+window.addEventListener('eip6963:announceProvider', function(e) {
+  if (!e.detail?.provider) return;
+  const rdns = e.detail.info?.rdns || e.detail.info?.uuid || '';
+  if (!_eip6963Providers.some(d => (d.info?.rdns || d.info?.uuid || '') === rdns)) {
+    _eip6963Providers.push(e.detail);
+  }
+});
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+function getWalletIconByName(name, rdns) {
+  const n = (name || '').toLowerCase();
+  const r = (rdns || '').toLowerCase();
+  if (n.includes('trust') || r.includes('trust')) return '🛡️';
+  if (n.includes('metamask') || r.includes('metamask')) return '🦊';
+  if (n.includes('coinbase') || r.includes('coinbase')) return '🔵';
+  if (n.includes('brave') || r.includes('brave')) return '🦁';
+  if (n.includes('rabby') || r.includes('rabby')) return '🐰';
+  if (n.includes('rainbow') || r.includes('rainbow')) return '🌈';
+  if (n.includes('okx') || n.includes('okex') || r.includes('okx')) return '⭕';
+  return '🌐';
+}
+
+function getWalletInfo(p) {
+  if (p.isTrust || p.isTrustWallet) return { name: 'Trust Wallet', icon: '🛡️' };
+  if (p.isCoinbaseWallet || p.isCoinbase) return { name: 'Coinbase Wallet', icon: '🔵' };
+  if (p.isBraveWallet) return { name: 'Brave Wallet', icon: '🦁' };
+  if (p.isRabby) return { name: 'Rabby', icon: '🐰' };
+  if (p.isRainbow) return { name: 'Rainbow', icon: '🌈' };
+  if (p.isMetaMask) return { name: 'MetaMask', icon: '🦊' };
+  return { name: 'Browser Wallet', icon: '🌐' };
+}
+
+function openWalletPicker() {
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+  const list = document.getElementById('lc-wallet-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  const items = [];
+  if (_eip6963Providers.length > 0) {
+    _eip6963Providers.forEach(d => {
+      items.push({
+        provider: d.provider,
+        name: d.info?.name || 'Browser Wallet',
+        icon: getWalletIconByName(d.info?.name, d.info?.rdns)
+      });
+    });
+  } else if (window.ethereum) {
+    const legacy = window.ethereum.providers?.length
+      ? Array.from(window.ethereum.providers)
+      : [window.ethereum];
+    legacy.forEach(p => {
+      const i = getWalletInfo(p);
+      items.push({ provider: p, name: i.name, icon: i.icon });
+    });
+  }
+
+  items.forEach(item => {
+    const btn = document.createElement('button');
+    btn.className = 'lc-wallet-opt';
+    btn.innerHTML = `<span style="font-size:28px;flex-shrink:0">${item.icon}</span><div><div style="font-size:18px;font-weight:700">${item.name}</div><div style="font-size:14px;color:var(--text2)">Connect using ${item.name}</div></div>`;
+    btn.onclick = () => connectWithProvider(item.provider);
+    list.appendChild(btn);
+  });
+
+  if (window.WCEthereumProvider) {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const wcBtn = document.createElement('button');
+    wcBtn.className = 'lc-wallet-opt wc';
+    wcBtn.innerHTML = `<span style="font-size:28px;flex-shrink:0">🔗</span><div><div style="font-size:18px;font-weight:700">WalletConnect</div><div style="font-size:14px;color:var(--text2)">${isMobile ? 'Open any wallet app' : 'Scan QR with any wallet'}</div></div>`;
+    wcBtn.onclick = connectViaWalletConnect;
+    list.appendChild(wcBtn);
+  }
+
+  document.getElementById('lc-wallet-picker').classList.add('open');
+}
+
+function closeWalletPicker() {
+  document.getElementById('lc-wallet-picker')?.classList.remove('open');
+}
+
+function copyLightChatLink() {
+  const url = 'https://lightchat.chat';
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('Link copied — paste into your wallet browser');
+  }).catch(() => { alert(url); });
+}
+
+async function connectWithProvider(rawProvider) {
+  if (!rawProvider) {
+    showToast('Wallet not detected — try WalletConnect or Paste Address');
+    return;
+  }
+  closeWalletPicker();
+  _connectingInProgress = true;
+  _activeProvider = rawProvider;
+  try {
+    const accounts = await rawProvider.request({ method: 'eth_requestAccounts' });
+    if (!accounts?.length) throw new Error('No accounts returned');
+    wallet = accounts[0].toLowerCase();
+
+    const chainHex = await rawProvider.request({ method: 'eth_chainId' });
+    const chainId = parseInt(chainHex, 16);
+    if (chainId !== LC_CHAIN_ID) {
+      showToast('Switching to Lightchain…');
+      try {
+        await rawProvider.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: '0x' + LC_CHAIN_ID.toString(16) }]
+        });
+      } catch (e) {
+        if (e.code === 4902) {
+          await rawProvider.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: '0x' + LC_CHAIN_ID.toString(16),
+              chainName: 'Lightchain AI',
+              nativeCurrency: { name: 'LCAI', symbol: 'LCAI', decimals: 18 },
+              rpcUrls: ['https://rpc.mainnet.lightchain.ai'],
+              blockExplorerUrls: ['https://mainnet.lightscan.app']
+            }]
+          });
+        } else {
+          throw e;
+        }
+      }
+    }
+    _connectingInProgress = false;
+    await onWalletConnected();
+  } catch (e) {
+    _connectingInProgress = false;
+    if (e?.code === 4001) return;
+    showToast('Connection failed — try another option in the picker');
+    console.warn('Wallet connect error:', e);
+  }
+}
 
 async function connectViaWalletConnect() {
+  closeWalletPicker();
   if (!window.WCEthereumProvider) { showToast('WalletConnect not loaded yet. Try again.'); return; }
   try {
     _wcProv = await window.WCEthereumProvider.init({
       projectId: '3c6a0da53258912a28923198ddac3333',
-      chains: [9200], optionalChains: [1], showQrModal: true,
+      chains: [LC_CHAIN_ID], optionalChains: [1], showQrModal: true,
       metadata: { name: 'LightChat', description: 'Encrypted Blockchain Messaging on Lightchain', url: 'https://lightchat.chat', icons: ['https://lightchat.chat/icon-192.png'] },
-      rpcMap: { 9200: 'https://rpc.mainnet.lightchain.ai' }
+      rpcMap: { [LC_CHAIN_ID]: 'https://rpc.mainnet.lightchain.ai' }
     });
     await _wcProv.enable();
-    window.ethereum = _wcProv;
-    await connectWithInjected();
+    await connectWithProvider(_wcProv);
   } catch(e) {
     if (!e || e.message?.includes('User rejected') || e.message?.includes('rejected') || e.code === 4001) return;
     showToast('WalletConnect failed. Try a different wallet.');
   }
 }
 
-async function connectWithInjected() {
-  try {
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    await provider.send('eth_requestAccounts', []);
-    const signer = provider.getSigner();
-    wallet = (await signer.getAddress()).toLowerCase();
-    onWalletConnected();
-  } catch(e) { showToast('Connection cancelled'); }
-}
-
 async function connectWallet() {
-  // ── Path 1: injected wallet (Trust Wallet in-app browser, extension, or WalletConnect already set)
-  if (window.ethereum) {
-    await connectWithInjected();
-    return;
-  }
-  // ── Path 2: WalletConnect (QR on desktop, wallet app links on mobile)
-  if (window.WCEthereumProvider) {
-    await connectViaWalletConnect();
-    return;
-  }
-  // ── Path 3: No wallet at all — show paste-address modal
-  openPasteAddressModal();
+  openWalletPicker();
 }
 
 async function onWalletConnected() {
@@ -5605,19 +5775,34 @@ window.addEventListener('load', async () => {
       if (inp) inp.value = saved;
     }
   }
-  // ── 2. Silent web3 reconnect (Trust Wallet / injected wallet)
-  if (window.ethereum) {
+  // ── 2. Silent reconnect if wallet extension already authorized this site
+  const prov = _activeProvider || window.ethereum;
+  if (prov) {
     try {
-      const accounts = await new ethers.providers.Web3Provider(window.ethereum).listAccounts();
+      const accounts = await prov.request({ method: 'eth_accounts' });
       if (accounts.length > 0) {
         const addr = accounts[0].toLowerCase();
-        if (addr !== wallet) { wallet = addr; onWalletConnected(); }
-        else { connectSocket(); handleInviteParam(); handleShareParam(); }
+        _activeProvider = prov;
+        if (addr !== wallet) { wallet = addr; await onWalletConnected(); }
+        else if (wallet) { connectSocket(); handleInviteParam(); handleShareParam(); }
       }
     } catch(e) {}
   }
-  // ── 3. (WalletConnect removed — using paste-address flow instead)
 });
+
+if (window.ethereum) {
+  window.ethereum.on?.('accountsChanged', async (accounts) => {
+    if (_connectingInProgress) return;
+    if (!accounts?.length) {
+      wallet = null;
+      localStorage.removeItem('lc_wallet');
+      location.reload();
+      return;
+    }
+    const addr = accounts[0].toLowerCase();
+    if (addr !== wallet) { wallet = addr; await onWalletConnected(); }
+  });
+}
 
 // ══════════════════════════════════════════════════════════════════
 // FEATURE 1: MULTI-LANGUAGE UI
