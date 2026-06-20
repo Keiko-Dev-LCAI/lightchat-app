@@ -157,6 +157,7 @@ body {
     flex-direction: column;
     height: 100%;
     overflow: hidden;
+    position: relative;
   }
 
   /* Hide mobile elements */
@@ -297,7 +298,7 @@ body {
 @media (min-width: 768px) {
   #chat-view {
     position: absolute;
-    left: var(--sidebar);
+    left: 0;
     right: 0;
     top: 0;
     bottom: 0;
@@ -1387,7 +1388,7 @@ body {
     </button>
   </div>
 
-</div><!-- /desktop-main -->
+
 
 <!-- ── CHAT VIEW ── -->
 <div id="chat-view">
@@ -1481,6 +1482,9 @@ body {
     </div>
   </div>
 </div>
+
+
+</div><!-- /desktop-main -->
 
 <!-- ── INVITE PANEL ── -->
 <div id="invite-panel">
