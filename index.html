@@ -2214,6 +2214,7 @@ async function finishConnect() {
     loadMemories();
     handleInviteParam();
     handleShareParam();
+    runPendingDeepLink();
   } else {
     showHandleModal();
   }
@@ -2334,7 +2335,7 @@ async function registerHandle() {
   updateUI(); connectSocket(); loadContacts(); loadGroups(); loadMemories();
   handleInviteParam(); handleShareParam();
   showToast('Welcome to LightChat ' + myHandle + '!');
-  handleInviteParam();
+  runPendingDeepLink();
 }
 
 function showHandleError(msg) {
@@ -3330,6 +3331,36 @@ async function handleInviteParam() {
     }
     window.history.replaceState({}, '', window.location.pathname);
   }
+}
+
+// Deep link from Binai: ?chat=@handle or ?call=@handle (also ?contact=)
+let _pendingDeepLink = null;
+
+function captureDeepLinkParams() {
+  const p = new URLSearchParams(window.location.search);
+  const chat = p.get('chat') || p.get('contact');
+  const call = p.get('call');
+  if (call) _pendingDeepLink = { type: 'call', handle: call };
+  else if (chat) _pendingDeepLink = { type: 'chat', handle: chat };
+  if (_pendingDeepLink) window.history.replaceState({}, '', window.location.pathname);
+}
+captureDeepLinkParams();
+
+async function runPendingDeepLink() {
+  if (!_pendingDeepLink || !wallet || !myHandle) return;
+  const raw = String(_pendingDeepLink.handle || '').replace('@', '').trim();
+  const type = _pendingDeepLink.type;
+  _pendingDeepLink = null;
+  if (!raw) return;
+  const resp = await fetch(BACKEND + '/resolve/' + encodeURIComponent(raw)).then(r => r.json()).catch(() => ({}));
+  if (!resp.wallet) {
+    showToast('Handle not found: @' + raw);
+    return;
+  }
+  const displayHandle = '@' + raw;
+  switchTab('chats');
+  await openChat(resp.wallet, displayHandle);
+  if (type === 'call') setTimeout(() => startVideoCall(), 900);
 }
 
 function showLightPay() { document.getElementById('lightpay-panel').classList.add('open'); }
