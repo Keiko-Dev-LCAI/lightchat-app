@@ -525,7 +525,7 @@ body {
 .me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; flex-shrink: 0; }
 
 /* ── LightPay panel ── */
-#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel {
+#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel {
   display: none;
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -533,9 +533,9 @@ body {
   flex-direction: column;
   z-index: 200;
 }
-#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open { display: flex; }
+#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open, #stickers-panel.open { display: flex; }
 @media (min-width: 768px) {
-  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel {
+  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel {
     left: var(--sidebar);
   }
 }
@@ -1230,8 +1230,14 @@ body {
         <div id="chat-list-empty" class="empty-state">
           <div class="empty-icon">💬</div>
           <div class="empty-title">No chats yet</div>
-          <div class="empty-text">Connect your wallet and add contacts to start chatting on the blockchain.</div>
+          <div class="empty-text" id="empty-chat-text">Connect your wallet, then share your invite link or QR so friends can add you.</div>
           <button class="empty-cta" id="empty-cta-btn" onclick="emptyCTAClick()">🔗 Connect Wallet</button>
+          <div id="empty-invite-block" style="display:none;margin-top:22px;width:100%;max-width:320px;text-align:center">
+            <div style="font-size:16px;color:var(--text2);margin-bottom:12px;line-height:1.5">Share your invite</div>
+            <img id="empty-invite-qr" alt="Invite QR" width="180" height="180" style="background:#fff;border-radius:14px;padding:10px;display:none;margin:0 auto 14px">
+            <button class="empty-cta" style="margin-bottom:10px" onclick="showInvitePanel()">🔗 Invite link + QR</button>
+            <button class="empty-cta" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="showSearchPanel()">🔍 Find @handle</button>
+          </div>
         </div>
         <div id="chat-list" style="display:none"></div>
       </div>
@@ -1322,7 +1328,7 @@ body {
           <div class="me-menu-item" onclick="showInvitePanel()">
             <div class="me-menu-icon">🔗</div><div>My Invite Link</div><div class="me-menu-arrow">›</div>
           </div>
-          <div class="me-menu-item" onclick="showToast('Stickers coming soon!')">
+          <div class="me-menu-item" onclick="showStickersPanel()">
             <div class="me-menu-icon">🎭</div><div>Stickers</div><div class="me-menu-arrow">›</div>
           </div>
           <div class="me-menu-item" onclick="showChangeHandleModal()">
@@ -1501,7 +1507,11 @@ body {
     <div class="panel-title">My Invite Link</div>
   </div>
   <div class="panel-content">
-    <p style="color:var(--text2);font-size:18px;margin-bottom:20px;line-height:1.65">Share this link. When someone clicks it, they can add you as a contact instantly.</p>
+    <p style="color:var(--text2);font-size:18px;margin-bottom:20px;line-height:1.65">Share this link or QR. When someone opens it, they can add you as a contact instantly.</p>
+    <div style="text-align:center;margin-bottom:18px">
+      <img id="invite-qr-img" alt="Invite QR code" width="200" height="200" style="background:#fff;border-radius:16px;padding:12px;display:none;margin:0 auto">
+      <div id="invite-qr-placeholder" style="color:var(--text2);font-size:16px;padding:24px">Connect wallet to show QR</div>
+    </div>
     <div class="invite-box" id="invite-link-box">Connect your wallet first</div>
     <button class="primary-btn" onclick="copyInviteLink()">📋 Copy Link</button>
     <div style="margin-top:18px;color:var(--text2);font-size:17px;text-align:center;line-height:1.65">Post it in Discord, text it to a friend — anyone who clicks it gets prompted to add you.</div>
@@ -1541,33 +1551,50 @@ body {
     <div class="panel-title">💜 LightPay</div>
   </div>
   <div class="panel-content">
+    <div id="lightpay-pro-card" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px 20px;margin-bottom:18px">
+      <div style="font-size:18px;font-weight:700;margin-bottom:8px">💜 LightChat Pro</div>
+      <div id="lightpay-pro-status" style="font-size:16px;color:var(--text2);line-height:1.55">Connect wallet to see status</div>
+      <button type="button" class="primary-btn" style="margin-top:14px;padding:12px" onclick="showUpgradeModal(null)">Upgrade / Renew</button>
+    </div>
     <div class="pay-grid">
-      <div class="pay-card" onclick="showToast('Gift feature coming soon!')">
+      <div class="pay-card" onclick="lightPayOpenGift()">
         <div class="pay-card-icon">💜</div>
         <div class="pay-card-label">Gift</div>
         <div class="pay-card-sub">Send LCAI as a purple heart gift</div>
       </div>
-      <div class="pay-card" onclick="showToast('Split bills coming soon!')">
+      <div class="pay-card" onclick="showToast('Split bills — coming in a later update')">
         <div class="pay-card-icon">🧾</div>
         <div class="pay-card-label">Bills</div>
         <div class="pay-card-sub">Split or request payment</div>
       </div>
-      <div class="pay-card" onclick="showToast('Purchases coming soon!')">
+      <div class="pay-card" onclick="showToast('Cross-app purchases — coming later')">
         <div class="pay-card-icon">🛍️</div>
         <div class="pay-card-label">Purchases</div>
         <div class="pay-card-sub">Pay with LightPay across apps</div>
       </div>
-      <div class="pay-card" onclick="showToast('Subscriptions coming soon!')">
+      <div class="pay-card" onclick="lightPayFocusPro()">
         <div class="pay-card-icon">🔄</div>
         <div class="pay-card-label">Subscriptions</div>
-        <div class="pay-card-sub">Manage all your LCAI subscriptions</div>
+        <div class="pay-card-sub">Pro status &amp; free video calls</div>
       </div>
     </div>
     <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;text-align:center">
       <div style="font-size:36px;margin-bottom:10px">📱</div>
       <div style="font-size:20px;font-weight:700;margin-bottom:8px">QR Pay</div>
-      <div style="font-size:17px;color:var(--text2);line-height:1.6">Scan a merchant QR code to pay with LCAI in person — coming soon!</div>
+      <div style="font-size:17px;color:var(--text2);line-height:1.6">Scan a merchant QR code to pay with LCAI in person — coming later (no new paid services required for chat).</div>
     </div>
+  </div>
+</div>
+
+<!-- ── STICKERS BROWSE PANEL (Me tab) ── -->
+<div id="stickers-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closePanel('stickers-panel')">‹</button>
+    <div class="panel-title">🎭 Stickers</div>
+  </div>
+  <div class="panel-content">
+    <p style="color:var(--text2);font-size:17px;margin-bottom:16px;line-height:1.55" id="stickers-panel-hint">Open a chat, then tap a sticker to send. Or use 🎭 in the chat composer.</p>
+    <div class="sticker-grid" id="stickers-panel-grid"></div>
   </div>
 </div>
 
@@ -1668,6 +1695,18 @@ body {
     </div>
     <div style="color:var(--text2);font-size:18px;line-height:1.7;padding:0 4px">
       Push notifications let LightChat ping you when someone messages or calls you and the app is in the background. Works on Android and on iPhone when LightChat is added to your Home Screen from Safari. Not supported in Trust Wallet's browser on iPhone.
+    </div>
+
+    <!-- Privacy honesty -->
+    <div style="margin-top:28px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px 20px">
+      <div style="font-size:20px;font-weight:700;margin-bottom:10px">🔒 Privacy &amp; messages</div>
+      <div style="font-size:16px;color:var(--text2);line-height:1.65">
+        <strong style="color:var(--text)">Chats are not end-to-end encrypted.</strong>
+        Messages, photos, and files are stored on LightChat servers so delivery and multi-device history work.
+        Video calls use peer-to-peer when possible (plus free public TURN relays when networks block direct connect).
+        On-chain memories use the blockchain and are permanent.
+        Prefer <strong style="color:var(--text)">Connect Wallet + sign</strong> for a stronger login; paste-address mode cannot prove you own that wallet.
+      </div>
     </div>
 
     <div style="margin-top:28px">
@@ -1824,6 +1863,11 @@ body {
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px 20px">
         <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px" data-i18n="terms_data_lost">⚠️ Data May Be Lost</div>
         <div style="font-size:18px;color:var(--text2);line-height:1.6" data-i18n="terms_data_lost_body">Your messages, photos, memories, and posts may be deleted or lost at any time. We do not guarantee data preservation.</div>
+      </div>
+
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px 20px">
+        <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px">🔒 Not End-to-End Encrypted</div>
+        <div style="font-size:18px;color:var(--text2);line-height:1.6">Chat messages and media are stored on LightChat servers (not E2E encrypted). Do not send secrets you would not trust a server with. Optional full E2E may come later.</div>
       </div>
 
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:18px 20px">
@@ -2168,6 +2212,8 @@ const BACKEND = 'https://web-production-bc64f.up.railway.app';
 const APP_URL = window.location.origin + window.location.pathname.replace('index.html','');
 
 let wallet = null, myHandle = null, socket = null;
+let sessionToken = localStorage.getItem('lc_session_token') || null;
+let sessionMode = localStorage.getItem('lc_session_mode') || null;
 let currentChat = null, contacts = [], unreadCounts = {};
 let searchFoundWallet = null;
 let groups = [], currentGroupChat = null, isGroupChat = false, groupUnreadCounts = {};
@@ -2210,6 +2256,69 @@ function acceptTermsIfNeeded() {
   });
 }
 
+async function ensureSession() {
+  /** Sign-once when wallet provider available; soft token for paste-address. */
+  if (!isValidWallet(wallet)) throw new Error('invalid wallet');
+  wallet = wallet.toLowerCase();
+  const prov = _activeProvider || window.ethereum;
+
+  // Reuse valid stored token for this wallet
+  if (sessionToken) {
+    try {
+      const chk = await fetch(BACKEND + '/api/auth/session', {
+        headers: { 'Authorization': 'Bearer ' + sessionToken }
+      }).then(r => r.json());
+      if (chk.valid && chk.wallet === wallet) {
+        sessionMode = chk.mode || sessionMode;
+        localStorage.setItem('lc_session_mode', sessionMode || '');
+        return sessionToken;
+      }
+    } catch (e) {}
+    sessionToken = null;
+    localStorage.removeItem('lc_session_token');
+  }
+
+  // Hard auth: personal_sign
+  if (prov && typeof prov.request === 'function') {
+    try {
+      const ch = await fetch(BACKEND + '/api/auth/challenge?address=' + encodeURIComponent(wallet))
+        .then(r => r.json());
+      if (!ch.message) throw new Error(ch.error || 'No challenge');
+      const sig = await prov.request({
+        method: 'personal_sign',
+        params: [ch.message, wallet]
+      });
+      const ver = await fetch(BACKEND + '/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, message: ch.message, signature: sig })
+      }).then(r => r.json());
+      if (!ver.token) throw new Error(ver.error || 'Verify failed');
+      sessionToken = ver.token;
+      sessionMode = ver.mode || 'signed';
+      localStorage.setItem('lc_session_token', sessionToken);
+      localStorage.setItem('lc_session_mode', sessionMode);
+      return sessionToken;
+    } catch (e) {
+      if (e && e.code === 4001) throw e;
+      console.warn('Signed login failed, trying soft session', e);
+    }
+  }
+
+  // Soft auth: paste-address (cannot prove ownership)
+  const soft = await fetch(BACKEND + '/api/auth/soft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet })
+  }).then(r => r.json());
+  if (!soft.token) throw new Error(soft.error || 'Soft auth failed');
+  sessionToken = soft.token;
+  sessionMode = soft.mode || 'soft';
+  localStorage.setItem('lc_session_token', sessionToken);
+  localStorage.setItem('lc_session_mode', sessionMode);
+  return sessionToken;
+}
+
 async function finishConnect() {
   if (!isValidWallet(wallet)) {
     showToast('Invalid wallet address');
@@ -2217,6 +2326,17 @@ async function finishConnect() {
   }
   wallet = wallet.toLowerCase();
   await acceptTermsIfNeeded();
+  try {
+    await ensureSession();
+  } catch (e) {
+    if (e && e.code === 4001) {
+      showToast('Signature required to login — cancelled');
+      return;
+    }
+    showToast('Login session failed — try again');
+    console.error(e);
+    return;
+  }
   localStorage.setItem('lc_wallet', wallet);
   hideConnectUI();
 
@@ -2228,6 +2348,7 @@ async function finishConnect() {
     loadContacts();
     loadGroups();
     loadMemories();
+    refreshEmptyInviteUI();
     handleInviteParam();
     handleShareParam();
     runPendingDeepLink();
@@ -2349,6 +2470,7 @@ async function registerHandle() {
   myHandle = resp.handle;
   document.getElementById('handle-modal').classList.remove('open');
   updateUI(); connectSocket(); loadContacts(); loadGroups(); loadMemories();
+  refreshEmptyInviteUI();
   handleInviteParam(); handleShareParam();
   showToast('Welcome to LightChat ' + myHandle + '!');
   runPendingDeepLink();
@@ -2383,9 +2505,27 @@ function connectSocket() {
   if (socket) socket.disconnect();
   socket = io(BACKEND, {transports: ['websocket','polling']});
   socket.on('connect', () => {
-    socket.emit('auth', {wallet});
-    if (currentChat) socket.emit('join_chat', {wallet, contact_wallet: currentChat.wallet});
-    socket.emit('get_groups', {wallet});
+    if (!sessionToken) {
+      ensureSession().then(() => {
+        if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken });
+      }).catch(() => showToast('Session expired — reconnect wallet'));
+      return;
+    }
+    socket.emit('auth', { wallet, token: sessionToken });
+    if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
+    socket.emit('get_groups', { wallet });
+  });
+  socket.on('auth_ok', () => {
+    if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
+    socket.emit('get_groups', { wallet });
+  });
+  socket.on('auth_error', (d) => {
+    console.warn('auth_error', d);
+    sessionToken = null;
+    localStorage.removeItem('lc_session_token');
+    ensureSession().then(() => {
+      if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken });
+    }).catch(() => showToast('Please reconnect your wallet'));
   });
   socket.on('new_message', (msg) => {
     // Already shown optimistically — skip self-echoes
@@ -2884,14 +3024,171 @@ async function sendContactRequest() {
   else showToast(resp.error || 'Something went wrong');
 }
 
+function inviteUrl() {
+  return APP_URL + '?add=' + (wallet || '');
+}
+
+function setInviteQr(imgEl, placeholderEl, url) {
+  if (!imgEl) return;
+  if (!url || !wallet) {
+    imgEl.style.display = 'none';
+    if (placeholderEl) placeholderEl.style.display = 'block';
+    return;
+  }
+  // Free public QR image API — no account / no paid plan
+  imgEl.src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=' + encodeURIComponent(url);
+  imgEl.style.display = 'inline-block';
+  if (placeholderEl) placeholderEl.style.display = 'none';
+  imgEl.onerror = () => {
+    imgEl.style.display = 'none';
+    if (placeholderEl) {
+      placeholderEl.style.display = 'block';
+      placeholderEl.textContent = 'QR unavailable — use copy link';
+    }
+  };
+}
+
+function refreshEmptyInviteUI() {
+  const block = document.getElementById('empty-invite-block');
+  const qr = document.getElementById('empty-invite-qr');
+  const text = document.getElementById('empty-chat-text');
+  const cta = document.getElementById('empty-cta-btn');
+  if (!block) return;
+  if (wallet) {
+    block.style.display = 'block';
+    if (text) text.textContent = 'Share your invite link or QR so friends can add you, then start a chat.';
+    if (cta) {
+      cta.textContent = '👥 Go to Contacts';
+      cta.onclick = () => switchTab('contacts');
+    }
+    setInviteQr(qr, null, inviteUrl());
+    if (qr) qr.style.display = 'inline-block';
+  } else {
+    block.style.display = 'none';
+    if (text) text.textContent = 'Connect your wallet, then share your invite link or QR so friends can add you.';
+    if (cta) {
+      cta.textContent = '🔗 Connect Wallet';
+      cta.onclick = emptyCTAClick;
+    }
+  }
+}
+
 function showInvitePanel() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
-  document.getElementById('invite-link-box').textContent = APP_URL + '?add=' + wallet;
+  const url = inviteUrl();
+  document.getElementById('invite-link-box').textContent = url;
+  setInviteQr(
+    document.getElementById('invite-qr-img'),
+    document.getElementById('invite-qr-placeholder'),
+    url
+  );
   document.getElementById('invite-panel').classList.add('open');
 }
 
 function copyInviteLink() {
-  navigator.clipboard.writeText(APP_URL + '?add=' + wallet).then(() => showToast('Link copied!')).catch(() => showToast('Tap and hold to copy'));
+  navigator.clipboard.writeText(inviteUrl()).then(() => showToast('Link copied!')).catch(() => showToast('Tap and hold to copy'));
+}
+
+function showStickersPanel() {
+  const grid = document.getElementById('stickers-panel-grid');
+  const hint = document.getElementById('stickers-panel-hint');
+  if (grid && typeof STICKER_LIST !== 'undefined') {
+    const base = (window.location.origin + window.location.pathname.replace(/index\.html$/, '')).replace(/\/?$/, '/');
+    grid.innerHTML = STICKER_LIST.map(s =>
+      `<button class="sticker-btn" onclick="sendStickerFromPanel('${s.s}')">` +
+      `<img class="sticker-img" src="${base}stickers/${s.s}.png" alt="${s.l}" loading="lazy" ` +
+      `onerror="this.src='${BACKEND}/stickers/${s.s}.png'">` +
+      `<div class="sticker-label">${s.l}</div></button>`
+    ).join('');
+  }
+  if (hint) {
+    hint.textContent = (currentChat || currentGroupChat)
+      ? 'Tap a sticker to send it in your open chat.'
+      : 'Open a chat first, then tap a sticker — or use 🎭 in the chat composer.';
+  }
+  document.getElementById('stickers-panel').classList.add('open');
+}
+
+function sendStickerFromPanel(slug) {
+  if (!wallet || (!currentChat && !currentGroupChat) || !socket) {
+    showToast('Open a chat first, then send a sticker');
+    return;
+  }
+  closePanel('stickers-panel');
+  sendSticker(slug);
+}
+
+function showLightPay() {
+  document.getElementById('lightpay-panel').classList.add('open');
+  refreshLightPayProStatus();
+}
+
+async function refreshLightPayProStatus() {
+  const el = document.getElementById('lightpay-pro-status');
+  if (!el) return;
+  if (!wallet) {
+    el.textContent = 'Connect wallet to see Pro status';
+    return;
+  }
+  el.textContent = 'Loading…';
+  try {
+    const a = await checkCallAccess();
+    if (a.subscribed) {
+      let exp = '';
+      if (a.expires_at) {
+        try { exp = ' · renews/ends ' + new Date(a.expires_at * 1000).toLocaleDateString(); } catch (e) {}
+      }
+      el.innerHTML = '<span style="color:var(--green);font-weight:700">Pro active</span> — unlimited video calls' + exp;
+    } else {
+      const left = (a.free_remaining != null) ? a.free_remaining : 0;
+      el.innerHTML = 'Free plan · <strong style="color:var(--text)">' + left + '</strong> free video call(s) left. Upgrade for unlimited.';
+    }
+  } catch (e) {
+    el.textContent = 'Could not load status — try again';
+  }
+}
+
+function lightPayFocusPro() {
+  const card = document.getElementById('lightpay-pro-card');
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    card.style.boxShadow = '0 0 0 2px var(--purple)';
+    setTimeout(() => { card.style.boxShadow = ''; }, 1200);
+  }
+  refreshLightPayProStatus();
+}
+
+function lightPayOpenGift() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  if (currentChat) {
+    closePanel('lightpay-panel');
+    showGiftModal();
+    return;
+  }
+  // Pick a contact to gift
+  const approved = (contacts || []).filter(c => c.status === 'approved' || !c.status);
+  const list = approved.length ? approved : (contacts || []);
+  if (!list.length) {
+    showToast('Add a contact first, then send a gift');
+    closePanel('lightpay-panel');
+    switchTab('contacts');
+    return;
+  }
+  // If only one contact, gift them; else open share-style pick via prompt of handles
+  if (list.length === 1) {
+    currentChat = { wallet: list[0].wallet || list[0].contact_wallet, handle: list[0].handle || shortenWallet(list[0].wallet) };
+    closePanel('lightpay-panel');
+    showGiftModal();
+    return;
+  }
+  const names = list.map((c, i) => (i + 1) + '. ' + (c.handle || shortenWallet(c.wallet || c.contact_wallet))).join('\n');
+  const pick = prompt('Gift which contact?\n' + names + '\n\nType the number:');
+  const n = parseInt(pick, 10);
+  if (!n || n < 1 || n > list.length) { showToast('Cancelled'); return; }
+  const c = list[n - 1];
+  currentChat = { wallet: (c.wallet || c.contact_wallet).toLowerCase(), handle: c.handle || shortenWallet(c.wallet || c.contact_wallet) };
+  closePanel('lightpay-panel');
+  showGiftModal();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3379,7 +3676,7 @@ async function runPendingDeepLink() {
   if (type === 'call') setTimeout(() => startVideoCall(), 900);
 }
 
-function showLightPay() { document.getElementById('lightpay-panel').classList.add('open'); }
+/* showLightPay defined with Pro status refresh above */
 
 function showChangeHandleModal() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
@@ -4541,24 +4838,71 @@ let peerConnection = null, localStream = null, callState = null;
 let iceCandidateQueue = [];
 let keepAliveInterval = null;
 let iceServers = null;
+const FREE_ICE_FALLBACK = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+];
 async function loadIceServers() {
+  // Always hit Railway backend (not GitHub Pages origin) — free path, no new accounts
   try {
-    const resp = await fetch('/api/turn-credentials');
+    const resp = await fetch(BACKEND + '/api/turn-credentials');
     if (resp.ok) {
       const servers = await resp.json();
       if (Array.isArray(servers) && servers.length) {
         iceServers = servers;
-        return;
+        return iceServers;
       }
     }
-  } catch(e) {}
-  // Fallback to Google STUN only — server.py already returns openrelay on failure
-  iceServers = [
-    {urls: 'stun:stun.l.google.com:19302'},
-    {urls: 'stun:stun1.l.google.com:19302'}
-  ];
+  } catch (e) {
+    console.warn('TURN load failed, using free fallback', e);
+  }
+  iceServers = FREE_ICE_FALLBACK.slice();
+  return iceServers;
 }
-// Load ICE servers once on page load
+function rtcPeerConfig() {
+  return {
+    iceServers: iceServers && iceServers.length ? iceServers : FREE_ICE_FALLBACK,
+    iceCandidatePoolSize: 4,
+    bundlePolicy: 'max-bundle',
+    rtcpMuxPolicy: 'require'
+  };
+}
+function wireCallIceHandlers(pc, targetWallet) {
+  if (!pc) return;
+  pc.onicecandidate = e => {
+    if (e.candidate && socket) {
+      socket.emit('ice_candidate', {
+        target_wallet: targetWallet,
+        sender_wallet: wallet,
+        candidate: e.candidate
+      });
+    }
+  };
+  pc.oniceconnectionstatechange = () => {
+    const s = pc.iceConnectionState;
+    if (s === 'connected' || s === 'completed') {
+      showToast('📞 Connected!', 2000);
+      startKeepAlive();
+    } else if (s === 'failed') {
+      showToast('Call connection failed — try Wi‑Fi or another network', 5000);
+      try { pc.restartIce && pc.restartIce(); } catch (e) {}
+    } else if (s === 'disconnected') {
+      showToast('Call unstable…', 2500);
+    }
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed') {
+      showToast('Call failed — free relays can be busy. Retry or use Wi‑Fi.', 5000);
+    }
+  };
+}
+// Load ICE servers once on page load; refresh before each call
 loadIceServers();
 
 function onRemoteTrack(e) {
@@ -4626,6 +4970,7 @@ async function startVideoCall() {
   if (!_svAccess.subscribed) useCall(); // fire-and-forget: non-blocking counter increment
   document.getElementById('call-calling-name').textContent = currentChat.handle;
   document.getElementById('call-calling-overlay').style.display = 'flex';
+  await loadIceServers();
   // Unlock BOTH remote-video and remote-audio during user gesture with empty streams
   // iOS requires the element to have a valid source + play() called within gesture to unlock audio
   const _rv2 = document.getElementById('remote-video');
@@ -4636,18 +4981,11 @@ async function startVideoCall() {
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
-    peerConnection = new RTCPeerConnection({iceServers: iceServers});
+    peerConnection = new RTCPeerConnection(rtcPeerConfig());
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
-    peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: currentChat.wallet, sender_wallet: wallet, candidate: e.candidate}); };
-    peerConnection.oniceconnectionstatechange = () => {
-      const s = peerConnection && peerConnection.iceConnectionState;
-      if (s === 'connected' || s === 'completed') {
-        showToast('📞 Connected!', 2000);
-        startKeepAlive();
-      }
-    };
+    wireCallIceHandlers(peerConnection, currentChat.wallet);
     peerConnection.ontrack = onRemoteTrack;
-    const offer = await peerConnection.createOffer();
+    const offer = await peerConnection.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
     await peerConnection.setLocalDescription(offer);
     socket.emit('call_offer', {caller_wallet: wallet, callee_wallet: currentChat.wallet, offer});
     // 90s timeout — gives push notification time to wake callee
@@ -4656,6 +4994,7 @@ async function startVideoCall() {
     }, 90000);
   } catch(e) {
     cleanupCall();
+    showToast('Could not start call — check camera/mic permissions');
   }
 }
 
@@ -4693,20 +5032,14 @@ async function acceptCall() {
   stopRinging();
   document.getElementById('call-incoming-overlay').style.display = 'none';
   try {
+    await loadIceServers();
     localStream = await getLocalStream();
     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
     document.getElementById('local-video').srcObject = localStream;
     document.getElementById('call-active-overlay').style.display = 'flex';
-    peerConnection = new RTCPeerConnection({iceServers: iceServers});
+    peerConnection = new RTCPeerConnection(rtcPeerConfig());
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
-    peerConnection.onicecandidate = e => { if (e.candidate && socket) socket.emit('ice_candidate', {target_wallet: data.caller_wallet, sender_wallet: wallet, candidate: e.candidate}); };
-    peerConnection.oniceconnectionstatechange = () => {
-      const s = peerConnection && peerConnection.iceConnectionState;
-      if (s === 'connected' || s === 'completed') {
-        showToast('📞 Connected!', 2000);
-        startKeepAlive();
-      }
-    };
+    wireCallIceHandlers(peerConnection, data.caller_wallet);
     peerConnection.ontrack = onRemoteTrack;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
     // Flush any ICE candidates that arrived before peer connection was ready
@@ -5499,7 +5832,7 @@ function handleGroupCallEnded(data) {
 async function _createGroupPC(peerWallet, peerHandle, isOfferer) {
   if (groupPeerConnections[peerWallet]) return groupPeerConnections[peerWallet];
 
-  const pc = new RTCPeerConnection({ iceServers });
+  const pc = new RTCPeerConnection(rtcPeerConfig());
   groupPeerConnections[peerWallet] = pc;
 
   // Attach local tracks
@@ -5817,6 +6150,7 @@ window.addEventListener('load', async () => {
   registerServiceWorker();
   initPicker();
   initMemoryContextMenu();
+  refreshEmptyInviteUI();
   // Auto-restore session on refresh (no button tap needed)
   const saved = localStorage.getItem('lc_wallet');
   if (isValidWallet(saved)) {

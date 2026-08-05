@@ -274,6 +274,147 @@ def send_push_notification(to_wallet, title, body, extra_data=None):
     except Exception:
         pass
 
+
+# ══════════════════════════════════════════════════════════════════════
+# SESSION AUTH — sign-once (hard) or soft token for paste-address users
+# ══════════════════════════════════════════════════════════════════════
+# sid -> wallet (socket session)
+# token -> {wallet, exp, mode: 'signed'|'soft'}
+_socket_wallets = {}
+_auth_sessions = {}
+_auth_nonces = {}  # wallet -> {nonce, exp}
+_AUTH_SESSION_TTL = 30 * 24 * 3600  # 30 days
+_AUTH_NONCE_TTL = 10 * 60
+_auth_lock = threading.Lock()
+
+
+def _new_session_token():
+    return secrets.token_urlsafe(32)
+
+
+def _store_session(wallet, mode):
+    token = _new_session_token()
+    exp = int(time.time()) + _AUTH_SESSION_TTL
+    with _auth_lock:
+        # drop expired
+        now = int(time.time())
+        dead = [t for t, v in _auth_sessions.items() if v.get('exp', 0) < now]
+        for t in dead:
+            del _auth_sessions[t]
+        _auth_sessions[token] = {'wallet': wallet.lower(), 'exp': exp, 'mode': mode}
+    return token, exp
+
+
+def _lookup_session(token):
+    if not token:
+        return None
+    with _auth_lock:
+        row = _auth_sessions.get(token)
+        if not row:
+            return None
+        if row.get('exp', 0) < int(time.time()):
+            del _auth_sessions[token]
+            return None
+        return row
+
+
+def _wallet_for_sid(sid):
+    return _socket_wallets.get(sid)
+
+
+@app.route('/api/auth/challenge', methods=['GET', 'POST'])
+def api_auth_challenge():
+    if request.method == 'POST':
+        data = request.json or {}
+        wallet = (data.get('wallet') or data.get('address') or '').lower().strip()
+    else:
+        wallet = (request.args.get('address') or request.args.get('wallet') or '').lower().strip()
+    if not re.match(r'^0x[0-9a-f]{40}$', wallet):
+        return jsonify({'error': 'valid wallet required'}), 400
+    nonce = secrets.token_hex(16)
+    exp = int(time.time()) + _AUTH_NONCE_TTL
+    with _auth_lock:
+        _auth_nonces[wallet] = {'nonce': nonce, 'exp': exp}
+    # personal_sign friendly message (human readable)
+    message = (
+        f"LightChat login\n"
+        f"Wallet: {wallet}\n"
+        f"Nonce: {nonce}\n"
+        f"Chain ID: {_AIVM_CHAIN_ID}\n"
+        f"Issued at: {int(time.time())}"
+    )
+    return jsonify({'message': message, 'nonce': nonce, 'wallet': wallet})
+
+
+@app.route('/api/auth/verify', methods=['POST'])
+def api_auth_verify():
+    """Verify personal_sign and issue a session token (hard auth)."""
+    data = request.json or {}
+    wallet = (data.get('wallet') or '').lower().strip()
+    message = data.get('message') or ''
+    signature = (data.get('signature') or '').strip()
+    if not re.match(r'^0x[0-9a-f]{40}$', wallet) or not message or not signature:
+        return jsonify({'error': 'wallet, message, and signature required'}), 400
+    with _auth_lock:
+        nonce_row = _auth_nonces.get(wallet)
+    if not nonce_row or nonce_row.get('exp', 0) < int(time.time()):
+        return jsonify({'error': 'challenge expired — request a new one'}), 400
+    if nonce_row['nonce'] not in message:
+        return jsonify({'error': 'message does not match challenge'}), 400
+    if wallet not in message.lower():
+        return jsonify({'error': 'message wallet mismatch'}), 400
+    try:
+        from eth_account.messages import encode_defunct
+        from eth_account import Account
+        recovered = Account.recover_message(encode_defunct(text=message), signature=signature)
+        if recovered.lower() != wallet:
+            return jsonify({'error': 'signature does not match wallet'}), 401
+    except Exception as e:
+        return jsonify({'error': 'invalid signature: ' + str(e)}), 401
+    with _auth_lock:
+        _auth_nonces.pop(wallet, None)
+    token, exp = _store_session(wallet, 'signed')
+    return jsonify({
+        'token': token,
+        'expires_at': exp,
+        'wallet': wallet,
+        'mode': 'signed'
+    })
+
+
+@app.route('/api/auth/soft', methods=['POST'])
+def api_auth_soft():
+    """Paste-address mode: session token without signature (weaker — UI discloses this)."""
+    data = request.json or {}
+    wallet = (data.get('wallet') or '').lower().strip()
+    if not re.match(r'^0x[0-9a-f]{40}$', wallet):
+        return jsonify({'error': 'valid wallet required'}), 400
+    token, exp = _store_session(wallet, 'soft')
+    return jsonify({
+        'token': token,
+        'expires_at': exp,
+        'wallet': wallet,
+        'mode': 'soft',
+        'note': 'Paste-address sessions cannot prove wallet ownership. Prefer Connect with a wallet app for signed login.'
+    })
+
+
+@app.route('/api/auth/session', methods=['GET'])
+def api_auth_session():
+    """Validate Bearer token."""
+    auth = request.headers.get('Authorization') or ''
+    token = auth[7:].strip() if auth.lower().startswith('bearer ') else (request.args.get('token') or '')
+    row = _lookup_session(token)
+    if not row:
+        return jsonify({'valid': False}), 401
+    return jsonify({
+        'valid': True,
+        'wallet': row['wallet'],
+        'mode': row.get('mode'),
+        'expires_at': row.get('exp')
+    })
+
+
 @app.route('/health')
 def health():
     return jsonify({
@@ -283,6 +424,7 @@ def health():
         'aivm_gateway': _AIVM_GATEWAY,
         'aivm_ready': bool(os.environ.get('LIGHTCHAIN_PRIVATE_KEY', '').strip()),
         'job_registry': _AIVM_JOB_REG,
+        'auth': 'session-v1',
     })
 
 STICKERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stickers')
@@ -962,35 +1104,64 @@ def _expire_group_call(group_id, caller_wallet):
 def on_connect():
     pass
 
+
+@socketio.on('disconnect')
+def on_disconnect():
+    _socket_wallets.pop(request.sid, None)
+
+
 @socketio.on('auth')
 def on_auth(data):
+    data = data or {}
     wallet = (data.get('wallet') or '').lower()
-    if wallet:
-        join_room(wallet)
-        # Deliver any buffered call offer — handles iOS reconnect after being backgrounded
-        pending = pending_calls.get(wallet)
-        if pending:
-            emit('call_offer', {
-                'caller_wallet': pending['caller_wallet'],
-                'handle': pending['handle'],
-                'offer': pending['offer']
-            })
+    token = (data.get('token') or '').strip()
+    row = _lookup_session(token)
+    if not row or row['wallet'] != wallet:
+        emit('auth_error', {
+            'message': 'Session required — reconnect your wallet',
+            'code': 'auth_required'
+        })
+        return
+    _socket_wallets[request.sid] = wallet
+    join_room(wallet)
+    emit('auth_ok', {'wallet': wallet, 'mode': row.get('mode', 'soft')})
+    # Deliver any buffered call offer — handles iOS reconnect after being backgrounded
+    pending = pending_calls.get(wallet)
+    if pending:
+        emit('call_offer', {
+            'caller_wallet': pending['caller_wallet'],
+            'handle': pending['handle'],
+            'offer': pending['offer']
+        })
+
 
 @socketio.on('join_chat')
 def on_join_chat(data):
+    data = data or {}
     w1 = (data.get('wallet') or '').lower()
     w2 = (data.get('contact_wallet') or '').lower()
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != w1:
+        emit('error', {'message': 'Not authenticated'})
+        return
     if w1 and w2:
         join_room(get_room(w1, w2))
 
+
 @socketio.on('send_message')
 def on_send_message(data):
+    data = data or {}
     sender = (data.get('sender_wallet') or '').lower()
     recipient = (data.get('recipient_wallet') or '').lower()
     content = (data.get('content') or '').strip()
     msg_type = data.get('type', 'text')
 
     if not sender or not recipient or not content:
+        return
+
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != sender:
+        emit('error', {'message': 'Not authenticated as sender'})
         return
 
     # Verify they are approved contacts
@@ -1041,10 +1212,15 @@ def on_send_message(data):
 # WebRTC signaling
 @socketio.on('call_offer')
 def on_call_offer(data):
+    data = data or {}
     caller = (data.get('caller_wallet') or '').lower()
     callee = (data.get('callee_wallet') or '').lower()
     offer = data.get('offer')
     if not caller or not callee or not offer:
+        return
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != caller:
+        emit('error', {'message': 'Not authenticated'})
         return
     caller_handle = get_handle_for(caller)
     call_data = {'caller_wallet': caller, 'handle': caller_handle, 'offer': offer}
@@ -1120,10 +1296,15 @@ def _get_groups_for_wallet(w, conn, now):
 
 @socketio.on('create_group')
 def on_create_group(data):
+    data = data or {}
     creator = (data.get('wallet') or '').lower()
     name = (data.get('name') or '').strip()
     members = data.get('members') or []
     if not creator or not name:
+        return
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != creator:
+        emit('error', {'message': 'Not authenticated'})
         return
     group_id = str(uuid.uuid4())
     now_str = str(int(time.time()))
@@ -1167,11 +1348,16 @@ def on_join_group(data):
 
 @socketio.on('send_group_message')
 def on_send_group_message(data):
+    data = data or {}
     sender = (data.get('wallet') or '').lower()
     group_id = (data.get('group_id') or '').strip()
     content = str(data.get('content') or '').strip()
     msg_type = str(data.get('type') or 'text')
     if not sender or not group_id or not content:
+        return
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != sender:
+        emit('error', {'message': 'Not authenticated as sender'})
         return
     conn = get_db()
     is_member = conn.execute(
@@ -1582,28 +1768,44 @@ def api_confirm_gift():
         return jsonify({'error': 'Could not verify transaction: ' + str(e)}), 500
 
 
+# Free/public ICE stack — no paid TURN account required.
+# Prefer any METERED_API_KEY already on Railway; else openrelay + multi-STUN.
 _TURN_FALLBACK = [
     {'urls': 'stun:stun.l.google.com:19302'},
     {'urls': 'stun:stun1.l.google.com:19302'},
-    {'urls': 'turn:openrelay.metered.ca:80',               'username': 'openrelayproject', 'credential': 'openrelayproject'},
-    {'urls': 'turn:openrelay.metered.ca:443',              'username': 'openrelayproject', 'credential': 'openrelayproject'},
-    {'urls': 'turn:openrelay.metered.ca:443?transport=tcp','username': 'openrelayproject', 'credential': 'openrelayproject'},
+    {'urls': 'stun:stun2.l.google.com:19302'},
+    {'urls': 'stun:stun3.l.google.com:19302'},
+    {'urls': 'stun:stun.cloudflare.com:3478'},
+    {'urls': 'turn:openrelay.metered.ca:80', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
+    {'urls': 'turn:openrelay.metered.ca:443', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
+    {'urls': 'turn:openrelay.metered.ca:443?transport=tcp', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
+    {'urls': 'turn:openrelay.metered.ca:80?transport=tcp', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
 ]
+
 
 @app.route('/api/turn-credentials')
 def api_turn_credentials():
-    api_key = os.environ.get('METERED_API_KEY', '')
-    if not api_key or not _REQUESTS_AVAILABLE:
-        return jsonify(_TURN_FALLBACK)
-    try:
-        resp = _requests.get(
-            f'https://lightchat.metered.live/api/v1/turn/credentials?apiKey={api_key}',
-            timeout=10
-        )
-        resp.raise_for_status()
-        return jsonify(resp.json())
-    except Exception:
-        return jsonify(_TURN_FALLBACK)
+    """Return ICE servers. Uses existing Metered key if set; never requires a new paid account."""
+    api_key = os.environ.get('METERED_API_KEY', '').strip()
+    if api_key and _REQUESTS_AVAILABLE:
+        try:
+            resp = _requests.get(
+                f'https://lightchat.metered.live/api/v1/turn/credentials?apiKey={api_key}',
+                timeout=10
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            # Metered returns a list of iceServer objects
+            if isinstance(data, list) and data:
+                # Prepend extra free STUN for resilience
+                merged = [
+                    {'urls': 'stun:stun.l.google.com:19302'},
+                    {'urls': 'stun:stun1.l.google.com:19302'},
+                ] + data
+                return jsonify(merged)
+        except Exception as e:
+            print(f'  [TURN] Metered credentials failed, using free fallback: {e}')
+    return jsonify(_TURN_FALLBACK)
 
 
 # ══════════════════════════════════════════════════════════════════════
