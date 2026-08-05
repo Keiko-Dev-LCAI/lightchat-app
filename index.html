@@ -2548,6 +2548,7 @@ function connectSocket() {
   socket.on('ice_candidate', d => handleIceCandidate(d));
   socket.on('call_end', handleCallEnd);
   socket.on('contact_request', (d) => {
+    playNotificationSound();
     showToast('➕ ' + (d.handle || shortenWallet(d.from_wallet)) + ' wants to add you');
     document.getElementById('contacts-dot').classList.add('show');
     document.getElementById('scontacts-dot') && document.getElementById('scontacts-dot').classList.add('show');
@@ -6145,6 +6146,16 @@ function _emitMsg(content, type) {
   }
 }
 
+function applyDeepLinkTab() {
+  try {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab && ['chats', 'contacts', 'memories', 'me', 'calendar'].includes(tab)) {
+      switchTab(tab);
+      if (tab === 'contacts' && typeof loadContacts === 'function') loadContacts();
+    }
+  } catch (e) {}
+}
+
 window.addEventListener('load', async () => {
   loadSettings();
   registerServiceWorker();
@@ -6169,6 +6180,8 @@ window.addEventListener('load', async () => {
       } catch(e) {}
     }
   }
+  // e.g. push notification opens ?tab=contacts for pending requests
+  applyDeepLinkTab();
 });
 
 if (window.ethereum) {

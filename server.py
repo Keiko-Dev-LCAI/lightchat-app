@@ -548,11 +548,26 @@ def contact_request():
         )
         conn.commit()
 
-        # Notify recipient if online
+        # Notify recipient if online (socket toast)
+        from_handle = get_handle_for(wallet, conn)
         socketio.emit('contact_request', {
             'from_wallet': wallet,
-            'handle': get_handle_for(wallet, conn)
+            'handle': from_handle
         }, room=contact_wallet)
+
+        # Web Push when recipient has notifications enabled (app backgrounded)
+        eventlet.spawn(
+            send_push_notification,
+            contact_wallet,
+            '➕ New contact request',
+            (from_handle or (wallet[:8] + '…')) + ' wants to add you on LightChat',
+            {
+                'type': 'contact_request',
+                'from_wallet': wallet,
+                'from_handle': from_handle,
+                'url': 'https://lightchat.chat/?tab=contacts',
+            },
+        )
 
         return jsonify({'status': 'sent'})
     finally:
