@@ -41,6 +41,22 @@ self.addEventListener('push', function(event) {
       ],
       data: payload.data
     };
+  } else if (payload.data && payload.data.type === 'contact_request') {
+    options = {
+      body: payload.body,
+      icon: '/lightchat-icon.png',
+      badge: '/lightchat-icon.png',
+      tag: 'lightchat-contact-request',
+      renotify: true,
+      requireInteraction: true,
+      vibrate: [200, 100, 200, 100, 200],
+      data: {
+        type: 'contact_request',
+        url: (payload.data && payload.data.url) || 'https://lightchat.chat/?tab=contacts',
+        from_wallet: payload.data.from_wallet,
+        from_handle: payload.data.from_handle
+      }
+    };
   } else {
     options = {
       body: payload.body,
