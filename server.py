@@ -2624,6 +2624,14 @@ def api_voice_chat():
     return resp
 
 
+# ── Community layer (official Lightchain server, channels, roles, profiles) ──
+try:
+    from community import register_community_routes
+    register_community_routes(app, socketio, get_db)
+except Exception as _comm_err:
+    print(f"  [community] FAILED to load: {_comm_err}")
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     socketio.run(app, host='0.0.0.0', port=port)
