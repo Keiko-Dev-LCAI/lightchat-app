@@ -208,6 +208,13 @@ def init_community_db(get_db):
                    VALUES (?,?,?,?,?,?,?,?)""",
                 (cid, COMMUNITY_ID, slug, name, kind, desc, sort, ro),
             )
+
+    try:
+        conn.execute('ALTER TABLE community_profiles ADD COLUMN hide_wallet INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
+    except Exception:
+        pass
+
     # keep start-here / links read-only for members (migrate existing DBs)
     try:
         conn.execute(
@@ -309,6 +316,15 @@ def profile_dict(conn, wallet: str) -> dict:
     handle = h["handle"] if h else ""
     if not display:
         display = handle or (wallet[:6] + "…" + wallet[-4:] if len(wallet) > 10 else wallet)
+    hide = False
+    try:
+        row_h = conn.execute(
+            "SELECT hide_wallet FROM community_profiles WHERE wallet=?", (wallet,)
+        ).fetchone()
+        if row_h and row_h["hide_wallet"]:
+            hide = True
+    except Exception:
+        pass
     return {
         "wallet": wallet,
         "display_name": display,
@@ -317,6 +333,7 @@ def profile_dict(conn, wallet: str) -> dict:
         "role": role or "member",
         "has_avatar": has_avatar,
         "avatar_url": f"/api/community/avatar/{wallet}" if has_avatar else None,
+        "hide_wallet": hide,
     }
 
 
@@ -424,6 +441,9 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"error": "wallet required"}), 400
         display = (data.get("display_name") or "")[:40].strip()
         bio = (data.get("bio") or "")[:280].strip()
+        hide_wallet = 1 if data.get("hide_wallet") in (True, 1, "1", "true", "True") else 0
+        if "hide_wallet" not in data:
+            hide_wallet = None  # don't overwrite if omitted
         now = int(time.time())
         conn = get_db()
         try:
@@ -432,15 +452,21 @@ def register_community_routes(app, socketio, get_db):
                 "SELECT wallet FROM community_profiles WHERE wallet=?", (wallet,)
             ).fetchone()
             if existing:
-                conn.execute(
-                    "UPDATE community_profiles SET display_name=?, bio=?, updated_at=? WHERE wallet=?",
-                    (display, bio, now, wallet),
-                )
+                if hide_wallet is None:
+                    conn.execute(
+                        "UPDATE community_profiles SET display_name=?, bio=?, updated_at=? WHERE wallet=?",
+                        (display, bio, now, wallet),
+                    )
+                else:
+                    conn.execute(
+                        "UPDATE community_profiles SET display_name=?, bio=?, hide_wallet=?, updated_at=? WHERE wallet=?",
+                        (display, bio, hide_wallet, now, wallet),
+                    )
             else:
                 conn.execute(
-                    """INSERT INTO community_profiles (wallet, display_name, bio, updated_at)
-                       VALUES (?,?,?,?)""",
-                    (wallet, display, bio, now),
+                    """INSERT INTO community_profiles (wallet, display_name, bio, hide_wallet, updated_at)
+                       VALUES (?,?,?,?,?)""",
+                    (wallet, display, bio, hide_wallet or 0, now),
                 )
             conn.commit()
             return jsonify({"ok": True, "profile": profile_dict(conn, wallet)})

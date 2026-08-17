@@ -1515,8 +1515,12 @@ body {
           <div class="me-avatar" id="me-avatar">🐬</div>
           <div style="flex:1;min-width:0;overflow:hidden;">
             <div class="me-handle" id="me-handle-display" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Not Connected</div>
-            <div class="me-wallet" id="me-wallet-display">Connect your wallet to get started</div>
-            <div style="font-size:15px;color:var(--text2);margin-top:6px" id="me-wallet-label"></div>
+            <div class="me-wallet" id="me-wallet-display" onclick="toggleMeWalletReveal()" title="Tap to show/hide full address" style="cursor:pointer">Connect your wallet to get started</div>
+            <div style="font-size:13px;color:var(--text2);margin-top:6px" id="me-wallet-label"></div>
+            <label style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="me-hide-wallet" onchange="toggleHideWalletPrivacy(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
+              Hide my wallet from other members
+            </label>
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
@@ -2629,15 +2633,25 @@ function updateUI() {
   document.getElementById('me-avatar').textContent = letter;
   try { refreshMeAvatarFromProfile(); } catch(e) {}
   const _dn = (window._commProfile && window._commProfile.display_name) ? String(window._commProfile.display_name).trim() : '';
-  document.getElementById('me-handle-display').textContent = _dn || myHandle || shortenWallet(wallet);
-  document.getElementById('me-wallet-display').textContent = wallet ? shortenWallet(wallet) : 'Connect your wallet to get started';
+  document.getElementById('me-handle-display').textContent = _dn || myHandle || (wallet ? shortenWallet(wallet) : 'Not Connected');
+  window._meWalletRevealed = false;
+  const wEl = document.getElementById('me-wallet-display');
+  if (wEl) {
+    if (!wallet) wEl.textContent = 'Connect your wallet to get started';
+    else wEl.textContent = shortenWallet(wallet) + ' · tap to reveal';
+  }
   const _il = document.getElementById('invite-link-box');
   if (_il) _il.textContent = APP_URL + '?add=' + wallet;
   const lbl = document.getElementById('me-wallet-label');
   if (lbl) {
-    if (_dn) lbl.textContent = 'Community display name';
-    else if (myHandle) lbl.textContent = '🔗 Handle tied to this wallet';
-    else lbl.textContent = 'Set a display name in Edit Profile';
+    if (_dn) lbl.textContent = 'Only you can reveal your full wallet here';
+    else if (myHandle) lbl.textContent = 'Set a display name in Edit Profile · tap wallet to reveal';
+    else lbl.textContent = 'Set a display name in Edit Profile · tap wallet to reveal';
+  }
+  const hideCb = document.getElementById('me-hide-wallet');
+  if (hideCb) {
+    const hide = localStorage.getItem('lc_hide_wallet') === '1';
+    hideCb.checked = hide;
   }
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
@@ -7305,7 +7319,7 @@ function filterDirectory() {
       <div class="comm-av">${av}</div>
       <div class="meta" style="flex:1">
         <div class="n">${escapeHtml(m.display_name)} ${m.role && m.role!=='member' ? '· '+escapeHtml(m.role) : ''}</div>
-        <div class="d">${escapeHtml(shortenWallet(m.wallet))}</div>
+        <div class="d">${m.hide_wallet ? '' : escapeHtml(shortenWallet(m.wallet))}</div>
       </div>
     </div>`;
   }).join('') || '<div class="empty-text" style="padding:24px;text-align:center">No members yet — connect and join</div>';
@@ -7373,6 +7387,12 @@ async function openEditProfile() {
     bio.oninput = () => { const c = document.getElementById('edit-prof-bio-count'); if (c) c.textContent = String(bio.value.length); };
   }
   if (roleEl) roleEl.textContent = communityRole ? ('Role: ' + communityRole) : '';
+  try {
+    const hide = !!(prof.hide_wallet || localStorage.getItem('lc_hide_wallet') === '1');
+    const cb = document.getElementById('me-hide-wallet');
+    if (cb) cb.checked = hide;
+    window._hideWalletPublic = hide;
+  } catch(e) {}
   if (prev) {
     if (prof.has_avatar && wallet) {
       prev.innerHTML = '<img src="'+BACKEND+'/api/community/avatar/'+wallet+'?t='+Date.now()+'" style="width:100%;height:100%;object-fit:cover">';
@@ -7406,7 +7426,10 @@ async function saveEditProfile() {
   try {
     const r = await fetch(BACKEND + '/api/community/profile', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({wallet, display_name, bio})
+      body: JSON.stringify({
+        wallet, display_name, bio,
+        hide_wallet: !!(document.getElementById('me-hide-wallet')?.checked || window._hideWalletPublic)
+      })
     });
     const j = await r.json();
     if (!r.ok) { showToast(j.error || 'Save failed'); return; }
@@ -7441,6 +7464,45 @@ async function saveEditProfile() {
     console.warn(e);
     showToast('Save failed');
   }
+}
+
+
+function toggleMeWalletReveal() {
+  if (!wallet) return;
+  const wEl = document.getElementById('me-wallet-display');
+  if (!wEl) return;
+  window._meWalletRevealed = !window._meWalletRevealed;
+  if (window._meWalletRevealed) {
+    wEl.textContent = wallet + ' · tap to hide';
+    try { navigator.clipboard.writeText(wallet); showToast('Full address copied'); } catch(e) {}
+  } else {
+    wEl.textContent = shortenWallet(wallet) + ' · tap to reveal';
+  }
+}
+function toggleHideWalletPrivacy(on) {
+  try { localStorage.setItem('lc_hide_wallet', on ? '1' : '0'); } catch(e) {}
+  // Persist to profile bio flag via API optional field — also set on profile save
+  window._hideWalletPublic = !!on;
+  showToast(on ? 'Wallet hidden from other members' : 'Wallet visible (short form) to members');
+  // Push preference to server profile
+  if (wallet) {
+    fetch(BACKEND + '/api/community/profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        wallet,
+        display_name: (window._commProfile && window._commProfile.display_name) || '',
+        bio: (window._commProfile && window._commProfile.bio) || '',
+        hide_wallet: !!on
+      })
+    }).then(r => r.json()).then(j => {
+      if (j.profile) window._commProfile = j.profile;
+    }).catch(()=>{});
+  }
+}
+function publicWalletLabel(prof) {
+  if (!prof) return '';
+  if (prof.hide_wallet) return '';
+  return shortenWallet(prof.wallet || '');
 }
 
 function refreshMeAvatarFromProfile() {
