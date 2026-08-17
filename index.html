@@ -6991,9 +6991,6 @@ connectSocket = function() {
 };
 
 </script>
-<div style="text-align:center;padding:4px 16px 12px;font-size:13px;opacity:0.75;"><a href="https://lightdex.app/" target="_blank" rel="noopener" style="color:#7ec8e3;text-decoration:none;font-weight:600;">Get LCAI · LCAI Swap ↗</a></div>
-
-
 <script>
 // ════════════════════════════════
 // COMMUNITY LAYER (official Lightchain server)
@@ -7013,6 +7010,7 @@ async function communityJoin() {
     const j = await r.json();
     if (j.role) communityRole = j.role;
     if (j.profile) window._commProfile = j.profile;
+    try { if (typeof updateUI === 'function') updateUI(); } catch(e) {}
   } catch(e) { console.warn('community join', e); }
 }
 
