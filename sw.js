@@ -11,8 +11,17 @@ self.addEventListener('activate', function(event) {
 });
 
 // ── Fetch handler (required for iOS to treat this as a fully active SW) ──
-// We don't do offline caching — just pass every request straight through.
+// Only handle same-origin requests. Cross-origin (Railway API) must NOT go
+// through respondWith() — that strips CORS and breaks Gen Chat / DMs.
 self.addEventListener('fetch', function(event) {
+  try {
+    const url = new URL(event.request.url);
+    if (url.origin !== self.location.origin) {
+      return; // let the browser handle Railway / external APIs (keeps CORS)
+    }
+  } catch (e) {
+    return;
+  }
   event.respondWith(fetch(event.request));
 });
 
