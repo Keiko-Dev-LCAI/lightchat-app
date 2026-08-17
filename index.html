@@ -1351,7 +1351,6 @@ body {
           <div id="empty-invite-block" style="display:none;margin-top:22px;width:100%;max-width:320px;text-align:center">
             <div style="font-size:16px;color:var(--text2);margin-bottom:12px;line-height:1.5">Share your invite</div>
             <img id="empty-invite-qr" alt="Invite QR" width="180" height="180" style="background:#fff;border-radius:14px;padding:10px;display:none;margin:0 auto 14px">
-            <button class="empty-cta" style="margin-bottom:10px" onclick="showInvitePanel()">🔗 Invite link + QR</button>
             <button class="empty-cta" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="showSearchPanel()">🔍 Find @handle</button>
           </div>
         </div>
@@ -1372,13 +1371,7 @@ body {
     <!-- Contacts tab -->
     <div class="tab" id="tab-contacts">
       <div class="contacts-actions">
-        <div class="action-card" onclick="showInvitePanel()">
-          <div class="action-icon">🔗</div>
-          <div>
-            <div class="action-label">My Invite Link</div>
-            <div class="action-sub">Share so others can add you</div>
-          </div>
-        </div>
+</div>
         <div class="action-card" onclick="showSearchPanel()">
           <div class="action-icon">🔍</div>
           <div>
@@ -1438,9 +1431,6 @@ body {
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
-          <div class="me-menu-item" onclick="showInvitePanel()">
-            <div class="me-menu-icon">🔗</div><div>My Invite Link</div><div class="me-menu-arrow">›</div>
-          </div>
           <div class="me-menu-item" onclick="showStickersPanel()">
             <div class="me-menu-icon">🎭</div><div>Stickers</div><div class="me-menu-arrow">›</div>
           </div>
@@ -1607,7 +1597,7 @@ body {
 </div><!-- /desktop-main -->
 
 <!-- ── INVITE PANEL ── -->
-<div id="invite-panel">
+<div id="invite-panel" style="display:none!important" aria-hidden="true" data-removed="1">
   <div class="panel-header">
     <button class="back-btn" onclick="closePanel('invite-panel')">‹</button>
     <div class="panel-title">My Invite Link</div>
@@ -3192,17 +3182,7 @@ function refreshEmptyInviteUI() {
   }
 }
 
-function showInvitePanel() {
-  if (!wallet) { showToast('Connect your wallet first'); return; }
-  const url = inviteUrl();
-  document.getElementById('invite-link-box').textContent = url;
-  setInviteQr(
-    document.getElementById('invite-qr-img'),
-    document.getElementById('invite-qr-placeholder'),
-    url
-  );
-  document.getElementById('invite-panel').classList.add('open');
-}
+function showInvitePanel(){ showToast('Invite links coming with community invites later'); }
 
 function copyInviteLink() {
   navigator.clipboard.writeText(inviteUrl()).then(() => showToast('Link copied!')).catch(() => showToast('Tap and hold to copy'));
