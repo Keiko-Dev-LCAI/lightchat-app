@@ -1453,7 +1453,7 @@ body {
           <div id="empty-invite-block" style="display:none;margin-top:22px;width:100%;max-width:320px;text-align:center">
             <div style="font-size:16px;color:var(--text2);margin-bottom:12px;line-height:1.5">Share your invite</div>
             <img id="empty-invite-qr" alt="Invite QR" width="180" height="180" style="background:#fff;border-radius:14px;padding:10px;display:none;margin:0 auto 14px">
-            <button class="empty-cta" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="showSearchPanel()">🔍 Find @handle</button>
+            <button class="empty-cta" style="background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="showSearchPanel()">🔍 Find someone</button>
           </div>
         </div>
         <div id="chat-list" style="display:none"></div>
@@ -1477,7 +1477,7 @@ body {
         <div class="action-card" onclick="showSearchPanel()">
           <div class="action-icon">🔍</div>
           <div>
-            <div class="action-label">Find by @handle</div>
+            <div class="action-label">Find by name</div>
             <div class="action-sub">Search for someone to add</div>
           </div>
         </div>
@@ -1708,10 +1708,9 @@ body {
   </div>
   <div class="panel-content">
     <div class="form-group">
-      <label class="form-label">Find by handle</label>
+      <label class="form-label">Find by name</label>
       <div style="display:flex;align-items:center;background:var(--bg);border:2px solid var(--border);border-radius:14px;overflow:hidden">
-        <span style="padding:0 4px 0 20px;font-size:20px;color:var(--purple);font-weight:700;flex-shrink:0">@</span>
-        <input style="flex:1;background:none;border:none;padding:16px 20px 16px 0;color:var(--text);font-size:20px;outline:none;" id="search-handle-input" type="text" placeholder="keiko326" autocorrect="off" autocapitalize="none" oninput="clearSearchResult()">
+        <input style="flex:1;background:none;border:none;padding:16px 20px;color:var(--text);font-size:20px;outline:none;" id="search-handle-input" type="text" placeholder="name or username" autocorrect="off" autocapitalize="none" oninput="clearSearchResult()">
       </div>
     </div>
     <button class="primary-btn" onclick="searchHandle()">Search</button>
@@ -1815,7 +1814,7 @@ body {
   <div class="modal-box">
     <div style="font-size:48px;text-align:center;margin-bottom:14px">🐬</div>
     <div class="modal-title">Welcome to LightChat</div>
-    <div class="modal-sub">Pick your @handle — this is how people find you.</div>
+    <div class="modal-sub">Pick a username — this is how people can find you.</div>
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:18px;text-align:center;line-height:1.6">
       <div style="font-size:16px;color:var(--text2)">🔗 This handle will be tied to</div>
       <div style="font-size:18px;color:var(--purple);font-weight:700;margin:4px 0" id="modal-wallet-display"></div>
@@ -3162,7 +3161,7 @@ async function searchHandle() {
   if (resp.wallet) {
     if (resp.wallet === wallet) { showToast("That's you!"); return; }
     searchFoundWallet = resp.wallet;
-    document.getElementById('search-result-handle').textContent = '@' + raw.replace('@','');
+    document.getElementById('search-result-handle').textContent = raw.replace('@','');
     document.getElementById('search-result-wallet').textContent = resp.wallet;
     document.getElementById('search-result').style.display = 'block';
     document.getElementById('search-not-found').style.display = 'none';
@@ -3756,10 +3755,10 @@ async function runPendingDeepLink() {
   if (!raw) return;
   const resp = await fetch(BACKEND + '/resolve/' + encodeURIComponent(raw)).then(r => r.json()).catch(() => ({}));
   if (!resp.wallet) {
-    showToast('Handle not found: @' + raw);
+    showToast('Handle not found: ' + raw);
     return;
   }
-  const displayHandle = '@' + raw;
+  const displayHandle = raw;
   switchTab('chats');
   await openChat(resp.wallet, displayHandle);
   if (type === 'call') { /* video calls disabled */ }
@@ -3792,7 +3791,7 @@ async function submitChangeHandle() {
 
 async function confirmDeleteHandle() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
-  if (!confirm('Delete your handle ' + (myHandle || '') + '? Your wallet will have no @handle until you register a new one.')) return;
+  if (!confirm('Delete your handle ' + (myHandle || '') + '? Your wallet will have no username until you register a new one.')) return;
   const resp = await fetch(BACKEND + '/delete-handle', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({wallet})
