@@ -1489,8 +1489,7 @@ body {
       <div class="chat-header-name" id="chat-header-name"></div>
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
-    <button id="chat-call-btn" style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startVideoCall()">📹</button>
-    <button id="chat-group-call-btn" style="display:none;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px" onclick="startGroupVideoCall()" title="Group Video Call">📹</button>
+<!-- video call buttons removed -->
     <!-- gift removed: LightChat is free / no LCAI transfers -->
     <div id="chat-more-wrap" style="position:relative;display:none">
       <button style="background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;padding:0 8px;line-height:1" onclick="toggleChatMenu(event)" title="More options">⋮</button>
@@ -1799,49 +1798,8 @@ body {
     </div>
 
     <div style="margin-top:28px">
-      <div class="form-label" style="font-size:20px;margin-bottom:14px">📞 Ringtone</div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden">
-        <div class="me-menu-item ringtone-row" onclick="selectRingtone('classic')">
-          <div class="me-menu-icon">📞</div>
-          <div style="flex:1;font-size:22px">Classic</div>
-          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('classic')">▶ Play</button>
-          <div class="ringtone-check on" id="rcheck-classic">✓</div>
-        </div>
-        <div class="me-menu-item ringtone-row" onclick="selectRingtone('chime')">
-          <div class="me-menu-icon">🔔</div>
-          <div style="flex:1;font-size:22px">Chime</div>
-          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('chime')">▶ Play</button>
-          <div class="ringtone-check" id="rcheck-chime">✓</div>
-        </div>
-        <div class="me-menu-item ringtone-row" onclick="selectRingtone('modern')">
-          <div class="me-menu-icon">📳</div>
-          <div style="flex:1;font-size:22px">Modern</div>
-          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('modern')">▶ Play</button>
-          <div class="ringtone-check" id="rcheck-modern">✓</div>
-        </div>
-        <div class="me-menu-item ringtone-row" onclick="selectRingtone('lightchat')">
-          <div class="me-menu-icon">💡</div>
-          <div style="flex:1;font-size:22px">LightChat</div>
-          <button class="preview-btn" onclick="event.stopPropagation();previewRingtone('lightchat')">▶ Play</button>
-          <div class="ringtone-check" id="rcheck-lightchat">✓</div>
-        </div>
-        <div class="me-menu-item ringtone-row" onclick="document.getElementById('ringtone-upload').click()">
-          <div class="me-menu-icon">🎵</div>
-          <div style="flex:1">
-            <div style="font-size:22px">Custom Upload</div>
-            <div id="custom-ringtone-name" style="font-size:15px;color:var(--text2);margin-top:3px">Tap to upload MP3 / AAC</div>
-          </div>
-          <div class="ringtone-check" id="rcheck-custom">✓</div>
-        </div>
-        <div class="me-menu-item ringtone-row" onclick="selectRingtone('silent')">
-          <div class="me-menu-icon">🔕</div>
-          <div style="flex:1;font-size:22px">Silent</div>
-          <div class="ringtone-check" id="rcheck-silent">✓</div>
-        </div>
-      </div>
-      <input type="file" id="ringtone-upload" accept="audio/*" style="display:none" onchange="uploadCustomRingtone(this)">
-    
-    <div class="me-menu-item" style="cursor:default;margin-top:12px" id="settings-contact">
+    <!-- Ringtone / video-call settings removed -->
+<div class="me-menu-item" style="cursor:default;margin-top:12px" id="settings-contact">
       <div class="me-menu-icon">𝕏</div>
       <div style="flex:1">
         <div style="font-size:17px">Contact</div>
@@ -2076,7 +2034,7 @@ body {
 </div>
 
 <!-- ── VIDEO CALL OVERLAYS ── -->
-<div id="call-incoming-overlay">
+<div id="call-incoming-overlay" data-removed="1" style="display:none!important">
   <div style="font-size:80px">📹</div>
   <div style="font-size:28px;font-weight:700">Incoming Video Call</div>
   <div style="font-size:26px;color:var(--purple)" id="call-incoming-name"></div>
@@ -2087,7 +2045,7 @@ body {
   <div style="color:var(--text2);font-size:18px;margin-top:8px">↙ Decline &nbsp;&nbsp;&nbsp; Accept ↘</div>
 </div>
 
-<div id="call-calling-overlay">
+<div id="call-calling-overlay" data-removed="1" style="display:none!important">
   <div style="font-size:80px">📹</div>
   <div style="font-size:28px;font-weight:700">Calling...</div>
   <div style="font-size:26px;color:var(--purple)" id="call-calling-name"></div>
@@ -2095,7 +2053,7 @@ body {
   <button onclick="endCall()" style="width:80%;max-width:280px;padding:20px;border-radius:50px;background:var(--red);border:none;font-size:24px;font-weight:700;color:#fff;cursor:pointer">📵 Cancel Call</button>
 </div>
 
-<div id="call-active-overlay">
+<div id="call-active-overlay" data-removed="1" style="display:none!important">
   <video id="remote-video" autoplay playsinline style="width:100%;height:100%;object-fit:cover;background:#000"></video>
   <audio id="remote-audio" autoplay></audio>
   <video id="local-video" autoplay playsinline muted style="position:absolute;top:20px;right:20px;width:120px;height:160px;border-radius:12px;object-fit:cover;border:2px solid var(--purple);background:#111"></video>
@@ -2110,7 +2068,7 @@ body {
 
 <!-- ── GROUP CALL OVERLAYS ── -->
 <!-- Incoming group call overlay -->
-<div id="group-call-incoming-overlay">
+<div id="group-call-incoming-overlay" data-removed="1" style="display:none!important">
   <div style="font-size:80px">📹</div>
   <div style="font-size:28px;font-weight:700">Incoming Group Call</div>
   <div style="font-size:22px;color:var(--purple);line-height:1.4" id="group-call-incoming-name"></div>
@@ -2122,7 +2080,7 @@ body {
 </div>
 
 <!-- Calling overlay (waiting for members to join) -->
-<div id="group-call-calling-overlay">
+<div id="group-call-calling-overlay" data-removed="1" style="display:none!important">
   <div style="font-size:80px">📹</div>
   <div style="font-size:28px;font-weight:700">Starting Group Call…</div>
   <div style="font-size:22px;color:var(--purple)" id="group-call-calling-name"></div>
@@ -2131,7 +2089,7 @@ body {
 </div>
 
 <!-- Active group call overlay -->
-<div id="group-call-active-overlay">
+<div id="group-call-active-overlay" data-removed="1" style="display:none!important">
   <div id="group-video-grid"></div>
   <div id="group-call-controls">
     <div style="display:flex;justify-content:center;gap:28px">
@@ -2297,6 +2255,8 @@ body {
 
 <script>
 const BACKEND = 'https://web-production-bc64f.up.railway.app';
+
+
 const APP_URL = window.location.origin + window.location.pathname.replace('index.html','');
 
 let wallet = null, myHandle = null, socket = null;
@@ -2881,9 +2841,9 @@ async function openChat(contactWallet, handle) {
 function closeChat() {
   document.getElementById('chat-view').classList.remove('open');
   currentChat = null; currentGroupChat = null; isGroupChat = false;
-  var cb = document.getElementById('chat-call-btn');
+  var cb = null; // video calls removed
   var gb = document.getElementById('chat-gift-btn');
-  var gcb = document.getElementById('chat-group-call-btn');
+  var gcb = null; // video calls removed
   var mw = document.getElementById('chat-more-wrap');
   if (cb) cb.style.display = '';
   if (gb) gb.style.display = '';
@@ -3692,7 +3652,7 @@ async function runPendingDeepLink() {
   const displayHandle = '@' + raw;
   switchTab('chats');
   await openChat(resp.wallet, displayHandle);
-  if (type === 'call') setTimeout(() => startVideoCall(), 900);
+  if (type === 'call') { /* video calls disabled */ }
 }
 
 /* showLightPay defined with Pro status refresh above */
@@ -4545,7 +4505,7 @@ document.addEventListener('click', function unlockAudio() {
 
 const RING_INTERVALS = {classic: 4200, chime: 3200, modern: 2400, lightchat: 3000};
 
-function playBuiltinRingOnce(tone) {
+function _removed_playBuiltinRingOnce(tone) {
   try {
     const ctx = getAudioCtx();
     if (!ctx) return;
@@ -4598,7 +4558,7 @@ function playBuiltinRingOnce(tone) {
   } catch(e) {}
 }
 
-function startRinging() {
+function _removed_startRinging() {
   stopRinging();
   const tone = settings.ringtone || 'classic';
   if (tone === 'silent') return;
@@ -4626,13 +4586,13 @@ function startRinging() {
   }, 90000);
 }
 
-function stopRinging() {
+function _removed_stopRinging() {
   clearInterval(ringInterval); ringInterval = null;
   clearTimeout(callTimeoutId); callTimeoutId = null;
   if (ringAudioEl) { try { ringAudioEl.pause(); ringAudioEl.src = ''; } catch(e) {} ringAudioEl = null; }
 }
 
-function previewRingtone(tone) {
+function _removed_previewRingtone(tone) {
   if (tone === 'custom') {
     const src = localStorage.getItem('lc_custom_ringtone');
     if (src) { const a = new Audio(src); a.play().catch(() => {}); }
@@ -4642,7 +4602,7 @@ function previewRingtone(tone) {
   }
 }
 
-function selectRingtone(tone) {
+function _removed_selectRingtone(tone) {
   settings.ringtone = tone;
   saveSettings();
   ['classic','chime','modern','lightchat','custom','silent'].forEach(t => {
@@ -4652,7 +4612,7 @@ function selectRingtone(tone) {
   if (tone !== 'custom') showToast('Ringtone set to ' + tone);
 }
 
-function uploadCustomRingtone(input) {
+function _removed_uploadCustomRingtone(input) {
   const file = input.files[0];
   if (!file) return;
   if (file.size > 3 * 1024 * 1024) { showToast('File too large — max 3 MB'); input.value = ''; return; }
@@ -4935,7 +4895,7 @@ async function getLocalStream() {
   return videoStream;
 }
 
-async function startVideoCall() {
+async function _removed_startVideoCall() {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   if (!currentChat) { showToast('Open a chat first'); return; }
   if (!socket) { connectSocket(); showToast('Reconnecting — try again in 2 seconds'); return; }
@@ -4977,7 +4937,7 @@ async function startVideoCall() {
   }
 }
 
-async function handleCallOffer(data) {
+async function _removed_handleCallOffer(data) {
   if (callState) { if (socket) socket.emit('call_end', {target_wallet: data.caller_wallet, sender_wallet: wallet}); return; }
   callState = 'receiving';
   window._pendingCallOffer = data;
@@ -4986,7 +4946,7 @@ async function handleCallOffer(data) {
   startRinging();
 }
 
-async function acceptCall() {
+async function _removed_acceptCall() {
   const data = window._pendingCallOffer;
   if (!data) return;
   // CRITICAL: audio unlock MUST happen synchronously inside the user-gesture call stack (iOS)
@@ -5036,7 +4996,7 @@ async function acceptCall() {
   }
 }
 
-async function handleCallAnswer(data) {
+async function _removed_handleCallAnswer(data) {
   if (!peerConnection) return;
   try {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
@@ -5046,15 +5006,15 @@ async function handleCallAnswer(data) {
   } catch(e) {}
 }
 
-async function handleIceCandidate(data) {
+async function _removed_handleIceCandidate(data) {
   if (!data.candidate) return;
   if (!peerConnection) { iceCandidateQueue.push(data.candidate); return; }
   try { await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) {}
 }
 
-function handleCallEnd() { cleanupCall(); showToast('Call ended'); }
+function _removed_handleCallEnd() { cleanupCall(); showToast('Call ended'); }
 
-function declineCall() {
+function _removed_declineCall() {
   stopRinging();
   const data = window._pendingCallOffer;
   if (data && socket) socket.emit('call_end', {target_wallet: data.caller_wallet, sender_wallet: wallet});
@@ -5602,7 +5562,7 @@ let groupPeerConnections= {};     // { walletAddr: RTCPeerConnection }
 let groupCallHandles    = {};     // { walletAddr: handle } — populated as peers join
 let groupCallIceQueues  = {};     // { walletAddr: [candidate, ...] } — ICE before PC ready
 
-async function startGroupVideoCall() {
+async function _removed_startGroupVideoCall() {
   if (!wallet || !currentGroupChat || !socket) { showToast('Open a group chat first'); return; }
   if (groupCallState) { showToast('Already in a call'); return; }
   if (callState)      { showToast('Already in a 1:1 call'); return; }
@@ -5643,7 +5603,7 @@ async function startGroupVideoCall() {
 }
 
 // ─── Incoming: shown to every group member except the caller ───
-function handleGroupCallOffer(data) {
+function _removed_handleGroupCallOffer(data) {
   if (groupCallState) return; // already in a call — ignore
   groupCallState = 'receiving';
   groupCallPendingOffer = data;
@@ -6016,9 +5976,9 @@ async function openGroupChat(groupId, memberCount) {
   document.getElementById('chat-header-name').textContent = groupName;
   document.getElementById('chat-header-wallet').textContent = memberCount + ' members';
 
-  var cb = document.getElementById('chat-call-btn');
+  var cb = null; // video calls removed
   var gb = document.getElementById('chat-gift-btn');
-  var gcb = document.getElementById('chat-group-call-btn');
+  var gcb = null; // video calls removed
   var mw = document.getElementById('chat-more-wrap');
   if (cb) cb.style.display = 'none';
   if (gb) gb.style.display = 'none';
@@ -7380,6 +7340,29 @@ async function saveCommunityProfile() { return saveEditProfile(); }
   // also fire soon
   setTimeout(() => { try { switchTab('genchat'); loadChannelsList(); } catch(e) {} }, 500);
 })();
+</script>
+
+
+<script>
+// Video calls / ringtones fully disabled (override any leftover handlers)
+function startVideoCall(){ showToast('Video calls are off for now'); }
+function startGroupVideoCall(){ showToast('Video calls are off for now'); }
+function handleCallOffer(){}
+function handleCallAnswer(){}
+function handleIceCandidate(){}
+function handleCallEnd(){}
+function handleGroupCallOffer(){}
+function handleGroupCallAccept(){}
+function handleGroupCallDecline(){}
+function handleGroupCallLeave(){}
+function endVideoCall(){}
+function acceptCall(){}
+function declineCall(){}
+function selectRingtone(){}
+function previewRingtone(){}
+function uploadCustomRingtone(){}
+function startRinging(){}
+function stopRinging(){}
 </script>
 
 </body>
