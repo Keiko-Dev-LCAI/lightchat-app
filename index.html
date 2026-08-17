@@ -2526,11 +2526,17 @@ function updateUI() {
   const letter = (myHandle || 'X').replace('@','').charAt(0).toUpperCase();
   document.getElementById('me-avatar').textContent = letter;
   try { refreshMeAvatarFromProfile(); } catch(e) {}
-  document.getElementById('me-handle-display').textContent = myHandle || shortenWallet(wallet);
-  document.getElementById('me-wallet-display').textContent = wallet;
-  document.getElementById('invite-link-box').textContent = APP_URL + '?add=' + wallet;
+  const _dn = (window._commProfile && window._commProfile.display_name) ? String(window._commProfile.display_name).trim() : '';
+  document.getElementById('me-handle-display').textContent = _dn || myHandle || shortenWallet(wallet);
+  document.getElementById('me-wallet-display').textContent = wallet ? shortenWallet(wallet) : 'Connect your wallet to get started';
+  const _il = document.getElementById('invite-link-box');
+  if (_il) _il.textContent = APP_URL + '?add=' + wallet;
   const lbl = document.getElementById('me-wallet-label');
-  if (lbl) lbl.textContent = myHandle ? '🔗 Handle tied to this wallet' : '⚠️ No handle — others can\'t find you by name';
+  if (lbl) {
+    if (_dn) lbl.textContent = 'Community display name';
+    else if (myHandle) lbl.textContent = '🔗 Handle tied to this wallet';
+    else lbl.textContent = 'Set a display name in Edit Profile';
+  }
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
   if (cta) { cta.textContent = '👥 Add a Contact'; }
