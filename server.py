@@ -1638,164 +1638,44 @@ def api_lcai_price():
 
 @app.route('/api/call-access/<wallet>')
 def api_call_access(wallet):
-    w = wallet.lower().strip()
-    now = int(time.time())
-    conn = get_db()
-    # Check whitelist first
-    handle_row = conn.execute('SELECT handle FROM handles WHERE wallet = ?', (w,)).fetchone()
-    if handle_row and handle_row['handle'] in PREMIUM_WHITELIST:
-        conn.close()
-        return jsonify({'allowed': True, 'free_remaining': 99, 'subscribed': True, 'expires_at': None})
-    sub = conn.execute('SELECT expires_at FROM subscriptions WHERE wallet = ?', (w,)).fetchone()
-    subscribed = bool(sub and sub['expires_at'] and sub['expires_at'] > now)
-    expires_at = sub['expires_at'] if sub else None
-    usage = conn.execute('SELECT free_calls_used FROM call_usage WHERE wallet = ?', (w,)).fetchone()
-    free_used = usage['free_calls_used'] if usage else 0
-    conn.close()
-    free_remaining = max(0, FREE_CALLS_LIMIT - free_used)
-    allowed = subscribed or (free_used < FREE_CALLS_LIMIT)
+    """Always allowed — LightChat is free (no call paywall)."""
     return jsonify({
-        'allowed': allowed,
-        'free_remaining': free_remaining,
-        'subscribed': subscribed,
-        'expires_at': expires_at
+        'allowed': True,
+        'subscribed': True,
+        'free_remaining': 999,
+        'expires_at': None,
+        'free': True,
     })
+
 
 
 @app.route('/api/use-call', methods=['POST'])
 def api_use_call():
-    data = request.json or {}
-    w = data.get('wallet', '').lower().strip()
-    if not w:
-        return jsonify({'error': 'wallet required'}), 400
-    now = int(time.time())
-    conn = get_db()
-    sub = conn.execute('SELECT expires_at FROM subscriptions WHERE wallet = ?', (w,)).fetchone()
-    subscribed = bool(sub and sub['expires_at'] and sub['expires_at'] > now)
-    if not subscribed:
-        conn.execute(
-            'INSERT INTO call_usage (wallet, free_calls_used) VALUES (?, 1) '
-            'ON CONFLICT(wallet) DO UPDATE SET free_calls_used = free_calls_used + 1',
-            (w,)
-        )
-        conn.commit()
-    usage = conn.execute('SELECT free_calls_used FROM call_usage WHERE wallet = ?', (w,)).fetchone()
-    free_used = usage['free_calls_used'] if usage else 0
-    conn.close()
-    return jsonify({
-        'allowed': subscribed or (free_used < FREE_CALLS_LIMIT),
-        'free_remaining': max(0, FREE_CALLS_LIMIT - free_used),
-        'subscribed': subscribed,
-        'expires_at': sub['expires_at'] if sub else None
-    })
+    """No-op — calls are free."""
+    return jsonify({'ok': True, 'free': True})
+
 
 
 @app.route('/api/verify-subscription', methods=['POST'])
 def api_verify_subscription():
-    data = request.json or {}
-    w = data.get('wallet', '').lower().strip()
-    tx_hash = (data.get('tx_hash') or '').strip()
-    if not w or not tx_hash:
-        return jsonify({'error': 'wallet and tx_hash required'}), 400
-    # Whitelist bypass
-    conn_wl = get_db()
-    handle_wl = conn_wl.execute('SELECT handle FROM handles WHERE wallet = ?', (w,)).fetchone()
-    conn_wl.close()
-    if handle_wl and handle_wl['handle'] in PREMIUM_WHITELIST:
-        return jsonify({'success': True, 'isPremium': True, 'expires_at': None, 'whitelisted': True})
-    try:
-        result = lightchain_rpc('eth_getTransactionByHash', [tx_hash])
-        tx = result.get('result')
-        if not tx:
-            return jsonify({'error': 'Transaction not found on Lightchain — check the hash and try again'}), 404
-        # Verify recipient is the owner wallet
-        to_addr = (tx.get('to') or '').lower()
-        if to_addr != OWNER_WALLET:
-            return jsonify({'error': 'This transaction was not sent to the LightChat subscription address'}), 400
-        # Verify value: must be >= $1 worth of LCAI
-        price = get_lcai_price()
-        required_lcai = 1.0 / price
-        required_wei = int(required_lcai * 1e18)
-        tx_value = int(tx.get('value', '0x0'), 16)
-        if tx_value < required_wei:
-            sent_lcai = round(tx_value / 1e18, 4)
-            needed_lcai = round(required_lcai, 2)
-            return jsonify({
-                'error': f'Insufficient amount — sent {sent_lcai} LCAI, need {needed_lcai} LCAI'
-            }), 400
-        # Verify receipt status (soft check — receipt may not exist yet on very new tx)
-        try:
-            rcpt_result = lightchain_rpc('eth_getTransactionReceipt', [tx_hash]).get('result')
-            if rcpt_result and rcpt_result.get('status') == '0x0':
-                return jsonify({'error': 'Transaction was reverted — please send a new one'}), 400
-        except Exception:
-            pass  # Receipt may not exist yet; proceed with tx-existence check
-        # Store 30-day subscription
-        expires_at = int(time.time()) + 30 * 24 * 60 * 60
-        conn = get_db()
-        conn.execute(
-            'INSERT OR REPLACE INTO subscriptions (wallet, expires_at, tx_hash) VALUES (?, ?, ?)',
-            (w, expires_at, tx_hash)
-        )
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'expires_at': expires_at})
-    except Exception as e:
-        return jsonify({'error': 'Could not verify transaction: ' + str(e)}), 500
+    """Disabled — LightChat is free (no Pro / subscriptions)."""
+    return jsonify({
+        'ok': False,
+        'disabled': True,
+        'error': 'Subscriptions disabled. LightChat is free for everyone.',
+    }), 410
+
 
 
 @app.route('/api/confirm-gift', methods=['POST'])
 def api_confirm_gift():
-    data = request.json or {}
-    from_wallet = (data.get('from_wallet') or '').lower().strip()
-    to_wallet   = (data.get('to_wallet') or '').lower().strip()
-    tx_hash     = (data.get('tx_hash') or '').strip()
-    amount      = float(data.get('amount') or 0)
-    if not from_wallet or not to_wallet or not tx_hash:
-        return jsonify({'error': 'from_wallet, to_wallet, and tx_hash required'}), 400
-    try:
-        result = lightchain_rpc('eth_getTransactionByHash', [tx_hash])
-        tx = result.get('result')
-        if not tx:
-            return jsonify({'error': 'Transaction not found on Lightchain — check the hash'}), 404
-        tx_from = (tx.get('from') or '').lower()
-        tx_to   = (tx.get('to')   or '').lower()
-        if tx_to != to_wallet:
-            return jsonify({'error': 'Transaction recipient does not match'}), 400
-        if tx_from != from_wallet:
-            return jsonify({'error': 'Transaction sender does not match your connected wallet'}), 400
-        if amount > 0:
-            expected_wei = int(amount * 1e18)
-            tx_value = int(tx.get('value', '0x0'), 16)
-            if tx_value < int(expected_wei * 0.99):  # 1% tolerance
-                return jsonify({'error': 'Transaction amount is less than the gift amount'}), 400
-        # Notify recipient via their personal socket room
-        gift_content = json.dumps({'amount': amount, 'txHash': tx_hash})
-        from_handle  = get_handle_for(from_wallet)
-        socketio.emit('gift_confirmed', {
-            'from_wallet': from_wallet,
-            'handle':      from_handle,
-            'content':     gift_content,
-            'type':        'lcai_gift'
-        }, room=to_wallet)
-        return jsonify({'success': True, 'tx_hash': tx_hash})
-    except Exception as e:
-        return jsonify({'error': 'Could not verify transaction: ' + str(e)}), 500
+    """Disabled — no LCAI gift transfers in community LightChat."""
+    return jsonify({
+        'ok': False,
+        'disabled': True,
+        'error': 'Gifts / LCAI transfers disabled. LightChat is free.',
+    }), 410
 
-
-# Free/public ICE stack — no paid TURN account required.
-# Prefer any METERED_API_KEY already on Railway; else openrelay + multi-STUN.
-_TURN_FALLBACK = [
-    {'urls': 'stun:stun.l.google.com:19302'},
-    {'urls': 'stun:stun1.l.google.com:19302'},
-    {'urls': 'stun:stun2.l.google.com:19302'},
-    {'urls': 'stun:stun3.l.google.com:19302'},
-    {'urls': 'stun:stun.cloudflare.com:3478'},
-    {'urls': 'turn:openrelay.metered.ca:80', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
-    {'urls': 'turn:openrelay.metered.ca:443', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
-    {'urls': 'turn:openrelay.metered.ca:443?transport=tcp', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
-    {'urls': 'turn:openrelay.metered.ca:80?transport=tcp', 'username': 'openrelayproject', 'credential': 'openrelayproject'},
-]
 
 
 @app.route('/api/turn-credentials')
