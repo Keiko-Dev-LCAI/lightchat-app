@@ -1256,6 +1256,87 @@ body {
   margin-right: 2px;
 }
 
+
+/* Lightchain brand marks — scattered accents */
+.lc-brand-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.lc-brand-float {
+  position: absolute;
+  opacity: 0.07;
+  user-select: none;
+  filter: grayscale(0);
+}
+.lc-brand-float img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.sidebar, .desktop-main, .bottom-nav, #chat-view, [id$="-panel"], .modal-box {
+  position: relative;
+  z-index: 1;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-logo img.lc-logo-mark {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.sidebar-logo img.lc-logo-word {
+  height: 28px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+}
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-logo img {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+}
+.lc-inline-mark {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  vertical-align: middle;
+  opacity: 0.9;
+}
+.start-here-hero {
+  position: relative;
+  overflow: hidden;
+}
+.start-here-hero .lc-hero-logo {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 72px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+.empty-state .lc-empty-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin: 0 auto 12px;
+  opacity: 0.55;
+  display: block;
+}
+.comm-header .lc-inline-mark {
+  margin-right: 6px;
+}
+
 </style>
 <style>
   /* Android install lives in Settings only — no full-width footer on mobile */
@@ -1345,13 +1426,98 @@ body {
   margin-right: 2px;
 }
 
+
+/* Lightchain brand marks — scattered accents */
+.lc-brand-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+.lc-brand-float {
+  position: absolute;
+  opacity: 0.07;
+  user-select: none;
+  filter: grayscale(0);
+}
+.lc-brand-float img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.sidebar, .desktop-main, .bottom-nav, #chat-view, [id$="-panel"], .modal-box {
+  position: relative;
+  z-index: 1;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar-logo img.lc-logo-mark {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.sidebar-logo img.lc-logo-word {
+  height: 28px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+}
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-logo img {
+  height: 26px;
+  width: auto;
+  object-fit: contain;
+}
+.lc-inline-mark {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  vertical-align: middle;
+  opacity: 0.9;
+}
+.start-here-hero {
+  position: relative;
+  overflow: hidden;
+}
+.start-here-hero .lc-hero-logo {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  width: 72px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+.empty-state .lc-empty-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin: 0 auto 12px;
+  opacity: 0.55;
+  display: block;
+}
+.comm-header .lc-inline-mark {
+  margin-right: 6px;
+}
+
 </style>
 </head>
 <body>
 
 <!-- ── DESKTOP SIDEBAR ── -->
 <div class="sidebar">
-  <div class="sidebar-logo">Light<span>Chat</span></div>
+  <div class="sidebar-logo">
+    <img class="lc-logo-mark" src="brand/symbol-light.svg" alt="">
+    <img class="lc-logo-word" src="brand/logo-white.svg" alt="Lightchain">
+    <span style="font-size:14px;font-weight:700;color:var(--text2);margin-left:2px">Chat</span>
+  </div>
 
   <div class="sidebar-nav">
     <button class="sidebar-tab active" id="snav-genchat" onclick="switchTab('genchat')">
@@ -1390,7 +1556,10 @@ body {
 
   <!-- Mobile header -->
   <div class="mobile-header">
-    <div class="header-logo">Light<span>Chat</span></div>
+    <div class="header-logo">
+      <img src="brand/symbol-light.svg" alt="">
+      <span>Light<span style="color:var(--text)">Chat</span></span>
+    </div>
     <div>
       <button class="connect-btn" id="connect-btn" onclick="connectWallet()">🔗 Connect</button>
       <div class="handle-badge" id="handle-badge" style="display:none"></div>
@@ -1405,6 +1574,7 @@ body {
     <div class="tab active" id="tab-genchat">
       <div class="comm-wrap">
         <div class="comm-header">
+          <img class="lc-inline-mark" src="brand/symbol-light.svg" alt="" style="width:28px;height:28px">
           <div>
             <h2># Gen Chat</h2>
             <div class="comm-sub">Everyone · Lightchain community</div>
@@ -1535,7 +1705,7 @@ body {
           </div>
         </div>
         <div style="text-align:center;color:var(--text2);font-size:20px;padding:10px 0">
-          LightChat · Free community chat on Lightchain 💡⛓️
+          <img class="lc-inline-mark" src="brand/symbol-light.svg" alt=""> LightChat · Free community chat on Lightchain
         </div>
       </div>
     </div>
@@ -7240,7 +7410,7 @@ async function renderStartHereGuide(box) {
     }).join('');
     return '<div class="start-here-card"><h4>'+escapeHtml(sec.title)+'</h4><p>'+escapeHtml(sec.body||'')+'</p><div class="start-here-links">'+links+'</div></div>';
   }).join('');
-  box.innerHTML = '<div class="start-here-wrap"><div class="start-here-hero"><h3>👋 Start Here</h3><p>Welcome to the Lightchain community on LightChat — same idea as Discord start-here, built for wallets.</p></div>'+cards+'</div>';
+  box.innerHTML = '<div class="start-here-wrap"><div class="start-here-hero"><img class="lc-hero-logo" src="brand/logo-light.svg" alt=""><h3>👋 Start Here</h3><p>Welcome to the Lightchain community on LightChat — same idea as Discord start-here, built for wallets.</p></div>'+cards+'</div>';
 }
 
 function startHereAction(act) {
@@ -7589,6 +7759,51 @@ function previewRingtone(){}
 function uploadCustomRingtone(){}
 function startRinging(){}
 function stopRinging(){}
+</script>
+
+
+<script>
+(function scatterLcBrand(){
+  var layer = document.getElementById('lc-brand-layer');
+  if (!layer) return;
+  var assets = [
+    'brand/symbol-light.svg',
+    'brand/symbol-dark.svg',
+    'brand/logo-light.svg',
+    'brand/logo-white.svg',
+    'brand/symbol-light.png'
+  ];
+  var spots = [
+    {top:'8%', left:'72%', w:120, rot:-12, op:0.06},
+    {top:'22%', left:'4%', w:70, rot:18, op:0.08},
+    {top:'48%', left:'78%', w:90, rot:8, op:0.05},
+    {top:'68%', left:'10%', w:55, rot:-20, op:0.07},
+    {top:'82%', left:'58%', w:140, rot:6, op:0.05},
+    {top:'35%', left:'40%', w:45, rot:25, op:0.04},
+    {top:'12%', left:'28%', w:80, rot:-8, op:0.06},
+    {top:'55%', left:'2%', w:100, rot:14, op:0.05}
+  ];
+  // shuffle assets placement
+  for (var i = spots.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = spots[i]; spots[i] = spots[j]; spots[j] = tmp;
+  }
+  spots.forEach(function(s, idx) {
+    var src = assets[idx % assets.length];
+    // jitter
+    var jTop = (Math.random() * 6) - 3;
+    var jLeft = (Math.random() * 6) - 3;
+    var el = document.createElement('div');
+    el.className = 'lc-brand-float';
+    el.style.top = 'calc(' + s.top + ' + ' + jTop + '%)';
+    el.style.left = 'calc(' + s.left + ' + ' + jLeft + '%)';
+    el.style.width = s.w + 'px';
+    el.style.opacity = String(s.op);
+    el.style.transform = 'rotate(' + (s.rot + (Math.random()*8-4)) + 'deg)';
+    el.innerHTML = '<img src="' + src + '" alt="">';
+    layer.appendChild(el);
+  });
+})();
 </script>
 
 </body>
