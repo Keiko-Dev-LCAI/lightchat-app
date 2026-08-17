@@ -6,10 +6,13 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="lightchat-icon.png">
 <link rel="apple-touch-icon" href="lightchat-icon.png">
-<meta name="theme-color" content="#7c5fc9">
+<meta name="theme-color" content="#5B4BFF">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="LightChat">
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
@@ -35,27 +38,33 @@ const ORCAVAULT_CHUNK_SIZE = 90000;
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 :root {
-  --bg: #0d0d1a;
-  --card: #161628;
-  --border: #2a2a4a;
-  --purple: #9b7fe8;
-  --purple-dark: #7c5fc9;
-  --purple-glow: rgba(155,127,232,0.15);
+  /* Official Lightchain brand — lightchain.ai/brand */
+  --lc-primary: #5B4BFF;
+  --lc-secondary: #DD00AC;
+  --lc-dark: #14152C;
+  --lc-light: #CCCEEF;
+  --lc-gradient-end: #EE11FB;
+  --bg: #14152C;
+  --card: #1a1b36;
+  --border: #2e3060;
+  --purple: #5B4BFF;
+  --purple-dark: #4a3ce0;
+  --purple-glow: rgba(91,75,255,0.18);
   --text: #f0f0ff;
-  --text2: #a0a0c0;
+  --text2: #CCCEEF;
   --green: #4caf7d;
   --red: #e05555;
   --gold: #f0c040;
-  --bubble-out: #6b4fc4;
+  --bubble-out: #5B4BFF;
   --bubble-in: #1e1e38;
-  --sidebar: 420px;
+  --sidebar: 280px;
 }
 
 html, body { height: 100%; overflow: hidden; background: var(--bg); }
 
 body {
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 20px;
   width: 100%;
   height: 100%;
@@ -1162,11 +1171,77 @@ body {
   flex-shrink: 0;
 }
 .cal-color-swatch.selected { border-color: #fff; transform: scale(1.15); }
+
+/* ── Community / Gen Chat ── */
+.comm-wrap { display:flex; flex-direction:column; height:100%; min-height:0; }
+.comm-header { padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.comm-header h2 { font-size:20px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.comm-sub { font-size:13px; color:var(--text2); }
+.comm-msgs { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; min-height:0; }
+.comm-msg { display:flex; gap:10px; max-width:100%; }
+.comm-av { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; }
+.comm-av img { width:100%; height:100%; object-fit:cover; }
+.comm-bubble { background:var(--bubble-in); border:1px solid var(--border); border-radius:12px; padding:10px 12px; max-width:min(560px,85%); }
+.comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
+.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
+.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
+.comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); }
+.comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
+.comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
+.comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; }
+.chan-list, .dir-list, .evt-list { overflow-y:auto; padding:8px 12px; flex:1; }
+.chan-item, .dir-item, .evt-item { display:flex; align-items:center; gap:12px; padding:14px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
+.chan-item:hover, .dir-item:hover, .evt-item:hover { background:var(--purple-glow); border-color:var(--border); }
+.chan-item .hash { color:var(--lc-primary); font-weight:800; font-size:18px; width:28px; }
+.chan-item .meta { flex:1; min-width:0; }
+.chan-item .meta .n { font-weight:600; font-size:15px; }
+.chan-item .meta .d { font-size:12px; color:var(--text2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dir-search { margin:12px 14px; }
+.dir-search input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
+.profile-edit { padding:16px; display:flex; flex-direction:column; gap:12px; }
+.profile-edit label { font-size:13px; color:var(--text2); }
+.profile-edit input, .profile-edit textarea { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:15px; font-family:inherit; width:100%; }
+.profile-edit textarea { min-height:70px; resize:vertical; }
+
 </style>
 <style>
   /* Android install lives in Settings only — no full-width footer on mobile */
   .settings-android-box { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px 18px; margin-top:22px; }
   .settings-android-box a.apk-btn { display:inline-block; background:#00d4ff; color:#000; font-weight:800; font-size:15px; padding:10px 16px; border-radius:10px; text-decoration:none; margin-top:10px; }
+
+/* ── Community / Gen Chat ── */
+.comm-wrap { display:flex; flex-direction:column; height:100%; min-height:0; }
+.comm-header { padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.comm-header h2 { font-size:20px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.comm-sub { font-size:13px; color:var(--text2); }
+.comm-msgs { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; min-height:0; }
+.comm-msg { display:flex; gap:10px; max-width:100%; }
+.comm-av { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; }
+.comm-av img { width:100%; height:100%; object-fit:cover; }
+.comm-bubble { background:var(--bubble-in); border:1px solid var(--border); border-radius:12px; padding:10px 12px; max-width:min(560px,85%); }
+.comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
+.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
+.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
+.comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); }
+.comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
+.comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
+.comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; }
+.chan-list, .dir-list, .evt-list { overflow-y:auto; padding:8px 12px; flex:1; }
+.chan-item, .dir-item, .evt-item { display:flex; align-items:center; gap:12px; padding:14px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
+.chan-item:hover, .dir-item:hover, .evt-item:hover { background:var(--purple-glow); border-color:var(--border); }
+.chan-item .hash { color:var(--lc-primary); font-weight:800; font-size:18px; width:28px; }
+.chan-item .meta { flex:1; min-width:0; }
+.chan-item .meta .n { font-weight:600; font-size:15px; }
+.chan-item .meta .d { font-size:12px; color:var(--text2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dir-search { margin:12px 14px; }
+.dir-search input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
+.profile-edit { padding:16px; display:flex; flex-direction:column; gap:12px; }
+.profile-edit label { font-size:13px; color:var(--text2); }
+.profile-edit input, .profile-edit textarea { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:15px; font-family:inherit; width:100%; }
+.profile-edit textarea { min-height:70px; resize:vertical; }
+
 </style>
 </head>
 <body>
@@ -1176,22 +1251,31 @@ body {
   <div class="sidebar-logo">Light<span>Chat</span></div>
 
   <div class="sidebar-nav">
-    <button class="sidebar-tab active" id="snav-chats" onclick="switchTab('chats')">
-      <span class="sidebar-tab-icon">💬</span> Chats
+    <button class="sidebar-tab active" id="snav-genchat" onclick="switchTab('genchat')">
+      <span class="sidebar-tab-icon">#</span> Gen Chat
+    </button>
+    <button class="sidebar-tab" id="snav-channels" onclick="switchTab('channels')">
+      <span class="sidebar-tab-icon">📂</span> Channels
+    </button>
+    <button class="sidebar-tab" id="snav-chats" onclick="switchTab('chats')">
+      <span class="sidebar-tab-icon">💬</span> DMs
       <span class="sidebar-notif" id="schats-dot"></span>
     </button>
     <button class="sidebar-tab" id="snav-contacts" onclick="switchTab('contacts')">
-      <span class="sidebar-tab-icon">👥</span> Contacts
+      <span class="sidebar-tab-icon">🤝</span> Friends
       <span class="sidebar-notif" id="scontacts-dot"></span>
+    </button>
+    <button class="sidebar-tab" id="snav-directory" onclick="switchTab('directory')">
+      <span class="sidebar-tab-icon">📘</span> Directory
+    </button>
+    <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
+      <span class="sidebar-tab-icon">📅</span> Events
     </button>
     <button class="sidebar-tab" id="snav-memories" onclick="switchTab('memories')">
       <span class="sidebar-tab-icon">📸</span> Memories
     </button>
     <button class="sidebar-tab" id="snav-me" onclick="switchTab('me')">
       <span class="sidebar-tab-icon">👤</span> Me
-    </button>
-    <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
-      <span class="sidebar-tab-icon">📅</span> <span data-i18n="tab_calendar">Calendar</span>
     </button>
   </div>
 
@@ -1216,8 +1300,43 @@ body {
   <!-- Tab content -->
   <div class="main">
 
-    <!-- Chats tab -->
-    <div class="tab active" id="tab-chats">
+
+    <!-- Gen Chat (official #general) -->
+    <div class="tab active" id="tab-genchat">
+      <div class="comm-wrap">
+        <div class="comm-header">
+          <div>
+            <h2># Gen Chat</h2>
+            <div class="comm-sub">Everyone · Lightchain community</div>
+          </div>
+        </div>
+        <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
+        <div class="comm-input-row">
+          <input id="genchat-input" placeholder="Message #general…" maxlength="4000" onkeydown="if(event.key==='Enter')sendCommunityMsg('general')">
+          <button type="button" onclick="sendCommunityMsg('general')">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Channels -->
+    <div class="tab" id="tab-channels">
+      <div class="comm-wrap">
+        <div class="comm-header"><div><h2>Channels</h2><div class="comm-sub">Lightchain server</div></div></div>
+        <div class="chan-list" id="channels-list"></div>
+      </div>
+    </div>
+
+    <!-- Directory -->
+    <div class="tab" id="tab-directory">
+      <div class="comm-wrap">
+        <div class="comm-header"><div><h2>Directory</h2><div class="comm-sub">Community members</div></div></div>
+        <div class="dir-search"><input id="dir-search" placeholder="Search members…" oninput="filterDirectory()"></div>
+        <div class="dir-list" id="directory-list"></div>
+      </div>
+    </div>
+
+    <!-- DMs tab (was Chats) -->
+    <div class="tab" id="tab-chats">
       <!-- DMs / Groups sub-tabs -->
       <div class="chats-toggle-bar">
         <button class="chats-subtab active" id="toggle-dms" onclick="switchChatMode('dms')">💬 DMs</button>
@@ -1272,7 +1391,7 @@ body {
       </div>
       <div class="contacts-section-title">Pending Requests</div>
       <div id="pending-list"></div>
-      <div class="contacts-section-title">Contacts</div>
+      <div class="contacts-section-title">Friends</div>
       <div id="contacts-list">
         <div class="empty-state" style="padding:40px">
           <div class="empty-text">No contacts yet. Share your invite link to get started.</div>
@@ -1365,7 +1484,7 @@ body {
           <div class="cal-month-label" id="cal-month-label">June 2026</div>
         </div>
         <button class="cal-nav-btn" onclick="calNextMonth()">›</button>
-        <button class="cal-add-btn" onclick="openCalEventModal(null)" title="Add Event" style="margin-left:8px">+</button>
+        <button class="cal-add-btn" onclick="createServerEvent()" title="Create server event" style="margin-left:8px">+</button>
       </div>
       <div class="cal-grid" id="cal-grid"></div>
       <div class="cal-events-panel" id="cal-events-panel">
@@ -1382,22 +1501,22 @@ body {
 
   <!-- Mobile bottom nav -->
   <div class="bottom-nav">
-    <button class="nav-tab active" id="nav-chats" onclick="switchTab('chats')">
+    <button class="nav-tab active" id="nav-genchat" onclick="switchTab('genchat')">
+      <div class="nav-tab-icon">#</div><div>Gen Chat</div>
+    </button>
+    <button class="nav-tab" id="nav-chats" onclick="switchTab('chats')">
       <span class="notif-dot" id="chats-dot"></span>
-      <div class="nav-tab-icon">💬</div><div data-i18n="tab_chats">Chats</div>
+      <div class="nav-tab-icon">💬</div><div>DMs</div>
     </button>
     <button class="nav-tab" id="nav-contacts" onclick="switchTab('contacts')">
       <span class="notif-dot" id="contacts-dot"></span>
-      <div class="nav-tab-icon">👥</div><div data-i18n="tab_contacts">Contacts</div>
-    </button>
-    <button class="nav-tab" id="nav-memories" onclick="switchTab('memories')">
-      <div class="nav-tab-icon">📸</div><div data-i18n="tab_memories">Memories</div>
-    </button>
-    <button class="nav-tab" id="nav-me" onclick="switchTab('me')">
-      <div class="nav-tab-icon">👤</div><div data-i18n="tab_me">Me</div>
+      <div class="nav-tab-icon">🤝</div><div>Friends</div>
     </button>
     <button class="nav-tab" id="nav-calendar" onclick="switchTab('calendar')">
-      <div class="nav-tab-icon">📅</div><div data-i18n="tab_calendar">Calendar</div>
+      <div class="nav-tab-icon">📅</div><div>Events</div>
+    </button>
+    <button class="nav-tab" id="nav-me" onclick="switchTab('me')">
+      <div class="nav-tab-icon">👤</div><div>Me</div>
     </button>
   </div>
 
@@ -2457,7 +2576,10 @@ async function connectWallet() {
   }
 }
 
-async function onWalletConnected() { await finishConnect(); }
+async function onWalletConnected() {
+  await finishConnect();
+  try { window._commJoined = false; await communityJoin(); loadChannelsList(); } catch(e) {}
+}
 
 function showHandleModal() {
   document.getElementById('modal-wallet-display').textContent = wallet ? shortenWallet(wallet) : '';
@@ -3731,14 +3853,21 @@ function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
+  const tabEl = document.getElementById('tab-' + name);
+  if (!tabEl) { console.warn('missing tab', name); return; }
+  tabEl.classList.add('active');
   const mnav = document.getElementById('nav-' + name);
   const snav = document.getElementById('snav-' + name);
   if (mnav) mnav.classList.add('active');
   if (snav) snav.classList.add('active');
-  if (name === 'chats') { document.getElementById('chats-dot').classList.remove('show'); document.getElementById('schats-dot') && document.getElementById('schats-dot').classList.remove('show'); }
-  if (name === 'contacts' && wallet) { document.getElementById('contacts-dot').classList.remove('show'); document.getElementById('scontacts-dot') && document.getElementById('scontacts-dot').classList.remove('show'); loadContacts(); }
+  if (name === 'chats') { document.getElementById('chats-dot')?.classList.remove('show'); document.getElementById('schats-dot')?.classList.remove('show'); }
+  if (name === 'contacts' && wallet) { document.getElementById('contacts-dot')?.classList.remove('show'); document.getElementById('scontacts-dot')?.classList.remove('show'); loadContacts(); }
   if (name === 'memories' && wallet) loadMemories();
+  if (name === 'genchat') { loadCommunityChannel('general'); }
+  if (name === 'channels') { loadChannelsList(); }
+  if (name === 'directory') { loadDirectory(); }
+  if (name === 'calendar') { loadCommunityEvents(); if (typeof renderCal==='function') try{ renderCal(); }catch(e){} }
+  if (name === 'me' && wallet) { loadCommunityProfileForm(); }
 }
 
 function showSearchPanel() { if (!wallet) { showToast('Connect your wallet first'); return; } document.getElementById('search-handle-input').value = ''; clearSearchResult(); document.getElementById('search-panel').classList.add('open'); }
@@ -7204,6 +7333,292 @@ connectSocket = function() {
 <!-- X HANDLE -->
 <div style="text-align:center;padding:6px 16px 12px;font-size:13px;opacity:0.65;"><a href="https://x.com/KeikoDevLCAI" target="_blank" rel="noopener" style="color:#9b7fe8;text-decoration:none;font-weight:600;">𝕏 @KeikoDevLCAI</a></div>
 <div style="text-align:center;padding:4px 16px 12px;font-size:13px;opacity:0.75;"><a href="https://lightdex.app/" target="_blank" rel="noopener" style="color:#7ec8e3;text-decoration:none;font-weight:600;">Get LCAI · LCAI Swap ↗</a></div>
+
+
+<script>
+// ════════════════════════════════
+// COMMUNITY LAYER (official Lightchain server)
+// ════════════════════════════════
+let communityChannels = [];
+let communityRole = null;
+let _dirMembers = [];
+let _activeCommSlug = 'general';
+
+async function communityJoin() {
+  if (!wallet) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/join', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({wallet})
+    });
+    const j = await r.json();
+    if (j.role) communityRole = j.role;
+    if (j.profile) window._commProfile = j.profile;
+  } catch(e) { console.warn('community join', e); }
+}
+
+async function loadChannelsList() {
+  try {
+    const r = await fetch(BACKEND + '/api/community');
+    const j = await r.json();
+    communityChannels = j.channels || [];
+    const el = document.getElementById('channels-list');
+    if (!el) return;
+    el.innerHTML = communityChannels.map(c => `
+      <div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
+        <div class="hash">#</div>
+        <div class="meta">
+          <div class="n">${escapeHtml(c.name)}</div>
+          <div class="d">${escapeHtml(c.description||'')}</div>
+        </div>
+      </div>`).join('') || '<div class="empty-text" style="padding:24px">No channels</div>';
+  } catch(e) { console.warn(e); }
+}
+
+function openCommunityChannel(slug) {
+  _activeCommSlug = slug;
+  if (slug === 'general') { switchTab('genchat'); return; }
+  // reuse genchat panel for any channel
+  switchTab('genchat');
+  const h = document.querySelector('#tab-genchat .comm-header h2');
+  const s = document.querySelector('#tab-genchat .comm-sub');
+  const ch = communityChannels.find(c => c.slug === slug);
+  if (h) h.textContent = '# ' + (ch ? ch.name : slug);
+  if (s) s.textContent = ch ? (ch.description || 'Lightchain community') : 'Lightchain community';
+  const inp = document.getElementById('genchat-input');
+  if (inp) { inp.placeholder = 'Message #' + slug + '…'; inp.dataset.slug = slug; }
+  loadCommunityChannel(slug);
+}
+
+async function loadCommunityChannel(slug) {
+  slug = slug || _activeCommSlug || 'general';
+  _activeCommSlug = slug;
+  const box = document.getElementById('genchat-msgs');
+  if (!box) return;
+  if (!wallet) {
+    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join Gen Chat</div>';
+    return;
+  }
+  await communityJoin();
+  try {
+    if (socket && socket.connected) socket.emit('join_community_channel', {slug});
+  } catch(e) {}
+  try {
+    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80');
+    const j = await r.json();
+    renderCommunityMessages(j.messages || []);
+  } catch(e) {
+    box.innerHTML = '<div class="empty-text" style="padding:24px">Could not load messages</div>';
+  }
+}
+
+function renderCommunityMessages(msgs) {
+  const box = document.getElementById('genchat-msgs');
+  if (!box) return;
+  if (!msgs.length) {
+    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">No messages yet — say hello 👋</div>';
+    return;
+  }
+  box.innerHTML = msgs.map(m => {
+    const letter = (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
+    const av = m.has_avatar
+      ? `<img src="${BACKEND}/api/community/avatar/${m.sender_wallet}" alt="">`
+      : letter;
+    const when = m.created_at ? new Date(m.created_at*1000).toLocaleString() : '';
+    const role = m.role && m.role !== 'member' ? `<span class="role">${escapeHtml(m.role)}</span>` : '';
+    return `<div class="comm-msg">
+      <div class="comm-av">${av}</div>
+      <div class="comm-bubble">
+        <div class="who">${escapeHtml(m.display_name||shortenWallet(m.sender_wallet))}${role}</div>
+        <div class="body">${escapeHtml(m.content)}</div>
+        <div class="when">${escapeHtml(when)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendCommunityMsg(slug) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  const inp = document.getElementById('genchat-input');
+  const content = (inp && inp.value || '').trim();
+  slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
+  if (!content) return;
+  await communityJoin();
+  try {
+    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({wallet, content})
+    });
+    const j = await r.json();
+    if (!r.ok) { showToast(j.error || 'Send failed'); return; }
+    if (inp) inp.value = '';
+    await loadCommunityChannel(slug);
+  } catch(e) { showToast('Send failed'); }
+}
+
+async function loadDirectory() {
+  try {
+    const r = await fetch(BACKEND + '/api/community/directory');
+    const j = await r.json();
+    _dirMembers = j.members || [];
+    filterDirectory();
+  } catch(e) { console.warn(e); }
+}
+
+function filterDirectory() {
+  const q = (document.getElementById('dir-search')?.value || '').toLowerCase();
+  const el = document.getElementById('directory-list');
+  if (!el) return;
+  const list = !_dirMembers.length ? [] : _dirMembers.filter(m => {
+    if (!q) return true;
+    return (m.display_name + m.handle + m.wallet + (m.role||'')).toLowerCase().includes(q);
+  });
+  el.innerHTML = list.map(m => {
+    const letter = (m.display_name||'?').charAt(0).toUpperCase();
+    const av = m.has_avatar ? `<img src="${m.avatar_url && m.avatar_url.startsWith("http") ? m.avatar_url : (BACKEND + (m.avatar_url||""))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : letter;
+    return `<div class="dir-item" onclick="if(wallet){ openChat && openChat('${m.wallet}', '${escapeHtml(m.display_name)}') }">
+      <div class="comm-av">${av}</div>
+      <div class="meta" style="flex:1">
+        <div class="n">${escapeHtml(m.display_name)} ${m.role && m.role!=='member' ? '· '+escapeHtml(m.role) : ''}</div>
+        <div class="d">${escapeHtml(shortenWallet(m.wallet))}</div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="empty-text" style="padding:24px;text-align:center">No members yet — connect and join</div>';
+}
+
+async function loadCommunityEvents() {
+  // Prefer server community events; fall back to personal calendar UI already present
+  try {
+    const r = await fetch(BACKEND + '/api/community/events');
+    const j = await r.json();
+    const events = j.events || [];
+    const panel = document.getElementById('cal-events-list');
+    const title = document.getElementById('cal-events-title');
+    if (title) title.textContent = 'Server Events';
+    if (panel && events.length) {
+      panel.innerHTML = events.map(e => {
+        const when = new Date(e.start_time*1000).toLocaleString();
+        return `<div class="evt-item" style="display:block;padding:12px;border-bottom:1px solid var(--border)">
+          <div style="font-weight:700">${escapeHtml(e.title)}</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:4px">${escapeHtml(when)}</div>
+          <div style="font-size:13px;margin-top:4px">${escapeHtml(e.description||'')}</div>
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {}
+}
+
+async function createServerEvent() {
+  if (!wallet) { showToast('Connect wallet'); return; }
+  const title = prompt('Event title');
+  if (!title) return;
+  const hours = prompt('Hours from now', '24');
+  const start = Math.floor(Date.now()/1000) + (parseInt(hours||'24',10)||24)*3600;
+  const r = await fetch(BACKEND + '/api/community/events', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({wallet, title, start_time: start, description:''})
+  });
+  const j = await r.json();
+  if (!r.ok) { showToast(j.error||'Failed'); return; }
+  showToast('Event created');
+  loadCommunityEvents();
+}
+
+function loadCommunityProfileForm() {
+  const me = document.getElementById('tab-me');
+  if (!me || document.getElementById('comm-profile-edit')) return;
+  const box = document.createElement('div');
+  box.id = 'comm-profile-edit';
+  box.className = 'profile-edit';
+  box.innerHTML = `
+    <div style="font-weight:700;font-size:16px;background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Community profile</div>
+    <label>Display name</label>
+    <input id="prof-display" maxlength="40" placeholder="Your name">
+    <label>Bio</label>
+    <textarea id="prof-bio" maxlength="280" placeholder="Short intro"></textarea>
+    <label>Avatar (image file)</label>
+    <input type="file" id="prof-avatar" accept="image/png,image/jpeg,image/webp">
+    <button class="primary-btn" type="button" onclick="saveCommunityProfile()">Save profile</button>
+    <div class="comm-sub" id="prof-role-line"></div>
+  `;
+  me.insertBefore(box, me.firstChild);
+  if (window._commProfile) {
+    document.getElementById('prof-display').value = window._commProfile.display_name || '';
+    document.getElementById('prof-bio').value = window._commProfile.bio || '';
+  }
+  communityJoin().then(() => {
+    if (window._commProfile) {
+      document.getElementById('prof-display').value = window._commProfile.display_name || '';
+      document.getElementById('prof-bio').value = window._commProfile.bio || '';
+    }
+    const rl = document.getElementById('prof-role-line');
+    if (rl && communityRole) rl.textContent = 'Role: ' + communityRole;
+  });
+}
+
+async function saveCommunityProfile() {
+  if (!wallet) return;
+  const display_name = document.getElementById('prof-display')?.value || '';
+  const bio = document.getElementById('prof-bio')?.value || '';
+  const r = await fetch(BACKEND + '/api/community/profile', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({wallet, display_name, bio})
+  });
+  const j = await r.json();
+  if (!r.ok) { showToast(j.error||'Save failed'); return; }
+  window._commProfile = j.profile;
+  const file = document.getElementById('prof-avatar')?.files?.[0];
+  if (file) {
+    if (file.size > 2_000_000) { showToast('Avatar max 2MB'); return; }
+    const b64 = await new Promise((res,rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result);
+      fr.onerror = rej;
+      fr.readAsDataURL(file);
+    });
+    const ar = await fetch(BACKEND + '/api/community/avatar', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({wallet, image_data: b64, image_type: file.type})
+    });
+    const aj = await ar.json();
+    if (!ar.ok) { showToast(aj.error||'Avatar failed'); return; }
+  }
+  showToast('Profile saved');
+}
+
+// Hook wallet connect: join community + default Gen Chat
+(function patchWalletHooks(){
+  const _orig = window.afterWalletConnected || window.onWalletReady;
+  // poll for wallet variable after connect
+  setInterval(() => {
+    if (window.wallet && !window._commJoined) {
+      window._commJoined = true;
+      communityJoin();
+      loadChannelsList();
+    }
+  }, 2000);
+  // socket community messages
+  const trySock = setInterval(() => {
+    if (window.socket && !window._commSockBound) {
+      window._commSockBound = true;
+      socket.on('community_message', (msg) => {
+        if (msg.slug === _activeCommSlug || (!msg.slug && _activeCommSlug==='general')) {
+          loadCommunityChannel(_activeCommSlug);
+        }
+      });
+      clearInterval(trySock);
+    }
+  }, 1000);
+  // default tab genchat on load
+  document.addEventListener('DOMContentLoaded', () => {
+    try { switchTab('genchat'); } catch(e) {}
+    loadChannelsList();
+  });
+  // also fire soon
+  setTimeout(() => { try { switchTab('genchat'); loadChannelsList(); } catch(e) {} }, 500);
+})();
+</script>
 
 </body>
 </html>
