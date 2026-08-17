@@ -4890,7 +4890,7 @@ let swRegistration = null;
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  try { swRegistration = await navigator.serviceWorker.register('./sw.js'); } catch(e) {}
+  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=community2'); } catch(e) {}
 }
 
 // Listen for messages from the service worker (e.g. incoming call tapped from push notification)
@@ -7395,20 +7395,31 @@ async function loadCommunityChannel(slug) {
   _activeCommSlug = slug;
   const box = document.getElementById('genchat-msgs');
   if (!box) return;
-  if (!wallet) {
-    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join Gen Chat</div>';
-    return;
+  box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;color:var(--text2)">Loading…</div>';
+  if (wallet) {
+    try { await communityJoin(); } catch(e) { console.warn('join', e); }
+    try {
+      if (socket && socket.connected) socket.emit('join_community_channel', {slug});
+    } catch(e) {}
   }
-  await communityJoin();
-  try {
-    if (socket && socket.connected) socket.emit('join_community_channel', {slug});
-  } catch(e) {}
   try {
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80');
+    if (!r.ok) {
+      box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages ('+r.status+'). Pull to refresh or reconnect.</div>';
+      return;
+    }
     const j = await r.json();
     renderCommunityMessages(j.messages || []);
+    if (!wallet) {
+      const tip = document.createElement('div');
+      tip.className = 'empty-text';
+      tip.style.cssText = 'padding:8px 16px 16px;text-align:center;color:var(--text2);font-size:13px';
+      tip.textContent = 'Connect wallet to send messages';
+      box.appendChild(tip);
+    }
   } catch(e) {
-    box.innerHTML = '<div class="empty-text" style="padding:24px">Could not load messages</div>';
+    console.warn('loadCommunityChannel', e);
+    box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages. Hard-refresh the page (Ctrl+Shift+R) so the app updates.</div>';
   }
 }
 
@@ -7476,7 +7487,7 @@ function filterDirectory() {
   });
   el.innerHTML = list.map(m => {
     const letter = (m.display_name||'?').charAt(0).toUpperCase();
-    const av = m.has_avatar ? `<img src="${m.avatar_url && m.avatar_url.startsWith("http") ? m.avatar_url : (BACKEND + (m.avatar_url||""))}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : letter;
+    const av = m.has_avatar ? `<img src="${BACKEND}/api/community/avatar/${m.wallet}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : letter;
     return `<div class="dir-item" onclick="if(wallet){ openChat && openChat('${m.wallet}', '${escapeHtml(m.display_name)}') }">
       <div class="comm-av">${av}</div>
       <div class="meta" style="flex:1">
