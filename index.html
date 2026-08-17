@@ -1271,9 +1271,6 @@ body {
     <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
       <span class="sidebar-tab-icon">📅</span> Events
     </button>
-    <button class="sidebar-tab" id="snav-memories" onclick="switchTab('memories')">
-      <span class="sidebar-tab-icon">📸</span> Memories
-    </button>
     <button class="sidebar-tab" id="snav-me" onclick="switchTab('me')">
       <span class="sidebar-tab-icon">👤</span> Me
     </button>
@@ -1400,7 +1397,7 @@ body {
     </div>
 
     <!-- Memories tab -->
-    <div class="tab" id="tab-memories">
+    <div class="tab" id="tab-memories" style="display:none!important" aria-hidden="true" data-removed="1">
       <div class="memories-header">
         <div class="memories-title">📸 Memories</div>
         <button class="post-btn" onclick="showMemoryPostPanel()">+ Post</button>
@@ -3794,7 +3791,7 @@ function switchTab(name) {
   if (snav) snav.classList.add('active');
   if (name === 'chats') { document.getElementById('chats-dot')?.classList.remove('show'); document.getElementById('schats-dot')?.classList.remove('show'); }
   if (name === 'contacts' && wallet) { document.getElementById('contacts-dot')?.classList.remove('show'); document.getElementById('scontacts-dot')?.classList.remove('show'); loadContacts(); }
-  if (name === 'memories' && wallet) loadMemories();
+  if (name === 'memories') { switchTab('genchat'); return; }
   if (name === 'genchat') { loadCommunityChannel('general'); }
   if (name === 'channels') { loadChannelsList(); }
   if (name === 'directory') { loadDirectory(); }
