@@ -1051,7 +1051,7 @@ body {
 }
 
 /* ── Translate button ── */
-.translate-btn {
+.translate-btn { display:none!important; /* removed */
   background: none; border: 1px solid var(--border); border-radius: 10px;
   color: var(--text2); font-size: 13px; cursor: pointer; padding: 3px 10px;
   margin-top: 4px; display: inline-block; transition: color 0.15s, border-color 0.15s;
@@ -6400,124 +6400,10 @@ function initLanguage() {
   setLanguage(currentLang);
 }
 
-// Patch loadSettings to also restore autoTranslate
-var _origLoadSettings = loadSettings;
-loadSettings = function() {
-  _origLoadSettings();
-  if (!('autoTranslate' in settings)) settings.autoTranslate = true;
-};
-
-// Patch showSettings to also restore autoTranslate toggle
-var _origShowSettings = showSettings;
-showSettings = function() {
-  _origShowSettings();
-  var el = document.getElementById('setting-autoTranslate');
-  if (el) el.checked = !!settings.autoTranslate;
-};
-
-// ══════════════════════════════════════════════════════════════════
-// FEATURE 2: AUTO-TRANSLATE MESSAGES
-// ══════════════════════════════════════════════════════════════════
-
-async function translateText(text, targetLang) {
-  var lt = LANG_TAG_MAP[targetLang] || 'en';
-  var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(text) + '&langpair=autodetect%7C' + lt;
-  try {
-    var resp = await fetch(url).then(function(r) { return r.json(); });
-    if (resp && resp.responseData && resp.responseData.translatedText) {
-      return resp.responseData.translatedText;
-    }
-  } catch(e) {}
-  return null;
-}
-
-function addTranslateButton(wrapEl, originalText) {
-  var bubble = wrapEl.querySelector('.msg-bubble');
-  var target = bubble || wrapEl;
-  var outer = document.createElement('div');
-  outer.style.cssText = 'margin-top:8px;border-top:1px solid rgba(255,255,255,0.12);padding-top:6px';
-
-  var btn = document.createElement('button');
-  btn.className = 'translate-btn';
-  btn.textContent = '🌐 Translate';
-  var tDiv = null;
-  var pickerRow = null;
-
-  btn.onclick = function() {
-    // If translation already shown, toggle it
-    if (tDiv) {
-      tDiv.style.display = tDiv.style.display === 'none' ? '' : 'none';
-      btn.textContent = (tDiv.style.display === 'none') ? '🌐 Translate' : '🌐 Hide';
-      return;
-    }
-    // If picker already open, close it
-    if (pickerRow) { pickerRow.remove(); pickerRow = null; return; }
-    // Show language picker flags
-    pickerRow = document.createElement('div');
-    pickerRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:6px';
-    [['zh','🇨🇳'],['en','🇺🇸'],['es','🇪🇸'],['fr','🇫🇷'],['ja','🇯🇵'],['ko','🇰🇷']].forEach(function(pair) {
-      var lb = document.createElement('button');
-      lb.className = 'translate-btn';
-      lb.textContent = pair[1];
-      lb.style.cssText = 'font-size:22px;padding:2px 8px';
-      lb.onclick = async function(e) {
-        e.stopPropagation();
-        if (pickerRow) { pickerRow.remove(); pickerRow = null; }
-        btn.textContent = '🌐 …';
-        btn.disabled = true;
-        var result = await translateText(originalText, pair[0]);
-        btn.disabled = false;
-        if (result) {
-          tDiv = document.createElement('div');
-          tDiv.className = 'translated-text';
-          tDiv.textContent = result;
-          outer.appendChild(tDiv);
-          btn.textContent = '🌐 Hide';
-        } else {
-          btn.textContent = '🌐 Translate';
-        }
-      };
-      pickerRow.appendChild(lb);
-    });
-    outer.appendChild(pickerRow);
-  };
-  outer.appendChild(btn);
-  target.appendChild(outer);
-}
-
-// Monkey-patch appendMessage to add translate button on incoming text messages
-var _origAppendMessage = appendMessage;
-appendMessage = function(msg, senderHandle) {
-  _origAppendMessage.call(this, msg, senderHandle);
-  // Find the element we just appended (last child of messages-area)
-  var area = document.getElementById('messages-area');
-  var wrap = area ? area.lastElementChild : null;
-  if (!wrap) return;
-  var msgType = msg.type || msg.msg_type || 'text';
-  var isOut = msg.sender_wallet && wallet && msg.sender_wallet.toLowerCase() === wallet.toLowerCase();
-  if (!isOut && msgType === 'text' && msg.content && msg.content.trim()) {
-    // Add translate button
-    var innerDiv = wrap.firstElementChild;
-    if (innerDiv) {
-      // Always add translate button
-      addTranslateButton(innerDiv, msg.content);
-      // Auto-translate: runs automatically for all users
-      if (currentLang) {
-        (async function() {
-          var result = await translateText(msg.content, currentLang);
-          if (result && result.toLowerCase() !== msg.content.toLowerCase()) {
-            var _atBubble = innerDiv.querySelector('.msg-bubble');
-            var _atTarget = _atBubble || innerDiv;
-            var atDiv = document.createElement('div');
-            atDiv.className = 'translated-text';
-            atDiv.textContent = result;
-            _atTarget.appendChild(atDiv);
-          }
-        })();
-      }
-    }
-  }
-}
+// Translate / auto-translate REMOVED — LightChat is English-only
+async function translateText() { return null; }
+function addTranslateButton() { /* no-op */ }
+// appendMessage left unpatched (no translate UI)
 
 // ══════════════════════════════════════════════════════════════════
 // FEATURE 3: VOICE AI ASSISTANT
