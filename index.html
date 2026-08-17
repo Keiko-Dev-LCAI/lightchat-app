@@ -22,6 +22,7 @@
     window.WCEthereumProvider = EthereumProvider;
   } catch(e) { console.warn('WalletConnect unavailable:', e); }
 </script>
+<script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
@@ -1455,15 +1456,9 @@ body {
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
           </div>
-          <div class="me-menu-item" onclick="document.getElementById('terms-modal').style.display='flex'">
-            <div class="me-menu-icon">📋</div><div>Terms of Service</div><div class="me-menu-arrow">›</div>
-          </div>
         </div>
         <div style="text-align:center;color:var(--text2);font-size:20px;padding:10px 0">
           LightChat · Free community chat on Lightchain 💡⛓️
-        </div>
-        <div style="text-align:center;font-size:16px;color:var(--text2);padding:8px 0 18px;line-height:1.6">
-          By using LightChat, you agree to our <span onclick="document.getElementById('terms-modal').style.display='flex'" style="color:var(--purple);text-decoration:underline;cursor:pointer">Terms of Service</span>
         </div>
       </div>
     </div>
@@ -1963,7 +1958,7 @@ body {
 </div>
 
 <!-- ── TERMS OF SERVICE MODAL ── -->
-<div id="terms-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:700;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+<div id="terms-modal" data-removed="1" style="display:none!important;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.95);z-index:700;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
   <div class="modal-box" style="max-width:480px;margin:auto">
     <div style="font-size:48px;text-align:center;margin-bottom:10px">📋</div>
     <div class="modal-title" style="font-size:28px;margin-bottom:6px" data-i18n="terms_title">LightChat — Terms of Use</div>
@@ -2058,8 +2053,7 @@ body {
     <div style="display:none;color:var(--green);font-size:20px;text-align:center;margin-bottom:14px;padding:14px;background:rgba(76,175,125,0.12);border-radius:12px;font-weight:600" id="upgrade-success"></div>
     <input class="modal-input" id="upgrade-tx-input" type="text" placeholder="0x… paste your transaction hash" autocomplete="off" autocorrect="off" spellcheck="false" style="margin-bottom:14px;font-size:18px">
     <button class="modal-btn" id="upgrade-verify-btn" onclick="verifySubscription()" style="font-size:22px;padding:20px">✓ Verify</button>
-    <div style="font-size:17px;color:var(--text2);text-align:center;margin-top:16px;line-height:1.6">By subscribing you agree to our <span onclick="document.getElementById('terms-modal').style.display='flex'" style="color:var(--purple);text-decoration:underline;cursor:pointer;font-weight:600">Terms of Service</span></div>
-    <div style="font-size:18px;color:var(--text2);text-align:center;margin-top:10px;line-height:1.6">Already subscribed? Paste your tx hash above to restore access</div>
+        <div style="font-size:18px;color:var(--text2);text-align:center;margin-top:10px;line-height:1.6">Already subscribed? Paste your tx hash above to restore access</div>
     <button class="modal-btn" style="background:none;border:1px solid var(--border);color:var(--text2);margin-top:12px;font-size:18px;padding:16px" onclick="document.getElementById('upgrade-modal').style.display='none'">✕ Close</button>
   </div>
 </div>
