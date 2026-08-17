@@ -1223,6 +1223,39 @@ body {
 }
 .start-here-links a:hover, .start-here-links button:hover { background: rgba(91,75,255,0.28); }
 
+
+/* Me nav avatar (sidebar + bottom) */
+.nav-me-av {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  background: linear-gradient(135deg, var(--lc-primary, #5B4BFF), var(--lc-secondary, #DD00AC));
+  flex-shrink: 0;
+  padding: 0 !important;
+}
+.nav-tab .nav-me-av {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 14px !important;
+  margin: 0 auto 2px;
+}
+.nav-me-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 50%;
+}
+.sidebar-tab .nav-me-av {
+  margin-right: 2px;
+}
+
 </style>
 <style>
   /* Android install lives in Settings only — no full-width footer on mobile */
@@ -1279,6 +1312,39 @@ body {
 }
 .start-here-links a:hover, .start-here-links button:hover { background: rgba(91,75,255,0.28); }
 
+
+/* Me nav avatar (sidebar + bottom) */
+.nav-me-av {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  background: linear-gradient(135deg, var(--lc-primary, #5B4BFF), var(--lc-secondary, #DD00AC));
+  flex-shrink: 0;
+  padding: 0 !important;
+}
+.nav-tab .nav-me-av {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 14px !important;
+  margin: 0 auto 2px;
+}
+.nav-me-av img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 50%;
+}
+.sidebar-tab .nav-me-av {
+  margin-right: 2px;
+}
+
 </style>
 </head>
 <body>
@@ -1309,7 +1375,7 @@ body {
       <span class="sidebar-tab-icon">📅</span> Events
     </button>
     <button class="sidebar-tab" id="snav-me" onclick="switchTab('me')">
-      <span class="sidebar-tab-icon">👤</span> Me
+      <span class="sidebar-tab-icon nav-me-av" id="snav-me-avatar">👤</span> Me
     </button>
   </div>
 
@@ -1511,7 +1577,7 @@ body {
       <div class="nav-tab-icon">📅</div><div>Events</div>
     </button>
     <button class="nav-tab" id="nav-me" onclick="switchTab('me')">
-      <div class="nav-tab-icon">👤</div><div>Me</div>
+      <div class="nav-tab-icon nav-me-av" id="nav-me-avatar">👤</div><div>Me</div>
     </button>
   </div>
 
@@ -7378,11 +7444,30 @@ async function saveEditProfile() {
 }
 
 function refreshMeAvatarFromProfile() {
-  const el = document.getElementById('me-avatar');
-  if (!el || !wallet) return;
   const prof = window._commProfile;
-  if (prof && prof.has_avatar) {
-    el.innerHTML = '<img src="'+BACKEND+'/api/community/avatar/'+wallet+'?t='+Date.now()+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+  const letter = ((prof && prof.display_name) || (typeof myHandle !== 'undefined' && myHandle) || '👤');
+  const initial = String(letter).replace('@','').charAt(0).toUpperCase() || '👤';
+  const imgHtml = (wallet && prof && prof.has_avatar)
+    ? '<img src="'+BACKEND+'/api/community/avatar/'+wallet+'?t='+Date.now()+'" alt="">'
+    : '';
+  const fill = (el, asImg) => {
+    if (!el) return;
+    if (asImg) {
+      el.innerHTML = imgHtml;
+    } else {
+      el.innerHTML = '';
+      el.textContent = initial === '👤' ? '👤' : initial;
+    }
+  };
+  const hasImg = !!(wallet && prof && prof.has_avatar);
+  fill(document.getElementById('me-avatar'), hasImg);
+  fill(document.getElementById('snav-me-avatar'), hasImg);
+  fill(document.getElementById('nav-me-avatar'), hasImg);
+  // me-avatar needs img style when photo
+  const meAv = document.getElementById('me-avatar');
+  if (meAv && hasImg) {
+    const im = meAv.querySelector('img');
+    if (im) im.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:50%;display:block';
   }
 }
 
