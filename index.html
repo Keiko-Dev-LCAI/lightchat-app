@@ -518,7 +518,7 @@ body {
   background: var(--purple);
   display: flex; align-items: center; justify-content: center;
   font-size: 44px; color: #fff; font-weight: 700; flex-shrink: 0;
-}
+ overflow:hidden; }
 .me-handle { font-size: 32px; font-weight: 700; color: var(--purple); }
 .me-wallet { font-size: 18px; color: var(--text2); margin-top: 6px; word-break: break-all; }
 .me-menu-item {
@@ -535,7 +535,7 @@ body {
 .me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; flex-shrink: 0; }
 
 /* ── LightPay panel ── */
-#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel {
+#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #profile-edit-panel {
   display: none;
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -543,9 +543,9 @@ body {
   flex-direction: column;
   z-index: 200;
 }
-#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open, #stickers-panel.open { display: flex; }
+#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open, #stickers-panel.open, #profile-edit-panel.open { display: flex; }
 @media (min-width: 768px) {
-  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel {
+  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #profile-edit-panel {
     left: var(--sidebar);
   }
 }
@@ -1431,6 +1431,9 @@ body {
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
+          <div class="me-menu-item" onclick="openEditProfile()">
+            <div class="me-menu-icon">✏️</div><div>Edit Profile</div><div class="me-menu-arrow">›</div>
+          </div>
           <div class="me-menu-item" onclick="showStickersPanel()">
             <div class="me-menu-icon">🎭</div><div>Stickers</div><div class="me-menu-arrow">›</div>
           </div>
@@ -1637,6 +1640,36 @@ body {
       </div>
     </div>
     <div id="search-not-found">Handle not found. Check the spelling and try again.</div>
+  </div>
+</div>
+
+
+<!-- ── EDIT PROFILE PANEL ── -->
+<div id="profile-edit-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closePanel('profile-edit-panel')">‹</button>
+    <div class="panel-title">Edit Profile</div>
+  </div>
+  <div class="panel-content">
+    <div style="text-align:center;margin-bottom:22px">
+      <div id="edit-prof-avatar-preview" class="me-avatar" style="width:88px;height:88px;font-size:36px;margin:0 auto 12px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--lc-primary,#5B4BFF),var(--lc-secondary,#DD00AC));border-radius:50%">🐬</div>
+      <label class="primary-btn" style="display:inline-block;padding:12px 18px;cursor:pointer;margin:0">
+        Change avatar
+        <input type="file" id="edit-prof-avatar" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="previewEditAvatar(this)">
+      </label>
+      <div style="font-size:13px;color:var(--text2);margin-top:8px">Optional · PNG/JPG/WebP · max 2MB</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Display name</label>
+      <input class="form-input" id="edit-prof-display" type="text" maxlength="40" placeholder="How you appear in Gen Chat" autocomplete="nickname">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Bio <span style="color:var(--text2);font-weight:400">(optional)</span></label>
+      <textarea class="form-input" id="edit-prof-bio" maxlength="280" placeholder="Short intro — optional" style="min-height:90px;resize:vertical;font-family:inherit"></textarea>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;text-align:right"><span id="edit-prof-bio-count">0</span>/280</div>
+    </div>
+    <button class="primary-btn" type="button" onclick="saveEditProfile()">Save profile</button>
+    <div id="edit-prof-role" style="text-align:center;margin-top:14px;font-size:14px;color:var(--text2)"></div>
   </div>
 </div>
 
@@ -2594,6 +2627,7 @@ function updateUI() {
   if (document.getElementById('sidebar-handle-badge')) document.getElementById('sidebar-handle-badge').textContent = myHandle || shortenWallet(wallet);
   const letter = (myHandle || 'X').replace('@','').charAt(0).toUpperCase();
   document.getElementById('me-avatar').textContent = letter;
+  try { refreshMeAvatarFromProfile(); } catch(e) {}
   document.getElementById('me-handle-display').textContent = myHandle || shortenWallet(wallet);
   document.getElementById('me-wallet-display').textContent = wallet;
   document.getElementById('invite-link-box').textContent = APP_URL + '?add=' + wallet;
@@ -7371,66 +7405,110 @@ async function createServerEvent() {
 }
 
 function loadCommunityProfileForm() {
-  const me = document.getElementById('tab-me');
-  if (!me || document.getElementById('comm-profile-edit')) return;
-  const box = document.createElement('div');
-  box.id = 'comm-profile-edit';
-  box.className = 'profile-edit';
-  box.innerHTML = `
-    <div style="font-weight:700;font-size:16px;background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Community profile</div>
-    <label>Display name</label>
-    <input id="prof-display" maxlength="40" placeholder="Your name">
-    <label>Bio</label>
-    <textarea id="prof-bio" maxlength="280" placeholder="Short intro"></textarea>
-    <label>Avatar (image file)</label>
-    <input type="file" id="prof-avatar" accept="image/png,image/jpeg,image/webp">
-    <button class="primary-btn" type="button" onclick="saveCommunityProfile()">Save profile</button>
-    <div class="comm-sub" id="prof-role-line"></div>
-  `;
-  me.insertBefore(box, me.firstChild);
-  if (window._commProfile) {
-    document.getElementById('prof-display').value = window._commProfile.display_name || '';
-    document.getElementById('prof-bio').value = window._commProfile.bio || '';
-  }
-  communityJoin().then(() => {
-    if (window._commProfile) {
-      document.getElementById('prof-display').value = window._commProfile.display_name || '';
-      document.getElementById('prof-bio').value = window._commProfile.bio || '';
-    }
-    const rl = document.getElementById('prof-role-line');
-    if (rl && communityRole) rl.textContent = 'Role: ' + communityRole;
-  });
+  /* profile editing is via Edit Profile panel — refresh Me avatar only */
+  refreshMeAvatarFromProfile();
 }
 
-async function saveCommunityProfile() {
-  if (!wallet) return;
-  const display_name = document.getElementById('prof-display')?.value || '';
-  const bio = document.getElementById('prof-bio')?.value || '';
-  const r = await fetch(BACKEND + '/api/community/profile', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({wallet, display_name, bio})
-  });
-  const j = await r.json();
-  if (!r.ok) { showToast(j.error||'Save failed'); return; }
-  window._commProfile = j.profile;
-  const file = document.getElementById('prof-avatar')?.files?.[0];
-  if (file) {
-    if (file.size > 2_000_000) { showToast('Avatar max 2MB'); return; }
-    const b64 = await new Promise((res,rej) => {
-      const fr = new FileReader();
-      fr.onload = () => res(fr.result);
-      fr.onerror = rej;
-      fr.readAsDataURL(file);
-    });
-    const ar = await fetch(BACKEND + '/api/community/avatar', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({wallet, image_data: b64, image_type: file.type})
-    });
-    const aj = await ar.json();
-    if (!ar.ok) { showToast(aj.error||'Avatar failed'); return; }
+async function openEditProfile() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  await communityJoin();
+  const prev = document.getElementById('edit-prof-avatar-preview');
+  const disp = document.getElementById('edit-prof-display');
+  const bio = document.getElementById('edit-prof-bio');
+  const roleEl = document.getElementById('edit-prof-role');
+  const fileIn = document.getElementById('edit-prof-avatar');
+  if (fileIn) fileIn.value = '';
+  window._editAvatarDataUrl = null;
+  const prof = window._commProfile || {};
+  if (disp) disp.value = prof.display_name || myHandle || '';
+  if (bio) {
+    bio.value = prof.bio || '';
+    const cnt = document.getElementById('edit-prof-bio-count');
+    if (cnt) cnt.textContent = String((bio.value || '').length);
+    bio.oninput = () => { const c = document.getElementById('edit-prof-bio-count'); if (c) c.textContent = String(bio.value.length); };
   }
-  showToast('Profile saved');
+  if (roleEl) roleEl.textContent = communityRole ? ('Role: ' + communityRole) : '';
+  if (prev) {
+    if (prof.has_avatar && wallet) {
+      prev.innerHTML = '<img src="'+BACKEND+'/api/community/avatar/'+wallet+'?t='+Date.now()+'" style="width:100%;height:100%;object-fit:cover">';
+    } else {
+      const letter = ((prof.display_name || myHandle || '🐬') + '').replace('@','').charAt(0).toUpperCase() || '🐬';
+      prev.textContent = letter;
+      prev.innerHTML = '';
+      prev.textContent = letter;
+    }
+  }
+  document.getElementById('profile-edit-panel').classList.add('open');
 }
+
+function previewEditAvatar(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 2_000_000) { showToast('Avatar max 2MB'); input.value=''; return; }
+  const fr = new FileReader();
+  fr.onload = () => {
+    window._editAvatarDataUrl = fr.result;
+    const prev = document.getElementById('edit-prof-avatar-preview');
+    if (prev) prev.innerHTML = '<img src="'+fr.result+'" style="width:100%;height:100%;object-fit:cover">';
+  };
+  fr.readAsDataURL(file);
+}
+
+async function saveEditProfile() {
+  if (!wallet) { showToast('Connect wallet first'); return; }
+  const display_name = (document.getElementById('edit-prof-display')?.value || '').trim();
+  const bio = (document.getElementById('edit-prof-bio')?.value || '').trim();
+  try {
+    const r = await fetch(BACKEND + '/api/community/profile', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({wallet, display_name, bio})
+    });
+    const j = await r.json();
+    if (!r.ok) { showToast(j.error || 'Save failed'); return; }
+    window._commProfile = j.profile;
+    const dataUrl = window._editAvatarDataUrl;
+    const file = document.getElementById('edit-prof-avatar')?.files?.[0];
+    if (dataUrl || file) {
+      let image_data = dataUrl;
+      let image_type = (file && file.type) || 'image/jpeg';
+      if (!image_data && file) {
+        image_data = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(fr.result);
+          fr.onerror = rej;
+          fr.readAsDataURL(file);
+        });
+        image_type = file.type;
+      }
+      const ar = await fetch(BACKEND + '/api/community/avatar', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({wallet, image_data, image_type})
+      });
+      const aj = await ar.json();
+      if (!ar.ok) { showToast(aj.error || 'Avatar upload failed'); return; }
+      if (window._commProfile) window._commProfile.has_avatar = true;
+    }
+    showToast('Profile saved');
+    closePanel('profile-edit-panel');
+    refreshMeAvatarFromProfile();
+    if (typeof updateUI === 'function') updateUI();
+  } catch (e) {
+    console.warn(e);
+    showToast('Save failed');
+  }
+}
+
+function refreshMeAvatarFromProfile() {
+  const el = document.getElementById('me-avatar');
+  if (!el || !wallet) return;
+  const prof = window._commProfile;
+  if (prof && prof.has_avatar) {
+    el.innerHTML = '<img src="'+BACKEND+'/api/community/avatar/'+wallet+'?t='+Date.now()+'" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+  }
+}
+
+async function saveCommunityProfile() { return saveEditProfile(); }
+
 
 // Hook wallet connect: join community + default Gen Chat
 (function patchWalletHooks(){
