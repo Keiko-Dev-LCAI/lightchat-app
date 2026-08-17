@@ -16,7 +16,7 @@ from functools import wraps
 COMMUNITY_ID = "lightchain-official"
 
 DEFAULT_CHANNELS = [
-    ("start-here", "Start Here", "welcome", "Welcome, rules, how to use LightChat", 0, 0),
+    ("start-here", "Start Here", "welcome", "Welcome, rules, how to use LightChat", 0, 1),
     ("announcements", "Announcements", "info", "Official updates (mods post)", 1, 1),
     ("general", "Gen Chat", "text", "Main hangout — everyone talks here", 2, 0),
     ("introduce-yourself", "Introduce Yourself", "text", "New members say hi", 3, 0),
@@ -26,6 +26,77 @@ DEFAULT_CHANNELS = [
     ("proposals", "Proposals", "text", "DAO and ideas", 7, 0),
     ("links", "Links", "info", "Official links and contracts", 8, 1),
     ("report", "Report", "text", "Report issues", 9, 0),
+]
+
+# Discord-style Start Here guide (shown in #start-here UI)
+START_HERE_SECTIONS = [
+    {
+        "title": "Welcome to LightChat",
+        "body": "Wallet-native community chat for Lightchain. Free for everyone — connect your wallet, set a display name, then join Gen Chat.",
+        "links": [
+            {"label": "Open Gen Chat", "href": "#channel:general", "kind": "channel"},
+            {"label": "Edit Profile", "href": "#action:edit-profile", "kind": "action"},
+        ],
+    },
+    {
+        "title": "Learn about Lightchain",
+        "body": "Official site, docs, and brand.",
+        "links": [
+            {"label": "lightchain.ai", "href": "https://lightchain.ai"},
+            {"label": "Developer docs", "href": "https://docs.lightchain.ai/"},
+            {"label": "Brand guidelines", "href": "https://lightchain.ai/brand"},
+            {"label": "Whitepaper (PDF)", "href": "https://lightchain.ai/lightchain-whitepaper.pdf"},
+            {"label": "Roadmap", "href": "https://lightchain.ai/roadmap"},
+        ],
+    },
+    {
+        "title": "Connect with the community",
+        "body": "Talk with everyone, find members, introduce yourself.",
+        "links": [
+            {"label": "# Gen Chat", "href": "#channel:general", "kind": "channel"},
+            {"label": "# Introduce Yourself", "href": "#channel:introduce-yourself", "kind": "channel"},
+            {"label": "Directory", "href": "#action:directory", "kind": "action"},
+            {"label": "# Help", "href": "#channel:help", "kind": "channel"},
+        ],
+    },
+    {
+        "title": "Community updates",
+        "body": "Official news — mods post in Announcements.",
+        "links": [
+            {"label": "# Announcements", "href": "#channel:announcements", "kind": "channel"},
+            {"label": "Events", "href": "#action:events", "kind": "action"},
+            {"label": "Governance / DAO", "href": "https://dao.lightchain.ai/"},
+        ],
+    },
+    {
+        "title": "Network details",
+        "body": "Lightchain L1 mainnet for wallets and apps.",
+        "links": [
+            {"label": "Chain ID 9200", "href": "https://mainnet.lightscan.app/"},
+            {"label": "Block explorer (Lightscan)", "href": "https://mainnet.lightscan.app/"},
+            {"label": "RPC https://rpc.mainnet.lightchain.ai", "href": "https://rpc.mainnet.lightchain.ai"},
+            {"label": "Gas tracker", "href": "https://mainnet.lightscan.app/gas-tracker"},
+        ],
+    },
+    {
+        "title": "Lightchain links",
+        "body": "Bridge, hub, faucet, workers.",
+        "links": [
+            {"label": "dApp Hub", "href": "https://hub.lightchain.ai/"},
+            {"label": "Bridge", "href": "https://bridge.lightchain.ai/"},
+            {"label": "Faucet", "href": "https://lightfaucet.ai/"},
+            {"label": "Workers", "href": "https://workers.lightchain.ai/"},
+            {"label": "Forum", "href": "https://forum.lightchain.ai/"},
+        ],
+    },
+    {
+        "title": "How LightChat works",
+        "body": "Login with wallet only (English). Channels for topics. Friends for people you add. No LightPay — this community is free.",
+        "links": [
+            {"label": "# Links (bookmark shelf)", "href": "#channel:links", "kind": "channel"},
+            {"label": "# Report", "href": "#channel:report", "kind": "channel"},
+        ],
+    },
 ]
 
 # role rank: higher = more power
@@ -137,6 +208,16 @@ def init_community_db(get_db):
                    VALUES (?,?,?,?,?,?,?,?)""",
                 (cid, COMMUNITY_ID, slug, name, kind, desc, sort, ro),
             )
+    # keep start-here / links read-only for members (migrate existing DBs)
+    try:
+        conn.execute(
+            "UPDATE community_channels SET readonly_members=1 WHERE community_id=? AND slug IN ('start-here','links','announcements')",
+            (COMMUNITY_ID,),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
     # bootstrap owners from env (comma-separated, max 2)
     owners = [
         _norm(x)
@@ -267,6 +348,7 @@ def register_community_routes(app, socketio, get_db):
                 "description": meta["description"] if meta else "",
                 "member_count": n_members,
                 "channels": [dict(c) for c in channels],
+                "start_here": START_HERE_SECTIONS,
                 "brand": {
                     "primary": "#5B4BFF",
                     "secondary": "#DD00AC",
@@ -277,6 +359,15 @@ def register_community_routes(app, socketio, get_db):
             })
         finally:
             conn.close()
+
+    @app.route("/api/community/start-here")
+    def api_start_here():
+        return jsonify({
+            "slug": "start-here",
+            "title": "Start Here",
+            "subtitle": "Welcome to the Lightchain community on LightChat",
+            "sections": START_HERE_SECTIONS,
+        })
 
     @app.route("/api/community/join", methods=["POST"])
     def api_community_join():
