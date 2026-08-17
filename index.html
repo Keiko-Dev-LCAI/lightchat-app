@@ -1205,6 +1205,24 @@ body {
 .profile-edit input, .profile-edit textarea { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:15px; font-family:inherit; width:100%; }
 .profile-edit textarea { min-height:70px; resize:vertical; }
 
+
+/* Start Here guide (Discord-style info hub) */
+.start-here-wrap { padding: 12px 14px 24px; overflow-y: auto; flex: 1; }
+.start-here-hero { margin-bottom: 16px; padding: 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(91,75,255,0.25), rgba(238,17,251,0.12)); border: 1px solid var(--border); }
+.start-here-hero h3 { font-size: 20px; margin-bottom: 6px; }
+.start-here-hero p { font-size: 14px; color: var(--text2); line-height: 1.5; }
+.start-here-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+.start-here-card h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; color: var(--lc-primary, #5B4BFF); }
+.start-here-card p { font-size: 13px; color: var(--text2); line-height: 1.45; margin-bottom: 10px; }
+.start-here-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.start-here-links a, .start-here-links button {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(91,75,255,0.15); border: 1px solid rgba(91,75,255,0.35);
+  color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+  padding: 8px 12px; border-radius: 999px; cursor: pointer; font-family: inherit;
+}
+.start-here-links a:hover, .start-here-links button:hover { background: rgba(91,75,255,0.28); }
+
 </style>
 <style>
   /* Android install lives in Settings only — no full-width footer on mobile */
@@ -1242,6 +1260,24 @@ body {
 .profile-edit label { font-size:13px; color:var(--text2); }
 .profile-edit input, .profile-edit textarea { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:15px; font-family:inherit; width:100%; }
 .profile-edit textarea { min-height:70px; resize:vertical; }
+
+
+/* Start Here guide (Discord-style info hub) */
+.start-here-wrap { padding: 12px 14px 24px; overflow-y: auto; flex: 1; }
+.start-here-hero { margin-bottom: 16px; padding: 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(91,75,255,0.25), rgba(238,17,251,0.12)); border: 1px solid var(--border); }
+.start-here-hero h3 { font-size: 20px; margin-bottom: 6px; }
+.start-here-hero p { font-size: 14px; color: var(--text2); line-height: 1.5; }
+.start-here-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+.start-here-card h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; color: var(--lc-primary, #5B4BFF); }
+.start-here-card p { font-size: 13px; color: var(--text2); line-height: 1.45; margin-bottom: 10px; }
+.start-here-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.start-here-links a, .start-here-links button {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(91,75,255,0.15); border: 1px solid rgba(91,75,255,0.35);
+  color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600;
+  padding: 8px 12px; border-radius: 999px; cursor: pointer; font-family: inherit;
+}
+.start-here-links a:hover, .start-here-links button:hover { background: rgba(91,75,255,0.28); }
 
 </style>
 </head>
@@ -7051,6 +7087,7 @@ async function loadCommunityChannel(slug) {
   slug = slug || _activeCommSlug || 'general';
   _activeCommSlug = slug;
   const box = document.getElementById('genchat-msgs');
+  const inputRow = document.querySelector('#tab-genchat .comm-input-row');
   if (!box) return;
   box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;color:var(--text2)">Loading…</div>';
   if (wallet) {
@@ -7058,6 +7095,18 @@ async function loadCommunityChannel(slug) {
     try {
       if (socket && socket.connected) socket.emit('join_community_channel', {slug});
     } catch(e) {}
+  }
+  // Start Here = Discord-style info hub (not a chat thread)
+  if (slug === 'start-here') {
+    if (inputRow) inputRow.style.display = 'none';
+    await renderStartHereGuide(box);
+    return;
+  }
+  if (inputRow) inputRow.style.display = '';
+  // Hide composer on other readonly channels for non-mods
+  const ch = (communityChannels || []).find(c => c.slug === slug);
+  if (inputRow && ch && ch.readonly_members && !(communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod')) {
+    inputRow.style.display = 'none';
   }
   try {
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80');
@@ -7078,6 +7127,47 @@ async function loadCommunityChannel(slug) {
     console.warn('loadCommunityChannel', e);
     box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages. Hard-refresh the page (Ctrl+Shift+R) so the app updates.</div>';
   }
+}
+
+async function renderStartHereGuide(box) {
+  let sections = [];
+  try {
+    const r = await fetch(BACKEND + '/api/community/start-here');
+    const j = await r.json();
+    sections = j.sections || [];
+  } catch (e) {
+    try {
+      const r2 = await fetch(BACKEND + '/api/community');
+      const j2 = await r2.json();
+      sections = j2.start_here || [];
+    } catch (e2) {}
+  }
+  if (!sections.length) {
+    box.innerHTML = '<div class="empty-text" style="padding:24px">Start Here guide unavailable — hard-refresh.</div>';
+    return;
+  }
+  const cards = sections.map(sec => {
+    const links = (sec.links || []).map(l => {
+      const kind = l.kind || 'url';
+      if (kind === 'channel') {
+        const slug = (l.href || '').replace('#channel:', '');
+        return '<button type="button" onclick="openCommunityChannel(\''+escapeHtml(slug)+'\')">'+escapeHtml(l.label)+'</button>';
+      }
+      if (kind === 'action') {
+        const act = (l.href || '').replace('#action:', '');
+        return '<button type="button" onclick="startHereAction(\''+escapeHtml(act)+'\')">'+escapeHtml(l.label)+'</button>';
+      }
+      return '<a href="'+escapeHtml(l.href)+'" target="_blank" rel="noopener">'+escapeHtml(l.label)+' ↗</a>';
+    }).join('');
+    return '<div class="start-here-card"><h4>'+escapeHtml(sec.title)+'</h4><p>'+escapeHtml(sec.body||'')+'</p><div class="start-here-links">'+links+'</div></div>';
+  }).join('');
+  box.innerHTML = '<div class="start-here-wrap"><div class="start-here-hero"><h3>👋 Start Here</h3><p>Welcome to the Lightchain community on LightChat — same idea as Discord start-here, built for wallets.</p></div>'+cards+'</div>';
+}
+
+function startHereAction(act) {
+  if (act === 'edit-profile') { switchTab('me'); setTimeout(() => openEditProfile(), 200); return; }
+  if (act === 'directory') { switchTab('directory'); return; }
+  if (act === 'events') { switchTab('calendar'); return; }
 }
 
 function renderCommunityMessages(msgs) {
