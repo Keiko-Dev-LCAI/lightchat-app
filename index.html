@@ -24,6 +24,7 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="genchat-p2p.js"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1337,6 +1338,13 @@ body {
   margin-right: 6px;
 }
 
+
+#genchat-p2p-status.p2p-on {
+  background: rgba(76,175,125,0.2) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(76,175,125,0.45) !important;
+}
+
 </style>
 <style>
   /* Android install lives in Settings only — no full-width footer on mobile */
@@ -1507,6 +1515,13 @@ body {
   margin-right: 6px;
 }
 
+
+#genchat-p2p-status.p2p-on {
+  background: rgba(76,175,125,0.2) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(76,175,125,0.45) !important;
+}
+
 </style>
 </head>
 <body>
@@ -1575,10 +1590,11 @@ body {
       <div class="comm-wrap">
         <div class="comm-header">
           <img class="lc-inline-mark" src="brand/symbol-light.svg" alt="" style="width:28px;height:28px">
-          <div>
+          <div style="flex:1">
             <h2># Gen Chat</h2>
             <div class="comm-sub">Everyone · Lightchain community</div>
           </div>
+          <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
         </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div class="comm-input-row">
@@ -2849,6 +2865,12 @@ function connectSocket() {
   socket.on('auth_ok', () => {
     if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
     socket.emit('get_groups', { wallet });
+    try {
+      if (window.genChatP2P) {
+        genChatP2P.attachSocket(socket);
+        if (_activeCommSlug === 'general') ensureGenChatP2P();
+      }
+    } catch(e) {}
   });
   socket.on('auth_error', (d) => {
     console.warn('auth_error', d);
@@ -4969,7 +4991,7 @@ let swRegistration = null;
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=community2'); } catch(e) {}
+  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=p2p1'); } catch(e) {}
 }
 
 // Listen for messages from the service worker (e.g. incoming call tapped from push notification)
@@ -7382,7 +7404,21 @@ async function loadCommunityChannel(slug) {
       return;
     }
     const j = await r.json();
-    renderCommunityMessages(j.messages || []);
+    let msgs = j.messages || [];
+    if (slug === 'general' && window.genChatP2P) {
+      try {
+        ensureGenChatP2P();
+        const local = genChatP2P.loadLocal() || [];
+        const byId = {};
+        msgs.concat(local).forEach(function(m) {
+          const id = m.id || (m.sender_wallet + ':' + m.created_at + ':' + (m.content||'').slice(0,32));
+          byId[id] = m;
+        });
+        msgs = Object.keys(byId).map(function(k){ return byId[k]; });
+        msgs.sort(function(a,b){ return (a.created_at||0) - (b.created_at||0); });
+      } catch(e) { console.warn(e); }
+    }
+    renderCommunityMessages(msgs);
     if (!wallet) {
       const tip = document.createElement('div');
       tip.className = 'empty-text';
@@ -7392,6 +7428,14 @@ async function loadCommunityChannel(slug) {
     }
   } catch(e) {
     console.warn('loadCommunityChannel', e);
+    // Still show local P2P history if relay fails
+    if (slug === 'general' && window.genChatP2P) {
+      try {
+        ensureGenChatP2P();
+        renderCommunityMessages(genChatP2P.loadLocal() || []);
+        return;
+      } catch(e2) {}
+    }
     box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages. Hard-refresh the page (Ctrl+Shift+R) so the app updates.</div>';
   }
 }
@@ -7470,6 +7514,47 @@ async function sendCommunityMsg(slug) {
   slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
   if (!content) return;
   await communityJoin();
+
+  const prof = window._commProfile || {};
+  const msg = {
+    id: 'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+    sender_wallet: wallet,
+    content: content,
+    created_at: Math.floor(Date.now()/1000),
+    display_name: prof.display_name || (typeof myHandle !== 'undefined' && myHandle) || shortenWallet(wallet),
+    role: communityRole || 'member',
+    has_avatar: !!(prof.has_avatar),
+    slug: slug,
+    transport: 'p2p'
+  };
+
+  // Gen Chat: try P2P first (message body over WebRTC — not Railway)
+  let p2pCount = 0;
+  if (slug === 'general' && window.genChatP2P) {
+    try {
+      ensureGenChatP2P();
+      p2pCount = genChatP2P.send(msg) || 0;
+    } catch (e) { console.warn('p2p send', e); }
+  }
+
+  if (inp) inp.value = '';
+
+  if (p2pCount > 0) {
+    // Delivered peer-to-peer — show locally; skip Railway body for this send
+    try {
+      const box = document.getElementById('genchat-msgs');
+      if (box) {
+        // append without full reload
+        const existing = [];
+        // reload merge from local+optional server history
+        await loadCommunityChannel(slug);
+      }
+    } catch (e) {}
+    showToast('Sent via P2P · ' + p2pCount + ' peer(s)');
+    return;
+  }
+
+  // Fallback relay (Railway) when no live P2P peers
   try {
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -7477,9 +7562,32 @@ async function sendCommunityMsg(slug) {
     });
     const j = await r.json();
     if (!r.ok) { showToast(j.error || 'Send failed'); return; }
-    if (inp) inp.value = '';
     await loadCommunityChannel(slug);
+    if (slug === 'general') showToast('Sent via relay (no P2P peers online)');
   } catch(e) { showToast('Send failed'); }
+}
+
+function ensureGenChatP2P() {
+  if (!window.genChatP2P || !wallet) return;
+  genChatP2P.attachSocket(socket);
+  genChatP2P.onMessage = function(msg) {
+    if (_activeCommSlug === 'general' || _activeCommSlug === msg.slug) {
+      // merge into view
+      loadCommunityChannel('general');
+    }
+  };
+  genChatP2P.onStatus = function(st) {
+    const el = document.getElementById('genchat-p2p-status');
+    if (!el) return;
+    if (st.connected > 0) {
+      el.textContent = 'P2P · ' + st.connected;
+      el.classList.add('p2p-on');
+    } else {
+      el.textContent = st.peers > 0 ? 'Connecting…' : 'Relay';
+      el.classList.remove('p2p-on');
+    }
+  };
+  genChatP2P.join(wallet, window._commProfile || {});
 }
 
 async function loadDirectory() {
