@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import time
 import uuid
 import base64
@@ -946,39 +947,141 @@ def can_moderate(actor_role: str, target_role: str, action: str = "") -> bool:
     return True
 
 
-# Grow-a-tree stages: (min_xp, emoji, label)
+# Grow-a-Tree (Discord-style): collaborative water + fruit catch
+# Mechanics inspired by popular Discord "Grow a Tree" bots (not affiliated).
+# Rules copied from Grow a Tree: no same waterer twice in a row; cooldown
+# scales with height; fruit drops into basket lanes you click to catch.
 GARDEN_STAGES = [
-    (0, "🌱", "Seed"),
-    (10, "🌿", "Sprout"),
-    (40, "🪴", "Sapling"),
-    (100, "🌳", "Young Tree"),
-    (250, "🌲", "Tree"),
-    (500, "🌴", "Grove"),
-    (1000, "🏯", "Legendary Grove"),
+    # min_size (waters), emoji, label, art lines
+    (0, "🌱", "Seed", ["☁️  ☀️  ☁️", "", "   🌱", "  ═══", "▓▓▓▓▓▓▓"]),
+    (5, "🌿", "Sprout", ["☁️     ☁️", "   🌿", "   │", "  ═══", "▓▓▓▓▓▓▓"]),
+    (15, "🪴", "Sapling", ["☁️  ☀️  ☁️", "  🪴", " ╱│╲", "╱ │ ╲", "══╪══", "▓▓▓▓▓▓▓"]),
+    (40, "🌳", "Young Tree", ["☁️     ☁️", "  🌳🌳", " ╱│╲╱│╲", "  │  │", "══╪══╪══", "▓▓▓▓▓▓▓▓▓"]),
+    (100, "🌲", "Tree", ["☁️  ☀️  ☁️", " 🌲🌲🌲", "╱│╲│╱│╲", " │ │ │", "═╪═╪═╪═", "▓▓▓▓▓▓▓▓▓▓▓"]),
+    (250, "🌴", "Grove", ["✨  ☀️  ✨", "🌴🌳🌲🌳🌴", "╱│╲│╱│╲│╱", "═╬═╬═╬═╬═", "▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
+    (500, "🏯", "Legendary Grove", ["✨🌙✨", "🏯🌳🏯", "🌴🌲🌳🌲🌴", "═╩═╩═╩═╩═", "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
 ]
-GARDEN_WATER_COOLDOWN = 60  # seconds between waters per wallet
 GARDEN_BOT_NAME = "Garden Bot"
+GARDEN_APPLE_LANES = 3
+GARDEN_APPLE_CATCH_SEC = 10
+# Live apple drops (drop_id -> {lane, exp, caught, by})
+GARDEN_APPLE_DROPS: dict[str, dict] = {}
 
 
-def garden_stage_for_xp(xp: int) -> tuple[int, str, str]:
+def garden_stage_for_size(size: int) -> tuple[int, str, str, list]:
     stage_i = 0
-    emoji, label = GARDEN_STAGES[0][1], GARDEN_STAGES[0][2]
-    for i, (need, em, lab) in enumerate(GARDEN_STAGES):
-        if xp >= need:
-            stage_i, emoji, label = i, em, lab
-    return stage_i, emoji, label
+    emoji, label, art = GARDEN_STAGES[0][1], GARDEN_STAGES[0][2], GARDEN_STAGES[0][3]
+    for i, (need, em, lab, ar) in enumerate(GARDEN_STAGES):
+        if size >= need:
+            stage_i, emoji, label, art = i, em, lab, ar
+    return stage_i, emoji, label, art
 
 
-def garden_next_need(xp: int) -> int | None:
-    for need, _em, _lab in GARDEN_STAGES:
-        if xp < need:
+def garden_stage_for_xp(xp: int) -> tuple[int, str, str, list]:
+    """Back-compat alias — stages track water count (tree size)."""
+    return garden_stage_for_size(xp)
+
+
+def garden_next_need(size: int) -> int | None:
+    for need, *_rest in GARDEN_STAGES:
+        if size < need:
             return need
     return None
 
 
-def garden_state_dict(conn) -> dict:
+def garden_cooldown_for_size(size: int) -> int:
+    """Discord Grow a Tree formula: floor((size * 0.07 + 5) ** 1.1) seconds."""
+    size = max(1, int(size or 1))
+    return max(5, int((size * 0.07 + 5) ** 1.1))
+
+
+def garden_cooldown_for_stage(stage_i: int) -> int:
+    """Rough stage-based fallback (prefer garden_cooldown_for_size)."""
+    approx = [0, 5, 15, 40, 100, 250, 500]
+    i = max(0, min(int(stage_i or 0), len(approx) - 1))
+    return garden_cooldown_for_size(approx[i] or 1)
+
+
+def garden_height_ft(size: int, last_watered_at: int = 0, cooldown_sec: int = 0) -> float:
+    """Discord-style height: whole feet when ready; fractional while growing."""
+    size = max(0, int(size or 0))
+    if size <= 0:
+        return 0.0
+    now = int(time.time())
+    if cooldown_sec > 0 and last_watered_at > 0:
+        ready_at = last_watered_at + cooldown_sec
+        if ready_at > now:
+            # Count down the last 1.0 ft while growing
+            frac = (ready_at - now) / float(cooldown_sec)
+            return max(0.1, round(size - frac, 1))
+    return float(size)
+
+
+def garden_ensure_columns(conn) -> None:
+    for sql in (
+        "ALTER TABLE community_garden ADD COLUMN last_waterer TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE community_garden ADD COLUMN apples INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE community_garden_waters ADD COLUMN apples INTEGER NOT NULL DEFAULT 0",
+    ):
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except Exception:
+            pass
+
+
+def garden_prune_apple_drops() -> None:
+    now = time.time()
+    dead = [
+        did
+        for did, d in GARDEN_APPLE_DROPS.items()
+        if d.get("caught") or float(d.get("exp") or 0) < now
+    ]
+    for did in dead:
+        GARDEN_APPLE_DROPS.pop(did, None)
+
+
+def garden_spawn_apple(socketio=None) -> dict | None:
+    """Spawn a fruit drop across 3 basket lanes (Discord fruit-harvest style)."""
+    garden_prune_apple_drops()
+    # One live drop at a time
+    if any(not d.get("caught") and float(d.get("exp") or 0) >= time.time() for d in GARDEN_APPLE_DROPS.values()):
+        return None
+    drop_id = str(uuid.uuid4())
+    lane = random.randint(0, GARDEN_APPLE_LANES - 1)
+    exp = time.time() + GARDEN_APPLE_CATCH_SEC
+    drop = {
+        "id": drop_id,
+        "lane": lane,
+        "lanes": GARDEN_APPLE_LANES,
+        "exp": exp,
+        "expires_in": GARDEN_APPLE_CATCH_SEC,
+        "caught": False,
+        "by": "",
+        "by_name": "",
+    }
+    GARDEN_APPLE_DROPS[drop_id] = drop
+    if socketio is not None:
+        try:
+            socketio.emit("community_garden_apple", drop, room="community:garden")
+        except Exception:
+            pass
+    return drop
+
+
+def garden_active_apple() -> dict | None:
+    garden_prune_apple_drops()
+    for d in GARDEN_APPLE_DROPS.values():
+        if not d.get("caught") and float(d.get("exp") or 0) >= time.time():
+            left = max(0, int(float(d["exp"]) - time.time()))
+            return {**d, "expires_in": left}
+    return None
+
+
+def garden_state_dict(conn, viewer: str = "") -> dict:
+    garden_ensure_columns(conn)
     row = conn.execute(
-        "SELECT xp, waters, stage, updated_at FROM community_garden WHERE community_id=?",
+        "SELECT * FROM community_garden WHERE community_id=?",
         (COMMUNITY_ID,),
     ).fetchone()
     if not row:
@@ -988,20 +1091,102 @@ def garden_state_dict(conn) -> dict:
             "stage": 0,
             "emoji": "🌱",
             "label": "Seed",
-            "next_xp": 10,
+            "art": GARDEN_STAGES[0][3],
+            "height_ft": 0,
+            "next_xp": 5,
             "updated_at": 0,
+            "cooldown_sec": garden_cooldown_for_size(1),
+            "cooldown_remaining": 0,
+            "can_water": bool(viewer and viewer.startswith("0x")),
+            "blocked_reason": "",
+            "last_waterer": "",
+            "last_waterer_name": "",
+            "apples": 0,
+            "my_apples": 0,
+            "my_waters": 0,
+            "apple_drop": None,
+            "tree_name": "Lightchain Tree",
         }
+    size = int(row["waters"] or 0)
     xp = int(row["xp"] or 0)
-    stage_i, emoji, label = garden_stage_for_xp(xp)
+    # Prefer waters as tree size; fall back to xp for older rows
+    if size <= 0 and xp > 0:
+        size = xp
+    stage_i, emoji, label, art = garden_stage_for_size(size)
+    last_w = ""
+    try:
+        last_w = _norm(row["last_waterer"] or "")
+    except Exception:
+        last_w = ""
+    last_name = ""
+    if last_w.startswith("0x"):
+        try:
+            last_name = profile_dict(conn, last_w).get("display_name") or (
+                last_w[:6] + "…" + last_w[-4:]
+            )
+        except Exception:
+            last_name = last_w[:8] + "…"
+    apples_total = 0
+    try:
+        apples_total = int(row["apples"] or 0)
+    except Exception:
+        apples_total = 0
+    my_apples = 0
+    my_waters = 0
+    viewer_n = _norm(viewer) if viewer else ""
+    if viewer_n.startswith("0x"):
+        wr = conn.execute(
+            """SELECT apples, total_waters FROM community_garden_waters
+               WHERE community_id=? AND wallet=?""",
+            (COMMUNITY_ID, viewer_n),
+        ).fetchone()
+        if wr:
+            try:
+                my_apples = int(wr["apples"] or 0)
+            except Exception:
+                my_apples = 0
+            try:
+                my_waters = int(wr["total_waters"] or 0)
+            except Exception:
+                my_waters = 0
+    last_at = int(row["updated_at"] or 0)
+    cd = garden_cooldown_for_size(max(1, size))
+    now = int(time.time())
+    left = max(0, (last_at + cd) - now) if last_at else 0
+    # Discord rules: ready when cooldown done AND you weren't last waterer
+    blocked = ""
+    can = False
+    if viewer_n.startswith("0x"):
+        if last_w and viewer_n == last_w and size > 0:
+            blocked = "same_waterer"
+            can = False
+        elif left > 0:
+            blocked = "growing"
+            can = False
+        else:
+            can = True
+    height = garden_height_ft(size, last_at, cd)
     return {
-        "xp": xp,
-        "waters": int(row["waters"] or 0),
+        "xp": xp if xp else size,
+        "waters": size,
         "stage": stage_i,
         "emoji": emoji,
         "label": label,
-        "next_xp": garden_next_need(xp),
-        "updated_at": int(row["updated_at"] or 0),
-        "cooldown_sec": GARDEN_WATER_COOLDOWN,
+        "art": art,
+        "height_ft": height,
+        "next_xp": garden_next_need(size),
+        "updated_at": last_at,
+        "cooldown_sec": cd,
+        "cooldown_remaining": left,
+        "can_water": can,
+        "blocked_reason": blocked,
+        "last_waterer": last_w,
+        "last_waterer_name": last_name,
+        "apples": apples_total,
+        "my_apples": my_apples,
+        "my_waters": my_waters,
+        "apple_drop": garden_active_apple(),
+        "tree_name": "Lightchain Tree",
     }
 
 
@@ -2599,32 +2784,7 @@ def register_community_routes(app, socketio, get_db):
         wallet = _norm(request.args.get("wallet", ""))
         conn = get_db()
         try:
-            st = garden_state_dict(conn)
-            st["can_water"] = False
-            st["cooldown_remaining"] = 0
-            if wallet.startswith("0x"):
-                row = conn.execute(
-                    """SELECT last_water_at FROM community_garden_waters
-                       WHERE community_id=? AND wallet=?""",
-                    (COMMUNITY_ID, wallet),
-                ).fetchone()
-                last = int(row["last_water_at"]) if row else 0
-                now = int(time.time())
-                left = max(0, GARDEN_WATER_COOLDOWN - (now - last))
-                st["cooldown_remaining"] = left
-                st["can_water"] = left == 0
-                st["my_waters"] = int(
-                    (
-                        conn.execute(
-                            """SELECT total_waters FROM community_garden_waters
-                               WHERE community_id=? AND wallet=?""",
-                            (COMMUNITY_ID, wallet),
-                        ).fetchone()
-                        or {"total_waters": 0}
-                    )["total_waters"]
-                    or 0
-                )
-            return jsonify(st)
+            return jsonify(garden_state_dict(conn, viewer=wallet))
         finally:
             conn.close()
 
@@ -2639,42 +2799,60 @@ def register_community_routes(app, socketio, get_db):
             if is_banned(conn, wallet):
                 return jsonify({"error": "banned", "code": "banned"}), 403
             ensure_member(conn, wallet)
+            garden_ensure_columns(conn)
             now = int(time.time())
-            row = conn.execute(
-                """SELECT last_water_at, total_waters FROM community_garden_waters
-                   WHERE community_id=? AND wallet=?""",
-                (COMMUNITY_ID, wallet),
-            ).fetchone()
-            last = int(row["last_water_at"]) if row else 0
-            left = max(0, GARDEN_WATER_COOLDOWN - (now - last))
-            if left > 0:
-                return jsonify({
-                    "error": f"Wait {left}s before watering again",
-                    "code": "cooldown",
-                    "cooldown_remaining": left,
-                    "garden": garden_state_dict(conn),
-                }), 429
             conn.execute(
                 """INSERT INTO community_garden (community_id, xp, waters, stage, updated_at, last_milestone)
                    VALUES (?,?,?,?,?,?)
                    ON CONFLICT(community_id) DO NOTHING""",
-                (COMMUNITY_ID, 0, 0, 0, now, 0),
+                (COMMUNITY_ID, 0, 0, 0, 0, 0),
             )
             g = conn.execute(
-                "SELECT xp, waters, stage, last_milestone FROM community_garden WHERE community_id=?",
+                "SELECT * FROM community_garden WHERE community_id=?",
                 (COMMUNITY_ID,),
             ).fetchone()
-            old_xp = int(g["xp"] or 0)
-            new_xp = old_xp + 1
-            new_waters = int(g["waters"] or 0) + 1
-            old_stage, _, _ = garden_stage_for_xp(old_xp)
-            new_stage, emoji, label = garden_stage_for_xp(new_xp)
+            old_size = int(g["waters"] or 0) or int(g["xp"] or 0)
+            last_at = int(g["updated_at"] or 0)
+            try:
+                last_w = _norm(g["last_waterer"] or "")
+            except Exception:
+                last_w = ""
+            # Discord: same person cannot water twice in a row
+            if last_w and last_w == wallet and old_size > 0:
+                st = garden_state_dict(conn, viewer=wallet)
+                return jsonify({
+                    "error": "You watered this tree last — someone else has to water it first.",
+                    "code": "same_waterer",
+                    "garden": st,
+                }), 429
+            cd = garden_cooldown_for_size(max(1, old_size))
+            left = max(0, (last_at + cd) - now) if last_at else 0
+            if left > 0:
+                st = garden_state_dict(conn, viewer=wallet)
+                return jsonify({
+                    "error": f"Tree is still growing — waterable in {left}s",
+                    "code": "cooldown",
+                    "cooldown_remaining": left,
+                    "garden": st,
+                }), 429
+            new_size = old_size + 1
+            new_xp = int(g["xp"] or 0) + 1
+            if new_xp < new_size:
+                new_xp = new_size
+            old_stage, _, _, _ = garden_stage_for_size(old_size)
+            new_stage, emoji, label, _art = garden_stage_for_size(new_size)
             conn.execute(
                 """UPDATE community_garden
-                   SET xp=?, waters=?, stage=?, updated_at=? WHERE community_id=?""",
-                (new_xp, new_waters, new_stage, now, COMMUNITY_ID),
+                   SET xp=?, waters=?, stage=?, updated_at=?, last_waterer=?
+                   WHERE community_id=?""",
+                (new_xp, new_size, new_stage, now, wallet, COMMUNITY_ID),
             )
-            if row:
+            wr = conn.execute(
+                """SELECT last_water_at, total_waters FROM community_garden_waters
+                   WHERE community_id=? AND wallet=?""",
+                (COMMUNITY_ID, wallet),
+            ).fetchone()
+            if wr:
                 conn.execute(
                     """UPDATE community_garden_waters
                        SET last_water_at=?, total_waters=total_waters+1
@@ -2693,32 +2871,150 @@ def register_community_routes(app, socketio, get_db):
             who = (prof.get("display_name") or "").strip() or (
                 wallet[:6] + "…" + wallet[-4:] if len(wallet) > 10 else wallet
             )
-            # Always acknowledge in-channel lightly; celebrate stage-ups
+            # Celebrate stage-ups; light pings every 10 waters
             if new_stage > old_stage:
                 post_channel_bot_message(
                     conn,
                     socketio,
                     "garden",
-                    f"{emoji} The community tree grew into a **{label}**! (thanks {who} and everyone watering)",
+                    f"{emoji} **{label}!** The tree is now **{new_size}ft** — thanks {who} and everyone watering!",
                     GARDEN_BOT_NAME,
                 )
-            elif new_xp % 10 == 0:
+            elif new_size % 10 == 0:
                 post_channel_bot_message(
                     conn,
                     socketio,
                     "garden",
-                    f"{emoji} {who} watered the tree · {new_xp} XP · {label}",
+                    f"{emoji} {who} watered the tree · **{new_size}ft** · {label}",
                     GARDEN_BOT_NAME,
                 )
-            st = garden_state_dict(conn)
+            # Fruit harvest: chance rises with height (Discord-style apple drops)
+            apple = None
+            chance = 0.22 if new_size >= 5 else (0.12 if new_size >= 2 else 0.0)
+            if chance and random.random() < chance:
+                apple = garden_spawn_apple(socketio)
+                if apple:
+                    post_channel_bot_message(
+                        conn,
+                        socketio,
+                        "garden",
+                        "🍎 Fruit dropping! Tap the basket under the apple to catch it.",
+                        GARDEN_BOT_NAME,
+                    )
+            st = garden_state_dict(conn, viewer=wallet)
+            # Waterer just watered — they can't water again until someone else does
             st["can_water"] = False
-            st["cooldown_remaining"] = GARDEN_WATER_COOLDOWN
-            st["my_waters"] = int(row["total_waters"] + 1) if row else 1
+            st["blocked_reason"] = "same_waterer"
+            st["cooldown_remaining"] = st.get("cooldown_sec") or cd
             try:
                 socketio.emit("community_garden", st, room="community:garden")
             except Exception:
                 pass
-            return jsonify({"ok": True, "garden": st, "grew": new_stage > old_stage})
+            return jsonify({
+                "ok": True,
+                "garden": st,
+                "grew": new_stage > old_stage,
+                "height_ft": new_size,
+                "apple_drop": apple,
+            })
+        finally:
+            conn.close()
+
+    @app.route("/api/community/garden/catch", methods=["POST"])
+    def api_garden_catch():
+        """Catch a falling apple: pick the basket lane under the fruit."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        drop_id = (data.get("drop_id") or data.get("id") or "").strip()
+        try:
+            lane = int(data.get("lane"))
+        except Exception:
+            lane = -1
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if not drop_id:
+            return jsonify({"error": "drop_id required"}), 400
+        garden_prune_apple_drops()
+        drop = GARDEN_APPLE_DROPS.get(drop_id)
+        if not drop:
+            return jsonify({"error": "Apple already gone", "code": "gone"}), 410
+        if drop.get("caught"):
+            return jsonify({
+                "error": "Already caught",
+                "code": "caught",
+                "by": drop.get("by_name") or drop.get("by"),
+            }), 409
+        if float(drop.get("exp") or 0) < time.time():
+            GARDEN_APPLE_DROPS.pop(drop_id, None)
+            return jsonify({"error": "Too slow — apple hit the ground", "code": "expired"}), 410
+        if lane != int(drop.get("lane", -1)):
+            return jsonify({
+                "error": "Wrong basket — apple missed!",
+                "code": "miss",
+                "lane": drop.get("lane"),
+            }), 400
+        conn = get_db()
+        try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "banned", "code": "banned"}), 403
+            ensure_member(conn, wallet)
+            garden_ensure_columns(conn)
+            prof = profile_dict(conn, wallet)
+            who = (prof.get("display_name") or "").strip() or (
+                wallet[:6] + "…" + wallet[-4:] if len(wallet) > 10 else wallet
+            )
+            drop["caught"] = True
+            drop["by"] = wallet
+            drop["by_name"] = who
+            conn.execute(
+                """INSERT INTO community_garden (community_id, xp, waters, stage, updated_at, last_milestone)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(community_id) DO NOTHING""",
+                (COMMUNITY_ID, 0, 0, 0, int(time.time()), 0),
+            )
+            conn.execute(
+                """UPDATE community_garden SET apples=COALESCE(apples,0)+1
+                   WHERE community_id=?""",
+                (COMMUNITY_ID,),
+            )
+            wr = conn.execute(
+                """SELECT total_waters FROM community_garden_waters
+                   WHERE community_id=? AND wallet=?""",
+                (COMMUNITY_ID, wallet),
+            ).fetchone()
+            if wr:
+                conn.execute(
+                    """UPDATE community_garden_waters
+                       SET apples=COALESCE(apples,0)+1
+                       WHERE community_id=? AND wallet=?""",
+                    (COMMUNITY_ID, wallet),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO community_garden_waters
+                       (community_id, wallet, last_water_at, total_waters, apples)
+                       VALUES (?,?,?,?,?)""",
+                    (COMMUNITY_ID, wallet, 0, 0, 1),
+                )
+            conn.commit()
+            post_channel_bot_message(
+                conn,
+                socketio,
+                "garden",
+                f"🍎 {who} caught an apple!",
+                GARDEN_BOT_NAME,
+            )
+            st = garden_state_dict(conn, viewer=wallet)
+            try:
+                socketio.emit(
+                    "community_garden_apple",
+                    {**drop, "caught": True, "by": wallet, "by_name": who},
+                    room="community:garden",
+                )
+                socketio.emit("community_garden", st, room="community:garden")
+            except Exception:
+                pass
+            return jsonify({"ok": True, "garden": st, "caught": True, "by_name": who})
         finally:
             conn.close()
 
