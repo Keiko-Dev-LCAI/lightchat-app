@@ -321,6 +321,27 @@ def init_community_db(get_db):
             created_at INTEGER NOT NULL
         )"""
     )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_tickets (
+            id TEXT PRIMARY KEY,
+            community_id TEXT NOT NULL,
+            opener_wallet TEXT NOT NULL,
+            subject TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at INTEGER NOT NULL,
+            closed_at INTEGER,
+            closed_by TEXT
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_ticket_messages (
+            id TEXT PRIMARY KEY,
+            ticket_id TEXT NOT NULL,
+            sender_wallet TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )"""
+    )
     conn.commit()
 
 
@@ -560,6 +581,17 @@ TIMEOUT_DURATIONS = {
     "24hr": 86400,
     "1wk": 604800,
 }
+
+
+def can_see_ticket(conn, ticket: dict, wallet: str) -> bool:
+    """Opener + all mods/admins can see a ticket; other members cannot."""
+    wallet = _norm(wallet)
+    if not ticket:
+        return False
+    if _norm(ticket.get("opener_wallet") or "") == wallet:
+        return True
+    role = get_role(conn, wallet)
+    return is_staff(role)
 
 
 def can_moderate(actor_role: str, target_role: str, action: str = "") -> bool:
@@ -1481,6 +1513,265 @@ def register_community_routes(app, socketio, get_db):
                 (COMMUNITY_ID,),
             ).fetchall()
             return jsonify({"ok": True, "owners": [o["wallet"] for o in owners]})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/tickets", methods=["GET"])
+    def api_tickets_list():
+        wallet = _norm(request.args.get("wallet", ""))
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "banned", "code": "banned"}), 403
+            role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "join first"}), 403
+            if is_staff(role):
+                rows = conn.execute(
+                    """SELECT * FROM community_tickets WHERE community_id=?
+                       ORDER BY created_at DESC LIMIT 100""",
+                    (COMMUNITY_ID,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT * FROM community_tickets
+                       WHERE community_id=? AND opener_wallet=?
+                       ORDER BY created_at DESC LIMIT 50""",
+                    (COMMUNITY_ID, wallet),
+                ).fetchall()
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["opener"] = profile_dict(conn, r["opener_wallet"])
+                out.append(d)
+            return jsonify({"tickets": out, "count": len(out)})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/tickets", methods=["POST"])
+    def api_tickets_create():
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        subject = (data.get("subject") or "Help request")[:120].strip() or "Help request"
+        body = (data.get("body") or data.get("content") or "").strip()[:4000]
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "banned", "code": "banned"}), 403
+            role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "join first"}), 403
+            until = get_timeout_until(conn, wallet)
+            now = int(time.time())
+            if until > now:
+                return jsonify({"error": "You are timed out", "code": "timed_out"}), 403
+            # One open ticket at a time for members
+            if not is_staff(role):
+                open_n = conn.execute(
+                    """SELECT COUNT(*) AS c FROM community_tickets
+                       WHERE community_id=? AND opener_wallet=? AND status='open'""",
+                    (COMMUNITY_ID, wallet),
+                ).fetchone()["c"]
+                if open_n >= 1:
+                    return jsonify({"error": "You already have an open ticket"}), 400
+            tid = str(uuid.uuid4())
+            conn.execute(
+                """INSERT INTO community_tickets
+                   (id, community_id, opener_wallet, subject, status, created_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (tid, COMMUNITY_ID, wallet, subject, "open", now),
+            )
+            if body:
+                mid = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO community_ticket_messages
+                       (id, ticket_id, sender_wallet, content, created_at)
+                       VALUES (?,?,?,?,?)""",
+                    (mid, tid, wallet, body, now),
+                )
+            conn.commit()
+            ticket = {
+                "id": tid,
+                "opener_wallet": wallet,
+                "subject": subject,
+                "status": "open",
+                "created_at": now,
+                "opener": profile_dict(conn, wallet),
+            }
+            try:
+                socketio.emit("community_ticket_created", ticket, room="community_staff")
+                socketio.emit("community_ticket_created", ticket, room=wallet)
+            except Exception:
+                pass
+            return jsonify({"ok": True, "ticket": ticket})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/tickets/<tid>", methods=["GET"])
+    def api_ticket_get(tid):
+        wallet = _norm(request.args.get("wallet", ""))
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM community_tickets WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            t = dict(row)
+            if not can_see_ticket(conn, t, wallet):
+                return jsonify({"error": "forbidden"}), 403
+            msgs = conn.execute(
+                """SELECT id, sender_wallet, content, created_at FROM community_ticket_messages
+                   WHERE ticket_id=? ORDER BY created_at ASC LIMIT 300""",
+                (tid,),
+            ).fetchall()
+            out_msgs = []
+            for m in msgs:
+                prof = profile_dict(conn, m["sender_wallet"])
+                out_msgs.append({
+                    "id": m["id"],
+                    "sender_wallet": m["sender_wallet"],
+                    "content": m["content"],
+                    "created_at": m["created_at"],
+                    "display_name": prof["display_name"],
+                    "role": prof["role"],
+                    "has_avatar": prof["has_avatar"],
+                })
+            t["opener"] = profile_dict(conn, t["opener_wallet"])
+            t["messages"] = out_msgs
+            return jsonify({"ticket": t})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/tickets/<tid>/messages", methods=["POST"])
+    def api_ticket_message(tid):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        content = (data.get("content") or "").strip()
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if not content or len(content) > 4000:
+            return jsonify({"error": "content required"}), 400
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM community_tickets WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            t = dict(row)
+            if t.get("status") != "open":
+                return jsonify({"error": "ticket is closed"}), 400
+            if not can_see_ticket(conn, t, wallet):
+                return jsonify({"error": "forbidden"}), 403
+            role = ensure_member(conn, wallet)
+            # Only opener or staff may reply
+            is_opener = _norm(t["opener_wallet"]) == wallet
+            if not is_opener and not is_staff(role):
+                return jsonify({"error": "only the member or staff can reply"}), 403
+            until = get_timeout_until(conn, wallet)
+            now = int(time.time())
+            if until > now and not is_staff(role):
+                return jsonify({"error": "You are timed out", "code": "timed_out"}), 403
+            # Links in tickets: staff OK; opener follows same link rule
+            if content_has_link(content) and not is_staff(role):
+                return jsonify({
+                    "error": "Only admins and mods can post links. Ask staff to share links.",
+                    "code": "link_blocked",
+                }), 403
+            mid = str(uuid.uuid4())
+            conn.execute(
+                """INSERT INTO community_ticket_messages
+                   (id, ticket_id, sender_wallet, content, created_at)
+                   VALUES (?,?,?,?,?)""",
+                (mid, tid, wallet, content, now),
+            )
+            conn.commit()
+            prof = profile_dict(conn, wallet)
+            msg = {
+                "id": mid,
+                "ticket_id": tid,
+                "sender_wallet": wallet,
+                "content": content,
+                "created_at": now,
+                "display_name": prof["display_name"],
+                "role": prof["role"],
+                "has_avatar": prof["has_avatar"],
+            }
+            try:
+                socketio.emit("community_ticket_message", msg, room=f"ticket:{tid}")
+                socketio.emit("community_ticket_message", msg, room="community_staff")
+                socketio.emit("community_ticket_message", msg, room=_norm(t["opener_wallet"]))
+            except Exception:
+                pass
+            return jsonify({"ok": True, "message": msg})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/tickets/<tid>/close", methods=["POST"])
+    def api_ticket_close(tid):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM community_tickets WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            t = dict(row)
+            if not can_see_ticket(conn, t, wallet):
+                return jsonify({"error": "forbidden"}), 403
+            role = get_role(conn, wallet)
+            is_opener = _norm(t["opener_wallet"]) == wallet
+            if not is_opener and not is_staff(role):
+                return jsonify({"error": "forbidden"}), 403
+            now = int(time.time())
+            conn.execute(
+                "UPDATE community_tickets SET status=?, closed_at=?, closed_by=? WHERE id=?",
+                ("closed", now, wallet, tid),
+            )
+            conn.commit()
+            try:
+                socketio.emit(
+                    "community_ticket_closed",
+                    {"id": tid, "closed_by": wallet},
+                    room=f"ticket:{tid}",
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": True, "id": tid, "status": "closed"})
+        finally:
+            conn.close()
+
+    @socketio.on("join_ticket")
+    def on_join_ticket(data):
+        data = data or {}
+        tid = (data.get("ticket_id") or "").strip()
+        wallet = _norm(data.get("wallet", ""))
+        if not wallet.startswith("0x"):
+            return
+        conn = get_db()
+        try:
+            role = get_role(conn, wallet) or ensure_member(conn, wallet)
+            if is_staff(role):
+                join_room("community_staff")
+            if not tid:
+                return
+            row = conn.execute(
+                "SELECT * FROM community_tickets WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row or not can_see_ticket(conn, dict(row), wallet):
+                return
+            join_room(f"ticket:{tid}")
         finally:
             conn.close()
 
