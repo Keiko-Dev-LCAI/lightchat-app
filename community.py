@@ -57,6 +57,7 @@ START_HERE_SECTIONS = [
             {"label": "# Introduce Yourself", "href": "#channel:introduce-yourself", "kind": "channel"},
             {"label": "Members", "href": "#action:directory", "kind": "action"},
             {"label": "# Help", "href": "#channel:help", "kind": "channel"},
+            {"label": "Open a Help ticket", "href": "#action:tickets", "kind": "action"},
         ],
     },
     {
