@@ -1667,6 +1667,10 @@ body {
     <button class="sidebar-tab" id="snav-directory" onclick="switchTab('directory')">
       <span class="sidebar-tab-icon">👥</span> Members
     </button>
+    <button class="sidebar-tab" id="snav-tickets" onclick="switchTab('tickets')">
+      <span class="sidebar-tab-icon">🎫</span> Help
+      <span class="sidebar-notif" id="stickets-dot"></span>
+    </button>
     <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
       <span class="sidebar-tab-icon">📅</span> Events
     </button>
@@ -1736,6 +1740,35 @@ body {
         <div class="comm-header"><div><h2>Members</h2><div class="comm-sub">Online · Invisible · role order</div></div></div>
         <div class="dir-search"><input id="dir-search" placeholder="Search members…" oninput="filterDirectory()"></div>
         <div class="dir-list" id="directory-list"></div>
+      </div>
+    </div>
+
+    <!-- Help tickets — private member↔staff threads -->
+    <div class="tab" id="tab-tickets">
+      <div class="comm-wrap">
+        <div class="comm-header">
+          <div style="flex:1">
+            <h2>Help tickets</h2>
+            <div class="comm-sub">Private with mods/admins · hybrid P2P when online</div>
+          </div>
+          <button type="button" class="comm-gif-btn" onclick="openNewTicketModal()" style="height:40px;padding:0 14px">＋ New</button>
+        </div>
+        <div id="tickets-list" class="dir-list" style="padding:8px 12px"></div>
+        <div id="ticket-chat" style="display:none;flex:1;flex-direction:column;min-height:0">
+          <div class="comm-header" style="gap:8px">
+            <button type="button" class="back-btn" onclick="closeTicketChat()" style="background:none;border:none;color:var(--text);font-size:28px;cursor:pointer;padding:0 4px">‹</button>
+            <div style="flex:1;min-width:0">
+              <h2 id="ticket-chat-title" style="font-size:16px;margin:0">Ticket</h2>
+              <div class="comm-sub" id="ticket-chat-sub">Private</div>
+            </div>
+            <button type="button" class="comm-gif-btn" id="ticket-close-btn" onclick="closeActiveTicket()" style="height:36px;padding:0 12px;font-size:12px">Resolve</button>
+          </div>
+          <div class="comm-msgs" id="ticket-msgs"></div>
+          <div class="comm-input-row">
+            <input id="ticket-input" placeholder="Reply privately…" maxlength="4000" onkeydown="if(event.key==='Enter')sendTicketMsg()">
+            <button type="button" onclick="sendTicketMsg()">Send</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -4372,6 +4405,7 @@ function switchTab(name) {
   if (name === 'contacts' && wallet) { document.getElementById('contacts-dot')?.classList.remove('show'); document.getElementById('scontacts-dot')?.classList.remove('show'); loadContacts(); }
   if (name === 'memories') { switchTab('genchat'); return; }
   if (name === 'genchat') { loadCommunityChannel('general'); }
+  if (name === 'tickets') { loadTicketsList(); }
   if (name === 'channels') { loadChannelsList(); }
   if (name === 'directory') { loadDirectory(); }
   if (name === 'calendar') { loadCommunityEvents(); if (typeof renderCal==='function') try{ renderCal(); }catch(e){} }
@@ -7869,8 +7903,201 @@ async function communityJoin() {
     try { syncPresencePickerFromProfile(); } catch(e) {}
     try { if (typeof updateUI === 'function') updateUI(); } catch(e) {}
     try { refreshOwnerMenuVisibility(); } catch(e) {}
+    try {
+      if (socket && isCommStaff()) socket.emit('join_ticket', { wallet, ticket_id: '' });
+      // staff room via join_ticket with empty skipped — emit presence join for staff
+      if (socket && isCommStaff()) socket.emit('join_community_channel', { slug: '_staff' });
+    } catch (e) {}
     return true;
   } catch(e) { console.warn('community join', e); return false; }
+}
+
+let _tickets = [];
+let _activeTicketId = null;
+
+async function loadTicketsList() {
+  if (!wallet) {
+    const el = document.getElementById('tickets-list');
+    if (el) el.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center">Connect wallet to use Help tickets</div>';
+    return;
+  }
+  await communityJoin();
+  _activeTicketId = null;
+  const chat = document.getElementById('ticket-chat');
+  const list = document.getElementById('tickets-list');
+  if (chat) chat.style.display = 'none';
+  if (list) list.style.display = '';
+  try {
+    const r = await fetch(BACKEND + '/api/community/tickets?wallet=' + encodeURIComponent(wallet));
+    const j = await r.json();
+    if (!r.ok) { showToast(j.error || 'Could not load tickets'); return; }
+    _tickets = j.tickets || [];
+    renderTicketsList();
+    const openN = _tickets.filter(function (t) { return t.status === 'open'; }).length;
+    const dot = document.getElementById('stickets-dot');
+    if (dot && isCommStaff() && openN) dot.classList.add('show');
+    else if (dot) dot.classList.remove('show');
+  } catch (e) {
+    showToast('Could not load tickets');
+  }
+}
+
+function renderTicketsList() {
+  const el = document.getElementById('tickets-list');
+  if (!el) return;
+  if (!_tickets.length) {
+    el.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;line-height:1.5">No tickets yet.<br>Tap <strong>+ New</strong> for private help with mods.</div>';
+    return;
+  }
+  el.innerHTML = _tickets.map(function (t) {
+    const open = t.status === 'open';
+    const who = stripAt((t.opener && t.opener.display_name) || '') || shortenWallet(t.opener_wallet);
+    const when = formatMessageTime(t.created_at);
+    return '<div class="dir-item" onclick="openTicketChat(\'' + escapeHtml(t.id) + '\')">' +
+      '<div class="comm-av">' + (open ? '🎫' : '✅') + '</div>' +
+      '<div class="meta" style="flex:1;min-width:0">' +
+      '<div class="n">' + escapeHtml(t.subject || 'Help') +
+      (open ? ' <span style="color:#23a559;font-size:11px">· open</span>' : ' <span style="color:var(--text2);font-size:11px">· closed</span>') +
+      '</div>' +
+      '<div class="d">' + escapeHtml(who) + (when ? ' · ' + escapeHtml(when) : '') + '</div>' +
+      '</div></div>';
+  }).join('');
+}
+
+function openNewTicketModal() {
+  if (!wallet) { showToast('Connect wallet first'); return; }
+  const subject = prompt('Short subject for your help ticket', 'Need help');
+  if (subject === null) return;
+  const body = prompt('Describe the problem (optional)', '');
+  if (body === null) return;
+  createTicket(subject, body || '');
+}
+
+async function createTicket(subject, body) {
+  await communityJoin();
+  try {
+    const r = await fetch(BACKEND + '/api/community/tickets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, subject: subject || 'Help request', body: body || '' }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Could not open ticket'); return; }
+    showToast('Ticket opened — mods can see it');
+    await loadTicketsList();
+    if (j.ticket && j.ticket.id) openTicketChat(j.ticket.id);
+  } catch (e) {
+    showToast('Could not open ticket');
+  }
+}
+
+async function openTicketChat(tid) {
+  if (!wallet || !tid) return;
+  _activeTicketId = tid;
+  document.getElementById('tickets-list').style.display = 'none';
+  const chat = document.getElementById('ticket-chat');
+  if (chat) chat.style.display = 'flex';
+  try {
+    if (socket) socket.emit('join_ticket', { wallet, ticket_id: tid });
+  } catch (e) {}
+  await refreshTicketChat();
+}
+
+function closeTicketChat(keepList) {
+  _activeTicketId = null;
+  const chat = document.getElementById('ticket-chat');
+  if (chat) chat.style.display = 'none';
+  if (!keepList) {
+    const list = document.getElementById('tickets-list');
+    if (list) list.style.display = '';
+  }
+}
+
+async function refreshTicketChat() {
+  if (!_activeTicketId || !wallet) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/tickets/' + encodeURIComponent(_activeTicketId) + '?wallet=' + encodeURIComponent(wallet));
+    const j = await r.json();
+    if (!r.ok) { showToast(j.error || 'Forbidden'); closeTicketChat(); return; }
+    const t = j.ticket || {};
+    const title = document.getElementById('ticket-chat-title');
+    const sub = document.getElementById('ticket-chat-sub');
+    if (title) title.textContent = t.subject || 'Ticket';
+    const opener = stripAt((t.opener && t.opener.display_name) || '') || shortenWallet(t.opener_wallet);
+    if (sub) sub.textContent = (t.status || 'open') + ' · ' + opener + ' · staff can see';
+    const closeBtn = document.getElementById('ticket-close-btn');
+    if (closeBtn) closeBtn.style.display = t.status === 'open' ? '' : 'none';
+    const box = document.getElementById('ticket-msgs');
+    const msgs = t.messages || [];
+    if (!box) return;
+    if (!msgs.length) {
+      box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center">Describe your issue — a mod will reply here privately.</div>';
+      return;
+    }
+    box.innerHTML = msgs.map(function (m) {
+      const name = escapeHtml(stripAt(m.display_name) || shortenWallet(m.sender_wallet));
+      const roleLbl = displayRoleLabel(m.role);
+      const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
+      const when = formatMessageTime(m.created_at);
+      return '<div class="comm-msg"><div class="comm-av">' + name.charAt(0).toUpperCase() + '</div>' +
+        '<div class="comm-bubble"><div class="who">' + name + role + '</div>' +
+        '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
+        '<div class="when">' + escapeHtml(when) + '</div></div></div>';
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    showToast('Could not load ticket');
+  }
+}
+
+async function sendTicketMsg() {
+  if (!wallet || !_activeTicketId) return;
+  const inp = document.getElementById('ticket-input');
+  const content = (inp && inp.value || '').trim();
+  if (!content) return;
+  if (inp) inp.value = '';
+  // Prefer relay so all staff see it; P2P is bonus when mesh exists
+  try {
+    const r = await fetch(BACKEND + '/api/community/tickets/' + encodeURIComponent(_activeTicketId) + '/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, content }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Send failed'); return; }
+    // Also try P2P broadcast to peers in ticket (opener + online staff)
+    try {
+      if (window.genChatP2P && genChatP2P.connectedCount && genChatP2P.connectedCount() > 0 && j.message) {
+        genChatP2P._broadcastEnvelope({
+          v: 1,
+          kind: 'ticket_msg',
+          ticket_id: _activeTicketId,
+          msg: j.message,
+        }, null);
+      }
+    } catch (e) {}
+    await refreshTicketChat();
+  } catch (e) {
+    showToast('Send failed');
+  }
+}
+
+async function closeActiveTicket() {
+  if (!wallet || !_activeTicketId) return;
+  if (!confirm('Mark this ticket resolved?')) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/tickets/' + encodeURIComponent(_activeTicketId) + '/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Could not close'); return; }
+    showToast('Ticket resolved');
+    await loadTicketsList();
+  } catch (e) {
+    showToast('Could not close');
+  }
 }
 
 async function loadChannelsList() {
