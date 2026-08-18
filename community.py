@@ -370,6 +370,26 @@ def init_community_db(get_db):
         conn.commit()
     except Exception:
         pass
+    try:
+        conn.execute(
+            "ALTER TABLE community_messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT ''"
+        )
+        conn.commit()
+    except Exception:
+        pass
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_message_reactions (
+            message_id TEXT NOT NULL,
+            wallet TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (message_id, wallet, emoji)
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_msg_reactions_mid
+           ON community_message_reactions(message_id)"""
+    )
 
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_stickers (
@@ -1408,6 +1428,125 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
     }
 
 
+# Discord-style quick reactions (keep small + familiar)
+REACTION_EMOJI_ALLOW = frozenset(
+    ["👍", "😂", "❤️", "🔥", "😮", "😢", "🎉", "👀", "💯", "🤔"]
+)
+
+
+def messages_ensure_extras(conn) -> None:
+    """Ensure reply_to + reactions table exist (older DBs)."""
+    try:
+        conn.execute(
+            "ALTER TABLE community_messages ADD COLUMN reply_to TEXT NOT NULL DEFAULT ''"
+        )
+        conn.commit()
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS community_message_reactions (
+                message_id TEXT NOT NULL,
+                wallet TEXT NOT NULL,
+                emoji TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (message_id, wallet, emoji)
+            )"""
+        )
+        conn.execute(
+            """CREATE INDEX IF NOT EXISTS idx_msg_reactions_mid
+               ON community_message_reactions(message_id)"""
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
+def message_reactions_summary(conn, message_id: str, viewer: str = "") -> list:
+    """[{emoji, count, me}] ordered by count desc."""
+    messages_ensure_extras(conn)
+    rows = conn.execute(
+        """SELECT emoji, COUNT(*) AS c,
+                  SUM(CASE WHEN wallet=? THEN 1 ELSE 0 END) AS me
+           FROM community_message_reactions
+           WHERE message_id=?
+           GROUP BY emoji
+           ORDER BY c DESC, emoji ASC""",
+        (_norm(viewer) if viewer else "", message_id),
+    ).fetchall()
+    out = []
+    for r in rows:
+        out.append({
+            "emoji": r["emoji"],
+            "count": int(r["c"] or 0),
+            "me": bool(int(r["me"] or 0)),
+        })
+    return out
+
+
+def message_reply_preview(conn, reply_to_id: str) -> dict | None:
+    if not reply_to_id:
+        return None
+    messages_ensure_extras(conn)
+    row = conn.execute(
+        "SELECT id, sender_wallet, content FROM community_messages WHERE id=?",
+        (reply_to_id,),
+    ).fetchone()
+    if not row:
+        return {"id": reply_to_id, "display_name": "Message", "content": "", "gone": True}
+    sw = row["sender_wallet"] or ""
+    name = "Bot"
+    if str(sw).startswith("bot:"):
+        name = GARDEN_BOT_NAME if "garden" in sw else "Bot"
+    else:
+        try:
+            name = profile_dict(conn, sw).get("display_name") or (
+                sw[:6] + "…" + sw[-4:] if len(sw) > 10 else sw
+            )
+        except Exception:
+            name = sw[:8] + "…" if sw else "User"
+    preview = (row["content"] or "").replace("\n", " ").strip()
+    if preview.startswith("[[img]]"):
+        preview = "📷 Image"
+    elif preview.startswith("[[gif]]"):
+        preview = "GIF"
+    elif preview.startswith("[[video]]"):
+        preview = "🎬 Video"
+    if len(preview) > 120:
+        preview = preview[:117] + "…"
+    return {
+        "id": row["id"],
+        "sender_wallet": sw,
+        "display_name": name,
+        "content": preview,
+        "gone": False,
+    }
+
+
+def enrich_channel_message(conn, msg: dict, viewer: str = "") -> dict:
+    """Attach reply + reactions fields for API/socket payloads."""
+    messages_ensure_extras(conn)
+    mid = msg.get("id") or ""
+    reply_to = ""
+    try:
+        reply_to = (msg.get("reply_to") or "").strip()
+    except Exception:
+        reply_to = ""
+    if not reply_to and mid:
+        try:
+            row = conn.execute(
+                "SELECT reply_to FROM community_messages WHERE id=?", (mid,)
+            ).fetchone()
+            if row:
+                reply_to = (row["reply_to"] or "").strip()
+        except Exception:
+            pass
+    msg["reply_to"] = reply_to
+    msg["reply"] = message_reply_preview(conn, reply_to) if reply_to else None
+    msg["reactions"] = message_reactions_summary(conn, mid, viewer) if mid else []
+    return msg
+
+
 def post_channel_bot_message(conn, socketio, slug: str, content: str, bot_name: str = "Bot") -> dict | None:
     """Insert a channel message as a bot (no real wallet) and emit live."""
     ch = conn.execute(
@@ -1921,56 +2060,70 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
+            messages_ensure_extras(conn)
             try:
                 rows = conn.execute(
-                    """SELECT id, sender_wallet, content, created_at, edited_at FROM community_messages
+                    """SELECT id, sender_wallet, content, created_at, edited_at, reply_to
+                       FROM community_messages
                        WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
                     (ch["id"], limit),
                 ).fetchall()
             except Exception:
-                rows = conn.execute(
-                    """SELECT id, sender_wallet, content, created_at FROM community_messages
-                       WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
-                    (ch["id"], limit),
-                ).fetchall()
+                try:
+                    rows = conn.execute(
+                        """SELECT id, sender_wallet, content, created_at, edited_at FROM community_messages
+                           WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
+                        (ch["id"], limit),
+                    ).fetchall()
+                except Exception:
+                    rows = conn.execute(
+                        """SELECT id, sender_wallet, content, created_at FROM community_messages
+                           WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
+                        (ch["id"], limit),
+                    ).fetchall()
             msgs = []
             for r in reversed(list(rows)):
                 sw = r["sender_wallet"] or ""
                 edited_at = None
+                reply_to = ""
                 try:
                     edited_at = r["edited_at"]
                 except Exception:
                     edited_at = None
+                try:
+                    reply_to = (r["reply_to"] or "").strip()
+                except Exception:
+                    reply_to = ""
                 if str(sw).startswith("bot:"):
-                    msgs.append(
-                        {
-                            "id": r["id"],
-                            "sender_wallet": sw,
-                            "content": r["content"],
-                            "created_at": r["created_at"],
-                            "edited": bool(edited_at),
-                            "edited_at": edited_at,
-                            "display_name": GARDEN_BOT_NAME if "garden" in sw else "Bot",
-                            "role": "bot",
-                            "has_avatar": False,
-                            "bot": True,
-                        }
-                    )
-                    continue
-                prof = profile_dict(conn, sw)
-                msgs.append(
-                    {
+                    msg = {
                         "id": r["id"],
                         "sender_wallet": sw,
                         "content": r["content"],
                         "created_at": r["created_at"],
                         "edited": bool(edited_at),
                         "edited_at": edited_at,
-                        "display_name": prof["display_name"],
-                        "role": prof["role"],
-                        "has_avatar": prof["has_avatar"],
+                        "display_name": GARDEN_BOT_NAME if "garden" in sw else "Bot",
+                        "role": "bot",
+                        "has_avatar": False,
+                        "bot": True,
+                        "reply_to": reply_to,
                     }
-                )
+                    msgs.append(enrich_channel_message(conn, msg, viewer))
+                    continue
+                prof = profile_dict(conn, sw)
+                msg = {
+                    "id": r["id"],
+                    "sender_wallet": sw,
+                    "content": r["content"],
+                    "created_at": r["created_at"],
+                    "edited": bool(edited_at),
+                    "edited_at": edited_at,
+                    "display_name": prof["display_name"],
+                    "role": prof["role"],
+                    "has_avatar": prof["has_avatar"],
+                    "reply_to": reply_to,
+                }
+                msgs.append(enrich_channel_message(conn, msg, viewer))
             return jsonify({"messages": msgs, "channel_id": ch["id"], "slug": slug})
         finally:
             conn.close()
@@ -2095,13 +2248,30 @@ def register_community_routes(app, socketio, get_db):
             ro = int(ch["readonly_members"] or 0)
             if ch["slug"] != "media" and ro and not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
                 return jsonify({"error": "this channel is read-only — only mods can post"}), 403
+            messages_ensure_extras(conn)
+            reply_to = (data.get("reply_to") or data.get("reply_to_id") or "").strip()
+            if reply_to:
+                parent = conn.execute(
+                    "SELECT id FROM community_messages WHERE id=? AND channel_id=?",
+                    (reply_to, ch["id"]),
+                ).fetchone()
+                if not parent:
+                    reply_to = ""
             mid = str(uuid.uuid4())
-            conn.execute(
-                """INSERT INTO community_messages
-                   (id, community_id, channel_id, sender_wallet, content, created_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (mid, COMMUNITY_ID, ch["id"], wallet, content, now),
-            )
+            try:
+                conn.execute(
+                    """INSERT INTO community_messages
+                       (id, community_id, channel_id, sender_wallet, content, created_at, reply_to)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (mid, COMMUNITY_ID, ch["id"], wallet, content, now, reply_to),
+                )
+            except Exception:
+                conn.execute(
+                    """INSERT INTO community_messages
+                       (id, community_id, channel_id, sender_wallet, content, created_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (mid, COMMUNITY_ID, ch["id"], wallet, content, now),
+                )
             conn.commit()
             prof = profile_dict(conn, wallet)
             msg = {
@@ -2115,7 +2285,9 @@ def register_community_routes(app, socketio, get_db):
                 "slug": slug,
                 "mention_everyone": mention_everyone,
                 "mention_wallets": mention_wallets,
+                "reply_to": reply_to,
             }
+            enrich_channel_message(conn, msg, wallet)
             try:
                 socketio.emit("community_message", msg, room=f"community:{slug}")
             except Exception:
@@ -2125,6 +2297,75 @@ def register_community_routes(app, socketio, get_db):
                     socketio, conn, msg, mention_everyone, mention_wallets, wallet
                 )
             return jsonify({"ok": True, "message": msg})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/messages/<slug>/<msg_id>/reactions", methods=["POST"])
+    def api_message_reaction(slug, msg_id):
+        """Toggle a Discord-style emoji reaction on a message."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        emoji = (data.get("emoji") or "").strip()
+        msg_id = (msg_id or "").strip()
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if emoji not in REACTION_EMOJI_ALLOW:
+            return jsonify({"error": "emoji not allowed", "allowed": sorted(REACTION_EMOJI_ALLOW)}), 400
+        if not msg_id:
+            return jsonify({"error": "message id required"}), 400
+        conn = get_db()
+        try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "banned", "code": "banned"}), 403
+            ensure_member(conn, wallet)
+            messages_ensure_extras(conn)
+            ch = conn.execute(
+                "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+                (COMMUNITY_ID, slug),
+            ).fetchone()
+            if not ch:
+                return jsonify({"error": "channel not found"}), 404
+            row = conn.execute(
+                "SELECT id FROM community_messages WHERE id=? AND channel_id=?",
+                (msg_id, ch["id"]),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "message not found"}), 404
+            existing = conn.execute(
+                """SELECT 1 FROM community_message_reactions
+                   WHERE message_id=? AND wallet=? AND emoji=?""",
+                (msg_id, wallet, emoji),
+            ).fetchone()
+            now = int(time.time())
+            if existing:
+                conn.execute(
+                    """DELETE FROM community_message_reactions
+                       WHERE message_id=? AND wallet=? AND emoji=?""",
+                    (msg_id, wallet, emoji),
+                )
+                added = False
+            else:
+                conn.execute(
+                    """INSERT INTO community_message_reactions
+                       (message_id, wallet, emoji, created_at) VALUES (?,?,?,?)""",
+                    (msg_id, wallet, emoji, now),
+                )
+                added = True
+            conn.commit()
+            reactions = message_reactions_summary(conn, msg_id, wallet)
+            payload = {
+                "id": msg_id,
+                "slug": slug,
+                "emoji": emoji,
+                "added": added,
+                "wallet": wallet,
+                "reactions": reactions,
+            }
+            try:
+                socketio.emit("community_reaction", payload, room=f"community:{slug}")
+            except Exception:
+                pass
+            return jsonify({"ok": True, **payload})
         finally:
             conn.close()
 
