@@ -2023,11 +2023,9 @@ body {
               <input type="checkbox" id="me-hide-wallet" onchange="toggleHideWalletPrivacy(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
               Hide my wallet from other members
             </label>
-            <label style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;color:var(--text2);cursor:pointer">
-              <input type="checkbox" id="me-p2p-only" onchange="toggleP2POnly(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
-              Gen Chat: P2P only (skip relay)
-            </label>
-            <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.4;padding-left:28px">When on, Gen Chat won’t post through the server if no peers are connected — stays local until P2P syncs.</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:12px;line-height:1.45;padding:10px 12px;border-radius:10px;background:rgba(91,75,255,0.12);border:1px solid var(--border)">
+              Chat history is <strong style="color:var(--text)">saved</strong> (like Discord) so posts stay after you log off. Live delivery still uses P2P when peers are online.
+            </div>
             <label style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;color:var(--text2);cursor:pointer">
               <input type="checkbox" id="me-holepunch" onchange="toggleHolepunchSpike(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
               Holepunch spike (experimental)
@@ -2480,11 +2478,22 @@ body {
     <div style="margin-top:22px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px 20px">
       <div style="font-size:18px;font-weight:700;margin-bottom:8px">♻️ Chat history</div>
       <div style="font-size:14px;color:var(--text2);line-height:1.55;margin-bottom:12px">
-        If deleted posts stay hidden after a refresh, you can clear local delete memory. This does not undelete server posts.
+        History is saved by default (Discord-style). If deleted posts stay hidden after a refresh, you can clear local delete memory. This does not undelete server posts.
       </div>
       <button type="button" onclick="clearCommDeleteTombstones()" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:rgba(91,75,255,0.15);color:var(--text);font-weight:700;font-size:15px;cursor:pointer;font-family:inherit">
         Restore hidden local history…
       </button>
+    </div>
+
+    <div style="margin-top:22px;background:var(--card);border:1px solid rgba(255,107,107,0.35);border-radius:18px;padding:18px 20px">
+      <div style="font-size:16px;font-weight:700;margin-bottom:8px;color:#ffc9c9">Advanced · P2P only</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:12px">
+        <strong style="color:var(--text)">Not recommended.</strong> Skips saving Gen Chat to the host. Posts may vanish after log off / refresh / another device. Leave off for Discord-like history (required for lightchain.ai handoff).
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="setting-p2p-only" onchange="toggleP2POnly(this.checked)" style="width:18px;height:18px;accent-color:#ff6b6b">
+        Enable P2P-only mode (no history save)
+      </label>
     </div>
 
     <!-- X contact removed -->
@@ -3391,8 +3400,6 @@ function updateUI() {
     const hide = localStorage.getItem('lc_hide_wallet') === '1';
     hideCb.checked = hide;
   }
-  const p2pCb = document.getElementById('me-p2p-only');
-  if (p2pCb) p2pCb.checked = localStorage.getItem('lc_p2p_only') === '1';
   const hpCb = document.getElementById('me-holepunch');
   if (hpCb) hpCb.checked = localStorage.getItem('lc_holepunch_on') === '1';
   const hpRel = document.getElementById('me-holepunch-relay');
@@ -3413,6 +3420,9 @@ function updateUI() {
 
 /** Clear local delete tombstones so P2P history can show again (does not undelete server rows). */
 function clearCommDeleteTombstones() {
+  if (!confirm('Clear local delete memory?\n\nHidden P2P copies may show again. Server-deleted posts stay deleted.')) {
+    return;
+  }
   try {
     const keys = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -3420,7 +3430,9 @@ function clearCommDeleteTombstones() {
       if (k && k.indexOf('lc_p2p_tombstones_') === 0) keys.push(k);
     }
     keys.forEach(function (k) { localStorage.removeItem(k); });
-    showToast('Cleared delete memory — reloading channel');
+    showToast(keys.length ? ('Restored · cleared ' + keys.length + ' delete record(s)') : 'Nothing to restore');
+    try { closeSettings(); } catch (e) {}
+    try { switchTab('genchat', { skipChannelLoad: true }); } catch (e) {}
     loadCommunityChannel(_activeCommSlug || 'general');
   } catch (e) {
     showToast('Could not clear');
@@ -5773,6 +5785,11 @@ function loadSettings() {
 function saveSettings() { localStorage.setItem('lc_settings', JSON.stringify(settings)); }
 
 function showSettings() {
+  try {
+    const cb = document.getElementById('setting-p2p-only');
+    if (cb) cb.checked = localStorage.getItem('lc_p2p_only') === '1';
+  } catch (e) {}
+
   if (!wallet) { showToast('Connect your wallet first'); return; }
   document.getElementById('setting-sound').checked = settings.sound;
   document.getElementById('setting-push').checked = settings.pushNotifs;
@@ -7237,6 +7254,7 @@ function applyDeepLinkTab() {
 
 window.addEventListener('load', async () => {
   loadSettings();
+  try { ensureHistorySaveDefault(); } catch (e) {}
   registerServiceWorker();
   initPicker();
   initMemoryContextMenu();
@@ -10409,9 +10427,28 @@ function ensureDmP2P() {
 }
 
 function toggleP2POnly(on) {
+  if (on) {
+    if (!confirm('Enable P2P-only mode?\n\nGen Chat will NOT save history to the host. Posts can disappear after log off or on another device.\n\nLeave this OFF for Discord-like history.')) {
+      const cb = document.getElementById('setting-p2p-only');
+      if (cb) cb.checked = false;
+      return;
+    }
+  }
   try { localStorage.setItem('lc_p2p_only', on ? '1' : '0'); } catch (e) {}
-  showToast(on ? 'Gen Chat: P2P only (no relay)' : 'Gen Chat: P2P + relay fallback');
+  showToast(on ? '⚠️ P2P-only — history may not survive log off' : 'History save on — Discord-style');
   try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
+}
+
+/** Force history-save default (handoff): clear leftover P2P-only unless user re-enables in Settings. */
+function ensureHistorySaveDefault() {
+  try {
+    if (localStorage.getItem('lc_history_default_v1') === '1') return;
+    localStorage.setItem('lc_history_default_v1', '1');
+    if (localStorage.getItem('lc_p2p_only') === '1') {
+      localStorage.removeItem('lc_p2p_only');
+      showToast('History save is on by default now', 3200);
+    }
+  } catch (e) {}
 }
 
 function saveHolepunchRelay(url) {
