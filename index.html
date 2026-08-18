@@ -4508,7 +4508,8 @@ async function confirmDeleteHandle() {
   } else showToast(resp.error || 'Something went wrong');
 }
 
-function switchTab(name) {
+function switchTab(name, opts) {
+  opts = opts || {};
   const chatEl = document.getElementById('chat-view');
   if (chatEl && chatEl.classList.contains('open')) closeChat();
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -4526,7 +4527,10 @@ function switchTab(name) {
   if (name === 'memories') { switchTab('genchat'); return; }
   if (name === 'genchat') {
     try { document.getElementById('sgenchat-dot')?.classList.remove('show'); } catch (e) {}
-    loadCommunityChannel('general');
+    // Channels (Start Here, #dev, …) reuse this panel — don't force #general over them
+    if (!opts.skipChannelLoad) {
+      loadCommunityChannel(opts.slug || 'general');
+    }
     showScamWarnIfNeeded();
   }
   if (name === 'tickets') { loadTicketsList(); }
@@ -7946,8 +7950,8 @@ window.addEventListener('load', function() {
 
 // Patch switchTab to load calendar when selected
 var _origSwitchTab = switchTab;
-switchTab = function(name) {
-  _origSwitchTab(name);
+switchTab = function(name, opts) {
+  _origSwitchTab(name, opts);
   if (name === 'calendar') {
     if (!_calEvents.length || true) loadCalEvents();
   }
@@ -8469,31 +8473,64 @@ async function loadChannelsList() {
   } catch(e) { console.warn(e); }
 }
 
-function openCommunityChannel(slug) {
-  _activeCommSlug = slug;
-  if (slug === 'general') { switchTab('genchat'); return; }
-  // reuse genchat panel for any channel
-  switchTab('genchat');
+function setCommunityChannelHeader(slug) {
   const h = document.querySelector('#tab-genchat .comm-header h2');
   const s = document.querySelector('#tab-genchat .comm-sub');
-  const ch = communityChannels.find(c => c.slug === slug);
-  if (h) h.textContent = '# ' + (ch ? ch.name : slug);
-  if (s) s.textContent = ch ? (ch.description || 'Lightchain community') : 'Lightchain community';
+  const p2p = document.getElementById('genchat-p2p-status');
+  const thrBtn = document.getElementById('threads-toggle-btn');
+  const newThr = document.getElementById('new-thread-btn');
+  const ch = (communityChannels || []).find(c => c.slug === slug);
+  if (slug === 'start-here') {
+    if (h) h.textContent = '👋 Start Here';
+    if (s) s.textContent = 'Welcome · rules · Lightchain links · stay safe';
+    if (p2p) p2p.style.display = 'none';
+    if (thrBtn) thrBtn.style.display = 'none';
+    if (newThr) newThr.style.display = 'none';
+    return;
+  }
+  if (p2p) p2p.style.display = '';
+  if (h) {
+    if (slug === 'general') h.textContent = '# Gen Chat';
+    else h.textContent = '# ' + (ch ? ch.name : slug);
+  }
+  if (s) {
+    if (slug === 'general') s.textContent = 'Everyone · Lightchain community';
+    else if (slug === 'dev') s.textContent = '#Devs · builders & tooling';
+    else if (slug === 'nodes') s.textContent = '#Nodes · operators & validators';
+    else if (slug === 'mods') s.textContent = '#Mods · staff only';
+    else s.textContent = ch ? (ch.description || 'Lightchain community') : 'Lightchain community';
+  }
+}
+
+function openCommunityChannel(slug) {
+  slug = slug || 'general';
+  _activeCommSlug = slug;
+  // Reuse genchat panel without forcing a load of #general (that was wiping Start Here)
+  switchTab('genchat', { skipChannelLoad: true });
+  setCommunityChannelHeader(slug);
   const inp = document.getElementById('genchat-input');
-  if (inp) { inp.placeholder = 'Message #' + slug + '…'; inp.dataset.slug = slug; }
+  if (inp) {
+    inp.dataset.slug = slug;
+    if (slug === 'start-here') inp.placeholder = 'Start Here is info only';
+    else inp.placeholder = (slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…')) + ' · type @ to mention';
+  }
   loadCommunityChannel(slug);
 }
 
+let _commLoadSeq = 0;
 async function loadCommunityChannel(slug) {
   slug = slug || _activeCommSlug || 'general';
   _activeCommSlug = slug;
+  const loadSeq = ++_commLoadSeq;
   const box = document.getElementById('genchat-msgs');
   const compose = document.getElementById('genchat-compose');
   if (!box) return;
   closeMentionAc();
+  setCommunityChannelHeader(slug);
   box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;color:var(--text2)">Loading…</div>';
   if (wallet) {
     try { await communityJoin(); } catch(e) { console.warn('join', e); }
+    if (loadSeq !== _commLoadSeq) return; // newer navigation won
     try {
       if (socket && socket.connected) socket.emit('join_community_channel', {slug});
     } catch(e) {}
@@ -8502,6 +8539,7 @@ async function loadCommunityChannel(slug) {
   if (slug === 'start-here') {
     if (compose) compose.style.display = 'none';
     await renderStartHereGuide(box);
+    if (loadSeq !== _commLoadSeq) return;
     return;
   }
   // Gen Chat (or any channel flipped to mode=chat): everyone chats.
@@ -8575,6 +8613,55 @@ async function loadCommunityChannel(slug) {
   }
 }
 
+const START_HERE_FALLBACK = [
+  { title: 'Welcome to LightChat', body: 'Wallet-native community chat for Lightchain. Free for everyone — connect your wallet, set a display name, then join Gen Chat.', links: [
+    { label: 'Open Gen Chat', href: '#channel:general', kind: 'channel' },
+    { label: 'Edit Profile', href: '#action:edit-profile', kind: 'action' },
+  ]},
+  { title: 'Learn about Lightchain', body: 'Official site, docs, and brand.', links: [
+    { label: 'lightchain.ai', href: 'https://lightchain.ai' },
+    { label: 'Developer docs', href: 'https://docs.lightchain.ai/' },
+    { label: 'Brand guidelines', href: 'https://lightchain.ai/brand' },
+    { label: 'Whitepaper (PDF)', href: 'https://lightchain.ai/lightchain-whitepaper.pdf' },
+    { label: 'Roadmap', href: 'https://lightchain.ai/roadmap' },
+  ]},
+  { title: 'Connect with the community', body: 'Talk with everyone, find members, introduce yourself.', links: [
+    { label: '# Gen Chat', href: '#channel:general', kind: 'channel' },
+    { label: '# Devs', href: '#channel:dev', kind: 'channel' },
+    { label: '# Nodes', href: '#channel:nodes', kind: 'channel' },
+    { label: '# Introduce Yourself', href: '#channel:introduce-yourself', kind: 'channel' },
+    { label: 'Members', href: '#action:directory', kind: 'action' },
+    { label: 'Open a Help ticket', href: '#action:tickets', kind: 'action' },
+  ]},
+  { title: 'Community updates', body: 'Official news — mods post in Announcements.', links: [
+    { label: '# Announcements', href: '#channel:announcements', kind: 'channel' },
+    { label: 'Events', href: '#action:events', kind: 'action' },
+    { label: 'Governance / DAO', href: 'https://dao.lightchain.ai/' },
+  ]},
+  { title: 'Network details', body: 'Lightchain L1 mainnet for wallets and apps.', links: [
+    { label: 'Chain ID 9200', href: 'https://mainnet.lightscan.app/' },
+    { label: 'Block explorer (Lightscan)', href: 'https://mainnet.lightscan.app/' },
+    { label: 'RPC https://rpc.mainnet.lightchain.ai', href: 'https://rpc.mainnet.lightchain.ai' },
+    { label: 'Gas tracker', href: 'https://mainnet.lightscan.app/gas-tracker' },
+  ]},
+  { title: 'Lightchain links', body: 'Bridge, hub, faucet, workers.', links: [
+    { label: 'dApp Hub', href: 'https://hub.lightchain.ai/' },
+    { label: 'Bridge', href: 'https://bridge.lightchain.ai/' },
+    { label: 'Faucet', href: 'https://lightfaucet.ai/' },
+    { label: 'Workers', href: 'https://workers.lightchain.ai/' },
+    { label: 'Forum', href: 'https://forum.lightchain.ai/' },
+  ]},
+  { title: 'How LightChat works', body: 'Login with wallet only (English). Channels for topics. Friends for people you add. No LightPay — this community is free.', links: [
+    { label: '# Links (bookmark shelf)', href: '#channel:links', kind: 'channel' },
+    { label: '# Report', href: '#channel:report', kind: 'channel' },
+  ]},
+  { title: '⚠️ Stay safe — official help only', body: 'Real LightChat help is ONLY through Help tickets (sidebar → Help). Mods and admins will NEVER ask for your seed phrase, private key, or to “connect wallet” / sign a mystery transaction. Ignore friend requests or DMs that push airdrops, claims, or wallet connects. Scammers copy staff names — verify in Members (Admin/Mod role) and use tickets.', links: [
+    { label: 'Open a Help ticket', href: '#action:tickets', kind: 'action' },
+    { label: '# Report', href: '#channel:report', kind: 'channel' },
+    { label: 'Members list', href: '#action:directory', kind: 'action' },
+  ]},
+];
+
 async function renderStartHereGuide(box) {
   let sections = [];
   try {
@@ -8588,10 +8675,7 @@ async function renderStartHereGuide(box) {
       sections = j2.start_here || [];
     } catch (e2) {}
   }
-  if (!sections.length) {
-    box.innerHTML = '<div class="empty-text" style="padding:24px">Start Here guide unavailable — hard-refresh.</div>';
-    return;
-  }
+  if (!sections.length) sections = START_HERE_FALLBACK;
   const cards = sections.map(sec => {
     const links = (sec.links || []).map(l => {
       const kind = l.kind || 'url';
@@ -8608,6 +8692,7 @@ async function renderStartHereGuide(box) {
     return '<div class="start-here-card"><h4>'+escapeHtml(sec.title)+'</h4><p>'+escapeHtml(sec.body||'')+'</p><div class="start-here-links">'+links+'</div></div>';
   }).join('');
   box.innerHTML = '<div class="start-here-wrap"><div class="start-here-hero"><img class="lc-hero-logo" src="brand/logo-light.svg" alt=""><h3>👋 Start Here</h3><p>Welcome to the Lightchain community on LightChat — same idea as Discord start-here, built for wallets.</p></div>'+cards+'</div>';
+  setCommunityChannelHeader('start-here');
 }
 
 function startHereAction(act) {
@@ -9646,6 +9731,12 @@ function ensureGenChatP2P() {
   genChatP2P.onStatus = function(st) {
     const el = document.getElementById('genchat-p2p-status');
     if (!el) return;
+    // Don't overwrite Start Here / guide headers with P2P status
+    if ((_activeCommSlug || '') === 'start-here') {
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = '';
     const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
     if (st.connected > 0) {
       el.textContent = 'P2P · ' + st.connected;
