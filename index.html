@@ -3480,6 +3480,7 @@ async function deleteContact(contactWallet) {
 async function openChat(contactWallet, handle) {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   contactWallet = (contactWallet || '').toLowerCase();
+  if (!warnFriendOrDmSafety('dm')) return;
   currentChat = {wallet: contactWallet, handle: handle || shortenWallet(contactWallet)};
   unreadCounts[contactWallet] = 0;
   document.getElementById('chat-header-name').textContent = currentChat.handle;
@@ -7915,7 +7916,7 @@ function displayRoleLabel(role) {
 let _dirMembers = [];
 let _activeCommSlug = 'general';
 /** Live channels that use WebRTC P2P mesh (same as Gen Chat). */
-const P2P_CHAT_CHANNELS = { general: true, dev: true };
+const P2P_CHAT_CHANNELS = { general: true, dev: true, nodes: true };
 function isP2PChatChannel(slug) {
   return !!P2P_CHAT_CHANNELS[(slug || '').toLowerCase()];
 }
@@ -9089,10 +9090,41 @@ function toggleP2POnly(on) {
   try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
 }
 
+function showScamWarnIfNeeded() {
+  try {
+    if (localStorage.getItem('lc_scam_warn_dismissed') === '1') return;
+  } catch (e) {}
+  const el = document.getElementById('scam-warn-banner');
+  if (el) el.style.display = 'block';
+}
+function dismissScamWarn() {
+  try { localStorage.setItem('lc_scam_warn_dismissed', '1'); } catch (e) {}
+  const el = document.getElementById('scam-warn-banner');
+  if (el) el.style.display = 'none';
+}
+function warnFriendOrDmSafety(kind) {
+  try {
+    const key = kind === 'dm' ? 'lc_warned_dm' : 'lc_warned_friend';
+    if (localStorage.getItem(key) === '1') return true;
+    const ok = confirm(
+      'Safety check\n\n' +
+      '• Real help is only via Help tickets (not random DMs).\n' +
+      '• Staff never ask for seed phrases or mystery wallet connects.\n' +
+      '• Scammers often friend-request then send fake airdrop links.\n\n' +
+      'Continue anyway?'
+    );
+    if (ok) localStorage.setItem(key, '1');
+    return ok;
+  } catch (e) {
+    return true;
+  }
+}
+
 /** P2P-first friend: local list + optional server contact request */
 function addP2PFriend(friendWallet, handle) {
   friendWallet = (friendWallet || '').toLowerCase();
   if (!friendWallet || !wallet) return;
+  if (!warnFriendOrDmSafety('friend')) return;
   if (window.dmP2P) {
     ensureDmP2P();
     dmP2P.addLocalFriend(friendWallet, { handle: handle || '' });
@@ -9102,9 +9134,16 @@ function addP2PFriend(friendWallet, handle) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ wallet, contact_wallet: friendWallet }),
-  }).then(function (r) { return r.json(); }).then(function (j) {
-    if (j.status === 'sent' || j.status === 'already_contacts') {
-      showToast(j.status === 'already_contacts' ? 'Already friends' : 'Friend request sent · P2P ready');
+  }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
+  .then(function (res) {
+    if (res.status === 429 || res.j.code === 'rate_limited') {
+      showToast(res.j.error || 'Too many friend requests — slow down');
+      return;
+    }
+    if (res.j.status === 'sent' || res.j.status === 'already_contacts') {
+      showToast(res.j.status === 'already_contacts' ? 'Already friends' : 'Friend request sent · P2P ready');
+    } else if (res.j.error) {
+      showToast(res.j.error);
     }
   }).catch(function () {
     showToast('Saved as local P2P friend');

@@ -21,11 +21,12 @@ DEFAULT_CHANNELS = [
     ("general", "Gen Chat", "text", "Main hangout — everyone talks here", 2, 0),
     ("introduce-yourself", "Introduce Yourself", "text", "New members say hi", 3, 0),
     ("help", "Help", "text", "Questions and support", 4, 0),
-    ("dev", "Dev", "text", "Builders and technical talk", 5, 0),
-    ("ai", "AI", "text", "AI and AIVM discussion", 6, 0),
-    ("proposals", "Proposals", "text", "DAO and ideas", 7, 0),
-    ("links", "Links", "info", "Official links and contracts", 8, 1),
-    ("report", "Report", "text", "Report issues", 9, 0),
+    ("dev", "Devs", "text", "Builders, apps, contracts, tooling — P2P live chat", 5, 0),
+    ("nodes", "Nodes", "text", "Node operators, validators, RPC, sync, hardware — P2P live chat", 6, 0),
+    ("ai", "AI", "text", "AI and AIVM discussion", 7, 0),
+    ("proposals", "Proposals", "text", "DAO and ideas", 8, 0),
+    ("links", "Links", "info", "Official links and contracts", 9, 1),
+    ("report", "Report", "text", "Report issues", 10, 0),
 ]
 
 # Discord-style Start Here guide (shown in #start-here UI)
@@ -54,9 +55,10 @@ START_HERE_SECTIONS = [
         "body": "Talk with everyone, find members, introduce yourself.",
         "links": [
             {"label": "# Gen Chat", "href": "#channel:general", "kind": "channel"},
+            {"label": "# Devs", "href": "#channel:dev", "kind": "channel"},
+            {"label": "# Nodes", "href": "#channel:nodes", "kind": "channel"},
             {"label": "# Introduce Yourself", "href": "#channel:introduce-yourself", "kind": "channel"},
             {"label": "Members", "href": "#action:directory", "kind": "action"},
-            {"label": "# Help", "href": "#channel:help", "kind": "channel"},
             {"label": "Open a Help ticket", "href": "#action:tickets", "kind": "action"},
         ],
     },
@@ -721,7 +723,8 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()["c"]
             # Modes from DB flag: flip readonly_members 0↔1 to open chat as we grow
             GUIDE_SLUGS = {"start-here"}
-            PRIMARY_SLUGS = {"general", "dev", "start-here", "announcements", "media", "links"}
+            PRIMARY_SLUGS = {"general", "dev", "nodes", "start-here", "announcements", "media", "links"}
+            P2P_CHAT_SLUGS = {"general", "dev", "nodes"}
             enriched = []
             for c in channels:
                 d = dict(c)
@@ -729,8 +732,8 @@ def register_community_routes(app, socketio, get_db):
                 ro = int(d.get("readonly_members") or 0)
                 if slug in GUIDE_SLUGS:
                     d["mode"] = "guide"
-                elif slug in ("general", "dev") or ro == 0:
-                    d["mode"] = "chat"  # open chatting (general always; others if flipped)
+                elif slug in P2P_CHAT_SLUGS or ro == 0:
+                    d["mode"] = "chat"  # Gen Chat, Devs, Nodes — open P2P chat
                 else:
                     d["mode"] = "post"  # mods post, members read
                 d["primary"] = slug in PRIMARY_SLUGS or d["mode"] == "chat"
