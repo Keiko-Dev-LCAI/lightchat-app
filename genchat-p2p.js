@@ -1,11 +1,15 @@
 /**
- * Gen Chat P2P — WebRTC data channels between wallets.
- * Socket.IO = signaling ONLY. Message bodies over P2P when connected.
+ * Gen Chat P2P — WebRTC mesh between wallets.
+ * Socket.IO = signaling ONLY (who's here + SDP/ICE).
+ * Message bodies: datachannels. Gossip + history sync so late joiners catch up
+ * without the app server owning the log.
  */
 (function (global) {
   'use strict';
 
   const LOCAL_KEY = 'lc_genchat_p2p_log';
+  const MAX_LOCAL = 400;
+  const SYNC_LIMIT = 80;
 
   function GenChatP2P() {
     this.wallet = null;
@@ -16,7 +20,32 @@
     this.onStatus = null;
     this._joined = false;
     this._seenIds = new Set();
+    this._sockBound = false;
+    this._hydrateSeen();
   }
+
+  GenChatP2P.prototype._hydrateSeen = function () {
+    try {
+      const arr = this.loadLocal();
+      const self = this;
+      arr.forEach(function (m) {
+        const id = self._msgId(m);
+        if (id) self._seenIds.add(id);
+      });
+    } catch (e) {}
+  };
+
+  GenChatP2P.prototype._msgId = function (msg) {
+    if (!msg) return '';
+    return (
+      msg.id ||
+      (msg.sender_wallet || '') +
+        ':' +
+        (msg.created_at || '') +
+        ':' +
+        String(msg.content || '').slice(0, 24)
+    );
+  };
 
   GenChatP2P.prototype._emitStatus = function () {
     let connected = 0;
@@ -112,16 +141,26 @@
     return n;
   };
 
+  /** Broadcast chat msg to all open peers. Always stores locally. Returns peer count. */
   GenChatP2P.prototype.send = function (msg) {
-    const id =
-      msg.id ||
-      'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+    const id = this._msgId(msg) || 'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
     msg.id = id;
     msg.transport = 'p2p';
     msg.created_at = msg.created_at || Math.floor(Date.now() / 1000);
-    const payload = JSON.stringify(msg);
+    msg.slug = msg.slug || 'general';
+    this._seenIds.add(id);
+    this._storeLocal(msg);
+    const n = this._broadcastEnvelope({ v: 1, kind: 'chat', msg: msg }, null);
+    this._emitStatus();
+    return n;
+  };
+
+  GenChatP2P.prototype._broadcastEnvelope = function (env, exceptWallet) {
+    const payload = JSON.stringify(env);
     let n = 0;
-    this.peers.forEach(function (p) {
+    const self = this;
+    this.peers.forEach(function (p, w) {
+      if (exceptWallet && w === exceptWallet) return;
       if (p.dc && p.dc.readyState === 'open') {
         try {
           p.dc.send(payload);
@@ -131,23 +170,16 @@
         }
       }
     });
-    if (n > 0) {
-      this._seenIds.add(id);
-      this._storeLocal(msg);
-    }
-    this._emitStatus();
     return n;
   };
 
   GenChatP2P.prototype._storeLocal = function (msg) {
     try {
       const arr = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]');
-      const id =
-        msg.id ||
-        msg.sender_wallet + ':' + msg.created_at + ':' + String(msg.content || '').slice(0, 24);
-      if (arr.some(function (m) { return m.id === id; })) return;
+      const id = this._msgId(msg);
+      if (arr.some(function (m) { return (m.id || '') === id; })) return;
       arr.push(msg);
-      while (arr.length > 300) arr.shift();
+      while (arr.length > MAX_LOCAL) arr.shift();
       localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
     } catch (e) {}
   };
@@ -158,6 +190,25 @@
     } catch (e) {
       return [];
     }
+  };
+
+  GenChatP2P.prototype._recentIds = function () {
+    const arr = this.loadLocal();
+    return arr.slice(-SYNC_LIMIT).map(function (m) {
+      return m.id;
+    }).filter(Boolean);
+  };
+
+  GenChatP2P.prototype._msgsMissing = function (haveIds) {
+    const have = {};
+    (haveIds || []).forEach(function (id) {
+      have[id] = true;
+    });
+    return this.loadLocal()
+      .filter(function (m) {
+        return m.id && !have[m.id];
+      })
+      .slice(-SYNC_LIMIT);
   };
 
   GenChatP2P.prototype._impolite = function (remoteWallet) {
@@ -218,6 +269,21 @@
     this._emitStatus();
   };
 
+  GenChatP2P.prototype._requestSync = function (remoteWallet) {
+    const entry = this.peers.get(remoteWallet);
+    if (!entry || !entry.dc || entry.dc.readyState !== 'open') return;
+    try {
+      entry.dc.send(
+        JSON.stringify({
+          v: 1,
+          kind: 'sync_req',
+          ids: this._recentIds(),
+          from: this.wallet,
+        })
+      );
+    } catch (e) {}
+  };
+
   GenChatP2P.prototype._wireDc = function (remoteWallet, dc) {
     const entry = this.peers.get(remoteWallet);
     if (!entry) return;
@@ -226,6 +292,7 @@
     dc.binaryType = 'arraybuffer';
     dc.onopen = function () {
       self._emitStatus();
+      self._requestSync(remoteWallet);
     };
     dc.onclose = function () {
       self._emitStatus();
@@ -234,20 +301,61 @@
       self._emitStatus();
     };
     dc.onmessage = function (ev) {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (!msg || !msg.content) return;
-        const id =
-          msg.id ||
-          msg.sender_wallet + ':' + msg.created_at + ':' + String(msg.content).slice(0, 24);
-        if (self._seenIds.has(id)) return;
-        self._seenIds.add(id);
-        self._storeLocal(msg);
-        if (typeof self.onMessage === 'function') self.onMessage(msg);
-      } catch (e) {
-        console.warn('[genchat-p2p] bad message', e);
-      }
+      self._onDcMessage(remoteWallet, ev.data);
     };
+  };
+
+  GenChatP2P.prototype._onDcMessage = function (fromWallet, raw) {
+    let env;
+    try {
+      env = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+    // Back-compat: bare chat message object
+    if (env && env.content && !env.kind) {
+      env = { v: 1, kind: 'chat', msg: env };
+    }
+    if (!env || !env.kind) return;
+
+    if (env.kind === 'sync_req') {
+      const missing = this._msgsMissing(env.ids || []);
+      const entry = this.peers.get(fromWallet);
+      if (entry && entry.dc && entry.dc.readyState === 'open') {
+        try {
+          entry.dc.send(
+            JSON.stringify({ v: 1, kind: 'sync_res', msgs: missing, from: this.wallet })
+          );
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (env.kind === 'sync_res') {
+      const self = this;
+      (env.msgs || []).forEach(function (msg) {
+        self._ingestChat(msg, fromWallet, false);
+      });
+      return;
+    }
+
+    if (env.kind === 'chat' || env.kind === 'gossip') {
+      this._ingestChat(env.msg || env, fromWallet, true);
+    }
+  };
+
+  GenChatP2P.prototype._ingestChat = function (msg, fromWallet, doGossip) {
+    if (!msg || !msg.content) return;
+    const id = this._msgId(msg);
+    if (!id || this._seenIds.has(id)) return;
+    this._seenIds.add(id);
+    msg.transport = msg.transport || 'p2p';
+    this._storeLocal(msg);
+    if (typeof this.onMessage === 'function') this.onMessage(msg);
+    // Gossip to other peers so mesh fills gaps without the server
+    if (doGossip) {
+      this._broadcastEnvelope({ v: 1, kind: 'gossip', msg: msg }, fromWallet);
+    }
   };
 
   GenChatP2P.prototype._makeOffer = async function (remoteWallet) {
@@ -288,7 +396,6 @@
     try {
       if (data.type === 'offer' && data.sdp) {
         if (entry.makingOffer) {
-          // glare — ignore if we're impolite
           if (this._impolite(from)) return;
         }
         await pc.setRemoteDescription(data.sdp);

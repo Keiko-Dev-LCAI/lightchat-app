@@ -756,6 +756,12 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"error": "wallet required"}), 400
         if not content or len(content) > 4000:
             return jsonify({"error": "content required (max 4000)"}), 400
+        # GIF posts: [[gif]]https://…tenor…
+        if content.startswith("[[gif]]"):
+            gif_url = content[7:].strip()
+            low = gif_url.lower()
+            if not (low.startswith("https://") and ("tenor.com" in low or "tenor.co" in low)):
+                return jsonify({"error": "GIF must be a Tenor HTTPS URL"}), 400
         conn = get_db()
         try:
             role = ensure_member(conn, wallet)

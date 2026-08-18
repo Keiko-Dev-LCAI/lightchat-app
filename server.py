@@ -788,32 +788,45 @@ try:
 except ImportError:
     _REQUESTS_AVAILABLE = False
 
+def _tenor_host_ok(url: str) -> bool:
+    try:
+        host = (_urlparse(url).hostname or '').lower()
+    except Exception:
+        return False
+    return bool(
+        host.endswith('tenor.com')
+        or host.endswith('tenor.co')
+        or host.endswith('googleapis.com')
+        or 'tenor' in host
+    )
+
+
 @app.route('/proxy-gif')
 def proxy_gif():
     url = request.args.get('url', '')
     name = request.args.get('name', 'image.gif')
     if not url:
         return jsonify({'error': 'no url'}), 400
-    # Only allow Tenor domains
-    try:
-        host = _urlparse(url).hostname or ''
-    except Exception:
-        host = ''
-    if not (host.endswith('tenor.com') or host.endswith('tenor.co') or 'tenor' in host):
+    if not _tenor_host_ok(url):
         return jsonify({'error': 'domain not allowed'}), 403
     try:
-        req = _urllib_req.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with _urllib_req.urlopen(req, timeout=10) as r:
+        req = _urllib_req.Request(url, headers={'User-Agent': 'Mozilla/5.0 LightChat/1.0'})
+        with _urllib_req.urlopen(req, timeout=12) as r:
             data = r.read()
             content_type = r.headers.get('Content-Type', 'image/gif')
         resp = make_response(data)
         resp.headers['Content-Type'] = content_type
         safe_name = name.replace('"', '\\"')
-        resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
+        resp.headers['Content-Disposition'] = f'inline; filename="{safe_name}"'
         resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
         return resp
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# GIF search intentionally NOT on Railway — P2P-first. Clients send [[gif]]URL
+# (Tenor HTTPS). A future non-Railway worker can host Tenor/Giphy search.
 
 @app.route('/chat-file', methods=['POST'])
 def post_chat_file():
@@ -1120,8 +1133,9 @@ def on_connect():
     pass
 
 
-# Gen Chat P2P — signaling only (SDP/ICE). Message bodies travel on WebRTC datachannels.
+# Gen Chat / DM P2P — signaling only (SDP/ICE). Message bodies travel on WebRTC datachannels.
 _genchat_p2p_peers = {}  # wallet -> sid
+_dm_p2p_peers = {}  # wallet -> sid
 
 
 @socketio.on('disconnect')
@@ -1130,6 +1144,9 @@ def on_disconnect():
     if w and _genchat_p2p_peers.get(w) == request.sid:
         _genchat_p2p_peers.pop(w, None)
         socketio.emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', skip_sid=request.sid)
+    if w and _dm_p2p_peers.get(w) == request.sid:
+        _dm_p2p_peers.pop(w, None)
+        socketio.emit('dm_p2p_peer_left', {'wallet': w}, skip_sid=request.sid)
     if w:
         try:
             from community import presence_on_disconnect
@@ -1195,6 +1212,37 @@ def on_genchat_p2p_leave(data):
         _genchat_p2p_peers.pop(w, None)
     leave_room('genchat_p2p')
     emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', include_self=False)
+
+
+@socketio.on('dm_p2p_hello')
+def on_dm_p2p_hello(data):
+    """Register wallet for DM P2P signaling (not message bodies)."""
+    data = data or {}
+    wallet = (data.get('wallet') or '').lower()
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != wallet:
+        emit('error', {'message': 'Not authenticated'})
+        return
+    _dm_p2p_peers[wallet] = request.sid
+    join_room('dm_p2p')
+    # Announce online so friends can open a channel
+    emit('dm_p2p_peer_online', {'wallet': wallet}, room='dm_p2p', include_self=False)
+
+
+@socketio.on('dm_p2p_signal')
+def on_dm_p2p_signal(data):
+    """Forward DM WebRTC signaling. No message bodies."""
+    data = data or {}
+    frm = (data.get('from') or '').lower()
+    to = (data.get('to') or '').lower()
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != frm:
+        return
+    sid = _dm_p2p_peers.get(to) or _genchat_p2p_peers.get(to)
+    if sid:
+        emit('dm_p2p_signal', data, room=sid)
+    else:
+        emit('dm_p2p_signal', data, room=to)
 
 
 @socketio.on('genchat_p2p_signal')
