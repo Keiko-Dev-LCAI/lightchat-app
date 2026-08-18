@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-live-relay-2">
+<meta name="lc-build" content="2026-08-18-live-delete">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12809,14 +12809,30 @@ function onLiveCommunityMessage(msg) {
   }
 }
 
-/** Backup when socket rooms miss a post: pull recent messages while Gen Chat is open. */
+function onLiveCommunityDeleted(data) {
+  data = data || {};
+  const id = data.id;
+  if (!id && !data.content) return;
+  const slug = data.slug || '';
+  const active = _activeCommSlug || 'general';
+  if (slug && slug !== active) return;
+  removeCommMsgLocal(id, data.content || '', data.sender_wallet || '');
+  // Keep poll set in sync so we don't re-append a ghost
+  try {
+    const s = slug || active;
+    if (_commPollIdSets[s] && id) delete _commPollIdSets[s][id];
+  } catch (e) {}
+}
+
+/** Backup when socket rooms miss a post/delete: sync while Gen Chat is open. */
 let _commPollTimer = null;
 let _commPollInFlight = false;
+let _commPollIdSets = {}; // slug -> { id: true } from last successful poll
 function startCommunityLivePoll() {
   if (_commPollTimer) return;
   _commPollTimer = setInterval(function () {
     softPollCommunityChannel();
-  }, 4000);
+  }, 3500);
 }
 async function softPollCommunityChannel() {
   if (_commPollInFlight) return;
@@ -12831,18 +12847,29 @@ async function softPollCommunityChannel() {
   try {
     const r = await fetch(
       BACKEND + '/api/community/messages/' + encodeURIComponent(slug) +
-      '?limit=30' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : '')
+      '?limit=50' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : '')
     );
     if (!r.ok) return;
     const j = await r.json();
     const msgs = j.messages || [];
+    const nowIds = {};
     msgs.forEach(function (m) {
       if (!m || !m.id) return;
+      nowIds[m.id] = true;
       if (box.querySelector('.comm-msg[data-msg-id="' + String(m.id).replace(/"/g, '') + '"]')) return;
       m.slug = m.slug || slug;
       m.transport = m.transport || 'relay';
       appendCommunityMessage(m);
     });
+    // Removals: ids seen last poll that are gone from server now
+    const prev = _commPollIdSets[slug] || null;
+    if (prev) {
+      Object.keys(prev).forEach(function (id) {
+        if (nowIds[id]) return;
+        try { removeCommMsgLocal(id); } catch (e) {}
+      });
+    }
+    _commPollIdSets[slug] = nowIds;
   } catch (e) {
   } finally {
     _commPollInFlight = false;
@@ -12893,9 +12920,7 @@ function bindCommunitySocket(sock) {
     refreshGardenPanel();
   });
   sock.on('community_message_deleted', (data) => {
-    const id = data && data.id;
-    if (!id && !(data && data.content)) return;
-    removeCommMsgLocal(id, (data && data.content) || '', (data && data.sender_wallet) || '');
+    onLiveCommunityDeleted(data);
   });
   sock.on('community_pins_updated', (data) => {
     data = data || {};
