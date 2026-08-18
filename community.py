@@ -598,6 +598,75 @@ def content_has_link(content: str) -> bool:
     return bool(_LINK_RE.search(c))
 
 
+_MENTION_RE = re.compile(r"@([A-Za-z0-9_]{2,40}|everyone)\b", re.I)
+
+
+def parse_mentions(conn, content: str) -> tuple[bool, list[str]]:
+    """Return (everyone, [wallets]). Resolves @handle / @display_name (no leading @ in DB)."""
+    everyone = False
+    wallets: set[str] = set()
+    if not content:
+        return False, []
+    for m in _MENTION_RE.finditer(content):
+        token = (m.group(1) or "").lower()
+        if token == "everyone":
+            everyone = True
+            continue
+        # handle match (with or without legacy @)
+        row = conn.execute(
+            "SELECT wallet FROM handles WHERE handle = ? OR handle = ?",
+            (token, "@" + token),
+        ).fetchone()
+        if row:
+            wallets.add(_norm(row["wallet"]))
+            continue
+        # display_name match (case-insensitive)
+        row = conn.execute(
+            """SELECT wallet FROM community_profiles
+               WHERE lower(display_name) = ? OR lower(display_name) = ? LIMIT 1""",
+            (token, "@" + token),
+        ).fetchone()
+        if row:
+            wallets.add(_norm(row["wallet"]))
+            continue
+        # raw 0x wallet mention @0xabc… (first 6+ chars unique enough — skip unless full)
+        if token.startswith("0x") and len(token) == 42:
+            wallets.add(_norm(token))
+    return everyone, list(wallets)
+
+
+def all_member_wallets(conn) -> list[str]:
+    rows = conn.execute(
+        "SELECT wallet FROM community_members WHERE community_id=?",
+        (COMMUNITY_ID,),
+    ).fetchall()
+    return [_norm(r["wallet"]) for r in rows]
+
+
+def emit_community_mentions(socketio, conn, msg: dict, everyone: bool, wallets: list, sender: str):
+    """Alert mentioned members (wallet rooms). @everyone → all members except sender."""
+    payload = {
+        "message_id": msg.get("id"),
+        "slug": msg.get("slug"),
+        "from_wallet": msg.get("sender_wallet"),
+        "from_name": msg.get("display_name"),
+        "preview": (msg.get("content") or "")[:140],
+        "everyone": bool(everyone),
+    }
+    targets: set[str] = set()
+    if everyone:
+        targets.update(all_member_wallets(conn))
+    for w in wallets or []:
+        if w:
+            targets.add(_norm(w))
+    targets.discard(_norm(sender))
+    for w in targets:
+        try:
+            socketio.emit("community_mention", payload, room=w)
+        except Exception:
+            pass
+
+
 def get_timeout_until(conn, wallet: str) -> int:
     wallet = _norm(wallet)
     row = conn.execute(
@@ -1343,6 +1412,14 @@ def register_community_routes(app, socketio, get_db):
                     "remaining": 3600,
                 }), 403
 
+            # Mentions: @everyone = staff only; anyone may @individuals
+            mention_everyone, mention_wallets = parse_mentions(conn, content)
+            if mention_everyone and not is_staff(role):
+                return jsonify({
+                    "error": "Only mods and admins can @everyone",
+                    "code": "mention_everyone_denied",
+                }), 403
+
             ch = conn.execute(
                 "SELECT * FROM community_channels WHERE community_id=? AND slug=?",
                 (COMMUNITY_ID, slug),
@@ -1374,11 +1451,17 @@ def register_community_routes(app, socketio, get_db):
                 "role": prof["role"],
                 "has_avatar": prof["has_avatar"],
                 "slug": slug,
+                "mention_everyone": mention_everyone,
+                "mention_wallets": mention_wallets,
             }
             try:
                 socketio.emit("community_message", msg, room=f"community:{slug}")
             except Exception:
                 pass
+            if mention_everyone or mention_wallets:
+                emit_community_mentions(
+                    socketio, conn, msg, mention_everyone, mention_wallets, wallet
+                )
             return jsonify({"ok": True, "message": msg})
         finally:
             conn.close()
