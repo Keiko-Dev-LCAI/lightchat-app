@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-mobile-compact">
+<meta name="lc-build" content="2026-08-18-live-relay">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -4249,21 +4249,36 @@ function emptyCTAClick() {
   else { connectWallet(); }
 }
 
+function joinActiveCommunityRoom() {
+  try {
+    if (!socket || !socket.connected) return;
+    const slug = _activeCommSlug || 'general';
+    if (slug && slug !== 'start-here') {
+      socket.emit('join_community_channel', { slug: slug, wallet: wallet });
+    }
+  } catch (e) {}
+}
+
 function connectSocket() {
   if (socket) socket.disconnect();
   socket = io(BACKEND, {transports: ['websocket','polling']});
   try { bindPresenceSocket(socket); } catch (e) {}
+  try { bindCommunitySocket(socket); } catch (e) {}
   socket.on('connect', () => {
+    // Re-enter channel room on every (re)connect so phone→PC live posts work
+    joinActiveCommunityRoom();
     if (!sessionToken) {
       // Silent only — never personal_sign from a socket reconnect (causes "not authorized" toasts)
       ensureSession({ silent: true }).then(() => {
         if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken });
         try { announceMyPresence(); } catch (e) {}
+        joinActiveCommunityRoom();
       }).catch(function (e) {
         console.warn('socket connect session', e && (e.code || e.message));
         // Still announce presence (server accepts wallet without full auth) so Members can update
         try { announceMyPresence(); } catch (err) {}
         try { showConnectUI(); } catch (err) {}
+        joinActiveCommunityRoom();
       });
       return;
     }
@@ -4271,16 +4286,12 @@ function connectSocket() {
     try { announceMyPresence(); } catch (e) {}
     if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
     socket.emit('get_groups', { wallet });
+    joinActiveCommunityRoom();
   });
   socket.on('auth_ok', () => {
     if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
     socket.emit('get_groups', { wallet });
-    try {
-      const slug = _activeCommSlug || 'general';
-      if (slug && slug !== 'start-here') {
-        socket.emit('join_community_channel', { slug: slug, wallet: wallet });
-      }
-    } catch (e) {}
+    joinActiveCommunityRoom();
     try {
       if (window.genChatP2P) {
         genChatP2P.attachSocket(socket);
@@ -12781,10 +12792,127 @@ function refreshMeAvatarFromProfile() {
 
 async function saveCommunityProfile() { return saveEditProfile(); }
 
+/** Bind Gen Chat live events to THIS socket instance (must re-bind after reconnect). */
+function bindCommunitySocket(sock) {
+  if (!sock || sock._lcCommunityBound) return;
+  sock._lcCommunityBound = true;
+  sock.on('community_message', (msg) => {
+    if (!msg) return;
+    if (msg.slug === _activeCommSlug || (!msg.slug && _activeCommSlug === 'general')) {
+      msg.transport = msg.transport || 'relay';
+      const tab = document.getElementById('tab-genchat');
+      if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
+      else {
+        try {
+          const dot = document.getElementById('genchat-dot') || document.getElementById('channels-dot');
+          if (dot) dot.classList.add('show');
+        } catch (e) {}
+      }
+    }
+  });
+  sock.on('community_reaction', (data) => {
+    if (!data || !data.id) return;
+    if (data.slug && data.slug !== _activeCommSlug) return;
+    applyCommReactions(data.id, data.reactions || []);
+  });
+  sock.on('community_garden', (st) => {
+    if (_activeCommSlug !== 'garden') return;
+    if (st && wallet) {
+      const me = wallet.toLowerCase();
+      const last = (st.last_waterer || '').toLowerCase();
+      const left = st.cooldown_remaining || 0;
+      if (last && me === last && (st.waters || 0) > 0) {
+        st.can_water = false;
+        st.blocked_reason = 'same_waterer';
+      } else if (left > 0) {
+        st.can_water = false;
+        st.blocked_reason = 'growing';
+      } else {
+        st.can_water = true;
+        st.blocked_reason = '';
+      }
+    }
+    renderGardenPanel(st);
+    if (st && st.apple_drop) renderGardenApple(st.apple_drop);
+  });
+  sock.on('community_garden_apple', (drop) => {
+    if (_activeCommSlug !== 'garden') return;
+    if (!drop || drop.caught) {
+      renderGardenApple(null);
+      if (drop && drop.caught) refreshGardenPanel();
+      return;
+    }
+    renderGardenApple(drop);
+    refreshGardenPanel();
+  });
+  sock.on('community_message_deleted', (data) => {
+    const id = data && data.id;
+    if (!id && !(data && data.content)) return;
+    removeCommMsgLocal(id, (data && data.content) || '', (data && data.sender_wallet) || '');
+  });
+  sock.on('community_pins_updated', (data) => {
+    data = data || {};
+    const slug = data.slug || _activeCommSlug || 'general';
+    if (slug !== (_activeCommSlug || 'general')) return;
+    refreshChannelPins(slug);
+  });
+  sock.on('community_timeout', (data) => {
+    if (!data || !wallet) return;
+    if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
+    if (data.until) setLocalTimeoutUntil(data.until);
+    else setLocalTimeoutUntil(0);
+    showToast(data.reason || (data.until ? 'You were timed out' : 'Timeout cleared'));
+  });
+  sock.on('community_kicked', (data) => {
+    if (!data || !wallet) return;
+    if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
+    communityRole = null;
+    showToast('You were kicked from the community chat');
+    try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
+  });
+  sock.on('community_banned', (data) => {
+    if (!data || !wallet) return;
+    if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
+    communityRole = null;
+    showToast('You are banned from this community');
+    try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
+  });
+  sock.on('community_message_edited', (msg) => {
+    if (!msg || !msg.id) return;
+    applyCommMsgEditLocal(msg.id, msg.content || '');
+  });
+  sock.on('community_mention', (data) => {
+    if (!data) return;
+    alertCommunityMention(Object.assign({ _serverMention: true }, data));
+  });
+  sock.on('community_ticket_created', () => {
+    if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
+    else if (isCommStaff()) document.getElementById('stickets-dot')?.classList.add('show');
+  });
+  sock.on('community_ticket_message', (msg) => {
+    if (msg && msg.ticket_id && msg.ticket_id === _activeTicketId) refreshTicketChat();
+    else if (isCommStaff() || (msg && wallet && msg.ticket_id)) {
+      document.getElementById('stickets-dot')?.classList.add('show');
+    }
+  });
+  sock.on('community_ticket_closed', (data) => {
+    if (data && data.id === _activeTicketId) refreshTicketChat();
+    if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
+  });
+  sock.on('community_thread_message', (msg) => {
+    if (msg && msg.thread_id && msg.thread_id === _activeThreadId) refreshThreadChat();
+  });
+  sock.on('community_thread_created', () => {
+    const tp = document.getElementById('threads-panel');
+    if (tp && tp.style.display !== 'none') loadChannelThreads();
+  });
+  sock.on('community_thread_invited', (data) => {
+    showToast('Invited to thread: ' + ((data && data.title) || 'private'));
+  });
+}
 
 // Hook wallet connect: join community + default Gen Chat
 (function patchWalletHooks(){
-  const _orig = window.afterWalletConnected || window.onWalletReady;
   // poll for wallet variable after connect
   setInterval(() => {
     if (window.wallet && !window._commJoined) {
@@ -12793,122 +12921,12 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       loadChannelsList();
     }
   }, 2000);
-  // socket community messages
-  const trySock = setInterval(() => {
-    if (window.socket && !window._commSockBound) {
-      window._commSockBound = true;
-      socket.on('community_message', (msg) => {
-        if (msg.slug === _activeCommSlug || (!msg.slug && _activeCommSlug==='general')) {
-          msg.transport = msg.transport || 'relay';
-          const tab = document.getElementById('tab-genchat');
-          if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
-          else loadCommunityChannel(_activeCommSlug || 'general');
-        }
-      });
-      socket.on('community_reaction', (data) => {
-        if (!data || !data.id) return;
-        if (data.slug && data.slug !== _activeCommSlug) return;
-        applyCommReactions(data.id, data.reactions || []);
-      });
-      socket.on('community_garden', (st) => {
-        if (_activeCommSlug !== 'garden') return;
-        // Recompute can_water for *this* wallet (event may be from another waterer)
-        if (st && wallet) {
-          const me = wallet.toLowerCase();
-          const last = (st.last_waterer || '').toLowerCase();
-          const left = st.cooldown_remaining || 0;
-          if (last && me === last && (st.waters || 0) > 0) {
-            st.can_water = false;
-            st.blocked_reason = 'same_waterer';
-          } else if (left > 0) {
-            st.can_water = false;
-            st.blocked_reason = 'growing';
-          } else {
-            st.can_water = true;
-            st.blocked_reason = '';
-          }
-        }
-        renderGardenPanel(st);
-        if (st && st.apple_drop) renderGardenApple(st.apple_drop);
-      });
-      socket.on('community_garden_apple', (drop) => {
-        if (_activeCommSlug !== 'garden') return;
-        if (!drop || drop.caught) {
-          renderGardenApple(null);
-          if (drop && drop.caught) refreshGardenPanel();
-          return;
-        }
-        renderGardenApple(drop);
-        // Keep countdown ticking
-        refreshGardenPanel();
-      });
-      socket.on('community_message_deleted', (data) => {
-        const id = data && data.id;
-        if (!id && !(data && data.content)) return;
-        removeCommMsgLocal(id, (data && data.content) || '', (data && data.sender_wallet) || '');
-      });
-      socket.on('community_pins_updated', (data) => {
-        data = data || {};
-        const slug = data.slug || _activeCommSlug || 'general';
-        if (slug !== (_activeCommSlug || 'general')) return;
-        refreshChannelPins(slug);
-      });
-      socket.on('community_timeout', (data) => {
-        if (!data || !wallet) return;
-        if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
-        if (data.until) setLocalTimeoutUntil(data.until);
-        else setLocalTimeoutUntil(0);
-        showToast(data.reason || (data.until ? 'You were timed out' : 'Timeout cleared'));
-      });
-      socket.on('community_kicked', (data) => {
-        if (!data || !wallet) return;
-        if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
-        communityRole = null;
-        showToast('You were kicked from the community chat');
-        try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
-      });
-      socket.on('community_banned', (data) => {
-        if (!data || !wallet) return;
-        if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
-        communityRole = null;
-        showToast('You are banned from this community');
-        try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
-      });
-      socket.on('community_message_edited', (msg) => {
-        if (!msg || !msg.id) return;
-        applyCommMsgEditLocal(msg.id, msg.content || '');
-      });
-      socket.on('community_mention', (data) => {
-        if (!data) return;
-        alertCommunityMention(Object.assign({ _serverMention: true }, data));
-      });
-      socket.on('community_ticket_created', () => {
-        if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
-        else if (isCommStaff()) document.getElementById('stickets-dot')?.classList.add('show');
-      });
-      socket.on('community_ticket_message', (msg) => {
-        if (msg && msg.ticket_id && msg.ticket_id === _activeTicketId) refreshTicketChat();
-        else if (isCommStaff() || (msg && wallet && msg.ticket_id)) {
-          document.getElementById('stickets-dot')?.classList.add('show');
-        }
-      });
-      socket.on('community_ticket_closed', (data) => {
-        if (data && data.id === _activeTicketId) refreshTicketChat();
-        if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
-      });
-      socket.on('community_thread_message', (msg) => {
-        if (msg && msg.thread_id && msg.thread_id === _activeThreadId) refreshThreadChat();
-      });
-      socket.on('community_thread_created', () => {
-        const tp = document.getElementById('threads-panel');
-        if (tp && tp.style.display !== 'none') loadChannelThreads();
-      });
-      socket.on('community_thread_invited', (data) => {
-        showToast('Invited to thread: ' + ((data && data.title) || 'private'));
-      });
-      clearInterval(trySock);
-    }
-  }, 1000);
+  // Fallback: bind if socket appeared without going through connectSocket
+  setInterval(() => {
+    try {
+      if (window.socket) bindCommunitySocket(window.socket);
+    } catch (e) {}
+  }, 2000);
   // default tab genchat on load
   document.addEventListener('DOMContentLoaded', () => {
     try { switchTab('genchat'); } catch(e) {}
