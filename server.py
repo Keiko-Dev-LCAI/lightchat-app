@@ -647,6 +647,7 @@ def health():
             conn.close()
     except Exception as e:
         db_info['error'] = str(e)[:120]
+    turn_key = bool(os.environ.get('METERED_API_KEY', '').strip())
     return jsonify({
         'status': 'ok',
         'service': 'LightChat',
@@ -657,6 +658,10 @@ def health():
         'auth': 'session-v1',
         'db': db_info,
         'media': media_backend_status(),
+        'turn': {
+            'metered_configured': turn_key,
+            'endpoint': '/api/turn-credentials',
+        },
     })
 
 
@@ -2234,6 +2239,34 @@ def api_confirm_gift():
         'error': 'Gifts / LCAI transfers disabled. LightChat is free.',
     }), 410
 
+
+
+# Free STUN + public TURN if METERED_API_KEY missing or Metered call fails
+_TURN_FALLBACK = [
+    {'urls': 'stun:stun.l.google.com:19302'},
+    {'urls': 'stun:stun1.l.google.com:19302'},
+    {'urls': 'stun:stun.cloudflare.com:3478'},
+    {
+        'urls': 'turn:openrelay.metered.ca:80',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+    },
+    {
+        'urls': 'turn:openrelay.metered.ca:443',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+    },
+    {
+        'urls': 'turn:openrelay.metered.ca:443?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+    },
+    {
+        'urls': 'turn:openrelay.metered.ca:80?transport=tcp',
+        'username': 'openrelayproject',
+        'credential': 'openrelayproject',
+    },
+]
 
 
 @app.route('/api/turn-credentials')
