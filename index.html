@@ -176,6 +176,34 @@ body {
   /* Hide mobile elements */
   .mobile-header { display: none !important; }
   .bottom-nav { display: none !important; }
+
+  /* Discord-style: channel list + chat */
+  .comm-discord { display: flex; height: 100%; min-height: 0; flex: 1; }
+  .channel-rail {
+    width: 220px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    background: rgba(0,0,0,0.2);
+    overflow-y: auto;
+    padding: 10px 8px 16px;
+  }
+  .channel-rail-title {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--text2);
+    padding: 8px 10px 6px;
+  }
+  .channel-rail-item {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; color: var(--text2);
+    font-family: inherit; font-size: 14px; font-weight: 600;
+    padding: 8px 10px; border-radius: 8px; cursor: pointer;
+    margin-bottom: 2px;
+  }
+  .channel-rail-item:hover { background: var(--purple-glow); color: var(--text); }
+  .channel-rail-item.active {
+    background: rgba(91,75,255,0.28); color: #fff;
+  }
+  .comm-discord > .comm-wrap { flex: 1; min-width: 0; }
 }
 
 /* ════════════════════════════════
@@ -184,6 +212,8 @@ body {
 @media (max-width: 767px) {
   .sidebar { display: none !important; }
   .desktop-main { display: contents; }
+  .channel-rail { display: none !important; }
+  .comm-discord { display: block; height: 100%; }
 }
 
 /* ── Mobile header ── */
@@ -1776,8 +1806,13 @@ body {
   <div class="main">
 
 
-    <!-- Gen Chat (official #general) -->
+    <!-- Gen Chat + Discord-style channel rail (desktop) -->
     <div class="tab active" id="tab-genchat">
+      <div class="comm-discord">
+      <aside class="channel-rail" id="channel-rail" aria-label="Channels">
+        <div class="channel-rail-title">Lightchain</div>
+        <div id="channel-rail-list"><div class="empty-text" style="padding:12px;font-size:13px">Loading…</div></div>
+      </aside>
       <div class="comm-wrap">
         <div id="scam-warn-banner" style="display:none;margin:10px 12px 0;padding:10px 12px;border-radius:12px;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.45);font-size:13px;line-height:1.45;color:var(--text)">
           <strong style="color:#f0c040">Stay safe:</strong> Official help = <button type="button" onclick="switchTab('tickets')" style="background:none;border:none;color:var(--lc-primary,#5B4BFF);font-weight:700;cursor:pointer;padding:0;font:inherit;text-decoration:underline">Help tickets</button> only. Staff never ask for seeds or wallet connects.
@@ -1828,9 +1863,10 @@ body {
           </div>
         </div>
       </div>
+      </div><!-- /comm-discord -->
     </div>
 
-    <!-- Channels -->
+    <!-- Channels (mobile list; desktop uses left rail) -->
     <div class="tab" id="tab-channels">
       <div class="comm-wrap">
         <div class="comm-header"><div><h2>Channels</h2><div class="comm-sub">Lightchain server</div></div></div>
@@ -2001,6 +2037,9 @@ body {
           <div class="me-menu-item" id="me-owner-menu" style="display:none" onclick="openOwnerPanel()">
             <div class="me-menu-icon">🛡️</div><div>Server &amp; Mods</div><div class="me-menu-arrow">›</div>
           </div>
+          <div class="me-menu-item" onclick="switchTab('calendar')">
+            <div class="me-menu-icon">📅</div><div>Events</div><div class="me-menu-arrow">›</div>
+          </div>
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">⚙️</div><div>Settings</div><div class="me-menu-arrow">›</div>
           </div>
@@ -2044,7 +2083,10 @@ body {
   <!-- Mobile bottom nav -->
   <div class="bottom-nav">
     <button class="nav-tab active" id="nav-genchat" onclick="switchTab('genchat')">
-      <div class="nav-tab-icon">#</div><div>Gen Chat</div>
+      <div class="nav-tab-icon">#</div><div>Chat</div>
+    </button>
+    <button class="nav-tab" id="nav-channels" onclick="switchTab('channels')">
+      <div class="nav-tab-icon">📂</div><div>Channels</div>
     </button>
     <button class="nav-tab" id="nav-chats" onclick="switchTab('chats')">
       <span class="notif-dot" id="chats-dot"></span>
@@ -2053,9 +2095,6 @@ body {
     <button class="nav-tab" id="nav-contacts" onclick="switchTab('contacts')">
       <span class="notif-dot" id="contacts-dot"></span>
       <div class="nav-tab-icon">🤝</div><div>Friends</div>
-    </button>
-    <button class="nav-tab" id="nav-calendar" onclick="switchTab('calendar')">
-      <div class="nav-tab-icon">📅</div><div>Events</div>
     </button>
     <button class="nav-tab" id="nav-me" onclick="switchTab('me')">
       <div class="nav-tab-icon nav-me-av" id="nav-me-avatar">👤</div><div>Me</div>
@@ -8578,25 +8617,59 @@ async function closeActiveThread() {
   }
 }
 
+function _visibleCommunityChannels() {
+  return (communityChannels || []).filter(c =>
+    c.mode !== 'hidden' &&
+    (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'nodes' ||
+     c.slug === 'mods' || c.slug === 'start-here' || c.slug === 'announcements' ||
+     c.slug === 'media' || c.slug === 'links')
+  );
+}
+
+function renderChannelRail() {
+  const rail = document.getElementById('channel-rail-list');
+  if (!rail) return;
+  const active = _activeCommSlug || 'general';
+  const visible = _visibleCommunityChannels();
+  if (!visible.length) {
+    rail.innerHTML = '<div class="empty-text" style="padding:12px;font-size:13px">No channels</div>';
+    return;
+  }
+  rail.innerHTML = visible.map(function (c) {
+    const slug = c.slug || '';
+    const label = slug === 'general' ? 'gen-chat' : (c.name || slug);
+    const isActive = slug === active ? ' active' : '';
+    const hash = slug === 'start-here' ? '👋' : '#';
+    return '<button type="button" class="channel-rail-item' + isActive + '" data-slug="' + escapeHtml(slug) + '" ' +
+      'onclick="openCommunityChannel(\'' + escapeHtml(slug) + '\')">' +
+      hash + ' ' + escapeHtml(String(label).toLowerCase().replace(/\s+/g, '-')) +
+      '</button>';
+  }).join('');
+}
+
 async function loadChannelsList() {
   try {
     const r = await fetch(BACKEND + '/api/community' + (wallet ? ('?wallet=' + encodeURIComponent(wallet)) : ''));
     const j = await r.json();
     communityChannels = j.channels || [];
+    const visible = _visibleCommunityChannels();
     const el = document.getElementById('channels-list');
-    if (!el) return;
-    const visible = communityChannels.filter(c => c.mode !== 'hidden' && (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'nodes' || c.slug === 'mods' || c.slug === 'start-here' || c.slug === 'announcements' || c.slug === 'media' || c.slug === 'links'));
-    el.innerHTML = visible.map(c => {
-      const mode = c.mode || (isP2PChatChannel(c.slug) ? 'chat' : 'post');
-      const tag = c.staff_only ? 'Staff · P2P' : (mode === 'chat' ? (isP2PChatChannel(c.slug) ? 'P2P chat' : 'Live chat') : (mode === 'guide' ? 'Guide' : 'Posts'));
-      return `<div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
-        <div class="hash">#</div>
-        <div class="meta">
-          <div class="n">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text2);font-weight:500">· ${tag}</span></div>
-          <div class="d">${escapeHtml(c.description||'')}</div>
-        </div>
-      </div>`;
-    }).join('') || '<div class="empty-text" style="padding:24px">No channels</div>';
+    if (el) {
+      el.innerHTML = visible.map(c => {
+        const mode = c.mode || (isP2PChatChannel(c.slug) ? 'chat' : 'post');
+        const tag = c.staff_only ? 'Staff · P2P' : (mode === 'chat' || mode === 'media'
+          ? (isP2PChatChannel(c.slug) ? 'P2P chat' : (mode === 'media' ? 'Media' : 'Live chat'))
+          : (mode === 'guide' ? 'Guide' : 'Posts'));
+        return `<div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
+          <div class="hash">#</div>
+          <div class="meta">
+            <div class="n">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text2);font-weight:500">· ${tag}</span></div>
+            <div class="d">${escapeHtml(c.description||'')}</div>
+          </div>
+        </div>`;
+      }).join('') || '<div class="empty-text" style="padding:24px">No channels</div>';
+    }
+    renderChannelRail();
   } catch(e) { console.warn(e); }
 }
 
@@ -8607,6 +8680,7 @@ function setCommunityChannelHeader(slug) {
   const thrBtn = document.getElementById('threads-toggle-btn');
   const newThr = document.getElementById('new-thread-btn');
   const ch = (communityChannels || []).find(c => c.slug === slug);
+  try { renderChannelRail(); } catch (e) {}
   if (slug === 'start-here') {
     if (h) h.textContent = '👋 Start Here';
     if (s) s.textContent = 'Welcome · rules · Lightchain links · stay safe';
@@ -9530,7 +9604,7 @@ async function uploadCommunityMedia(input) {
         input.value = '';
         return;
       }
-      const url = BACKEND + '/chat-image/' + resp.image_id;
+      const url = resp.url || (BACKEND + '/chat-image/' + resp.image_id);
       await sendCommunityContent(slug, encodeImgContent(url));
       showToast('Image posted');
     } else {
@@ -9551,7 +9625,7 @@ async function uploadCommunityMedia(input) {
         input.value = '';
         return;
       }
-      const url = BACKEND + '/chat-file/' + resp.file_id;
+      const url = resp.url || (BACKEND + '/chat-file/' + resp.file_id);
       const ft = (resp.file_type || file.type || '').toLowerCase();
       if (ft.startsWith('image/') || /\.(gif|png|jpe?g|webp)$/.test(name)) {
         await sendCommunityContent(slug, encodeImgContent(url));
