@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js"></script>
-<script src="dm-p2p.js"></script>
+<script src="genchat-p2p.js?v=2"></script>
+<script src="dm-p2p.js?v=2"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1763,6 +1763,11 @@ body {
               <input type="checkbox" id="me-hide-wallet" onchange="toggleHideWalletPrivacy(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
               Hide my wallet from other members
             </label>
+            <label style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:14px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="me-p2p-only" onchange="toggleP2POnly(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
+              Gen Chat: P2P only (skip relay)
+            </label>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.4;padding-left:28px">When on, Gen Chat won’t post through the server if no peers are connected — stays local until P2P syncs.</div>
             <div style="margin-top:14px">
               <label class="form-label" style="margin-bottom:6px;display:block;font-size:13px">Status</label>
               <select id="me-presence-mode" onchange="setMyPresence(this.value)" class="form-input" style="width:100%;max-width:280px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:15px;font-family:inherit">
@@ -1844,10 +1849,11 @@ body {
 <div id="chat-view">
   <div class="chat-header">
     <button class="back-btn" onclick="closeChat()">‹</button>
-    <div style="flex:1">
+    <div style="flex:1;min-width:0">
       <div class="chat-header-name" id="chat-header-name"></div>
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
+    <div id="dm-p2p-chip" title="DM transport" style="display:none;font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;margin-right:6px;white-space:nowrap">Relay</div>
 <!-- video call buttons removed -->
     <!-- gift removed: LightChat is free / no LCAI transfers -->
     <div id="chat-more-wrap" style="position:relative;display:none">
@@ -2953,7 +2959,10 @@ function updateUI() {
     else wEl.textContent = shortenWallet(wallet) + ' · tap to reveal';
   }
   const _il = document.getElementById('invite-link-box');
-  if (_il) _il.textContent = APP_URL + '?add=' + wallet;
+  if (_il) {
+    try { _il.textContent = p2pFriendLink() || (APP_URL + '?add=' + wallet); }
+    catch (e) { _il.textContent = APP_URL + '?add=' + wallet; }
+  }
   const lbl = document.getElementById('me-wallet-label');
   if (lbl) {
     if (_dn) lbl.textContent = 'Only you can reveal your full wallet here';
@@ -2965,6 +2974,8 @@ function updateUI() {
     const hide = localStorage.getItem('lc_hide_wallet') === '1';
     hideCb.checked = hide;
   }
+  const p2pCb = document.getElementById('me-p2p-only');
+  if (p2pCb) p2pCb.checked = localStorage.getItem('lc_p2p_only') === '1';
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
   if (cta) { cta.textContent = '👥 Add a Contact'; }
@@ -3281,6 +3292,14 @@ async function openChat(contactWallet, handle) {
   try {
     ensureDmP2P();
     dmP2P.openWith(contactWallet);
+    const chip = document.getElementById('dm-p2p-chip');
+    if (chip) {
+      chip.style.display = '';
+      const live = dmP2P.connected(contactWallet);
+      chip.textContent = live ? 'P2P' : 'Relay';
+      chip.style.background = live ? 'rgba(35,165,89,0.2)' : 'rgba(91,75,255,0.15)';
+      chip.style.color = live ? '#23a559' : 'var(--text2)';
+    }
   } catch (e) {}
   let msgs = await fetch(BACKEND + '/messages/' + wallet + '/' + contactWallet).then(r => r.json()).catch(() => []);
   try {
@@ -4079,11 +4098,26 @@ document.addEventListener('scroll', hideMsgContextMenu, true);
 
 async function handleInviteParam() {
   const params = new URLSearchParams(window.location.search);
+  // Structured invite: ?invite=<base64url json {w,h,t}>
+  const inv = params.get('invite');
+  if (inv && wallet) {
+    try {
+      const json = JSON.parse(atob(inv.replace(/-/g, '+').replace(/_/g, '/')));
+      const w = (json.w || json.wallet || '').toLowerCase();
+      const age = Math.floor(Date.now() / 1000) - (json.t || 0);
+      if (w && w !== wallet && age < 60 * 60 * 24 * 30) {
+        if (confirm('Add ' + (json.h || shortenWallet(w)) + ' as a P2P friend on LightChat?')) {
+          addP2PFriend(w, json.h || '');
+        }
+      }
+    } catch (e) {}
+    window.history.replaceState({}, '', window.location.pathname);
+    return;
+  }
   const addWallet = params.get('add');
   if (addWallet && wallet && addWallet.toLowerCase() !== wallet.toLowerCase()) {
-    if (confirm('Add ' + shortenWallet(addWallet) + ' as a contact on LightChat?')) {
-      const resp = await fetch(BACKEND + '/contact-request', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet,contact_wallet:addWallet.toLowerCase()})}).then(r => r.json()).catch(() => ({}));
-      showToast(resp.status === 'sent' ? 'Request sent!' : 'Done');
+    if (confirm('Add ' + shortenWallet(addWallet) + ' as a P2P friend on LightChat?')) {
+      addP2PFriend(addWallet.toLowerCase(), '');
     }
     window.history.replaceState({}, '', window.location.pathname);
   }
@@ -7736,6 +7770,38 @@ function renderCommBodyHtml(content) {
   return escapeHtml(content || '');
 }
 
+function appendCommunityMessage(m) {
+  const box = document.getElementById('genchat-msgs');
+  if (!box || !m) return;
+  // Drop empty-state placeholder
+  const empty = box.querySelector('.empty-text');
+  if (empty && box.children.length === 1) box.innerHTML = '';
+  if (m.id) {
+    const sid = String(m.id).replace(/"/g, '');
+    if (box.querySelector('[data-msg-id="' + sid + '"]')) return;
+  }
+  const canMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
+  const letter = (m.display_name || '?').replace('@', '').charAt(0).toUpperCase();
+  const av = m.has_avatar
+    ? '<img src="' + BACKEND + '/api/community/avatar/' + m.sender_wallet + '" alt="">'
+    : letter;
+  const when = m.created_at ? new Date(m.created_at * 1000).toLocaleString() : '';
+  const role = m.role && m.role !== 'member' ? '<span class="role">' + escapeHtml(m.role) + '</span>' : '';
+  const via = m.transport === 'p2p' ? ' · P2P' : '';
+  const del = (canMod && m.id && !(String(m.id).startsWith('p2p-') || String(m.id).startsWith('dm-')))
+    ? ' <button type="button" onclick="event.stopPropagation();modDeleteMsg(\'' + escapeHtml(m.slug || 'general') + '\',\'' + escapeHtml(m.id) + '\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;margin-left:6px">Delete</button>'
+    : '';
+  const el = document.createElement('div');
+  el.className = 'comm-msg';
+  if (m.id) el.setAttribute('data-msg-id', m.id);
+  el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble">' +
+    '<div class="who">' + escapeHtml(m.display_name || shortenWallet(m.sender_wallet)) + role + '</div>' +
+    '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
+    '<div class="when">' + escapeHtml(when) + via + del + '</div></div>';
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
 function renderCommunityMessages(msgs) {
   const box = document.getElementById('genchat-msgs');
   if (!box) return;
@@ -7805,8 +7871,17 @@ async function sendCommunityContent(slug, content) {
   }
 
   if (p2pCount > 0) {
-    try { await loadCommunityChannel(slug); } catch (e) {}
+    appendCommunityMessage(msg);
     showToast('Sent via P2P · ' + p2pCount + ' peer(s)');
+    return;
+  }
+
+  const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
+  if (p2pOnly && slug === 'general') {
+    // Still keep local so it syncs when a peer appears
+    try { if (window.genChatP2P) { genChatP2P._storeLocal(msg); genChatP2P._seenIds.add(msg.id); } } catch (e) {}
+    appendCommunityMessage(msg);
+    showToast('Saved locally — waiting for P2P peers (relay off)');
     return;
   }
 
@@ -7817,7 +7892,8 @@ async function sendCommunityContent(slug, content) {
     });
     const j = await r.json();
     if (!r.ok) { showToast(j.error || 'Send failed'); return; }
-    await loadCommunityChannel(slug);
+    if (j.message) appendCommunityMessage(Object.assign({ transport: 'relay' }, j.message));
+    else await loadCommunityChannel(slug);
     if (slug === 'general' && parseGifContent(content)) showToast('GIF sent');
     else if (slug === 'general') showToast('Sent via relay (no P2P peers online)');
   } catch(e) { showToast('Send failed'); }
@@ -7899,18 +7975,21 @@ function ensureGenChatP2P() {
   genChatP2P.attachSocket(socket);
   genChatP2P.onMessage = function(msg) {
     if (_activeCommSlug === 'general' || _activeCommSlug === msg.slug || !msg.slug) {
-      loadCommunityChannel('general');
+      const tab = document.getElementById('tab-genchat');
+      if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
+      else loadCommunityChannel('general');
     }
   };
   genChatP2P.onStatus = function(st) {
     const el = document.getElementById('genchat-p2p-status');
     if (!el) return;
+    const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
     if (st.connected > 0) {
       el.textContent = 'P2P · ' + st.connected;
       el.classList.add('p2p-on');
     } else {
-      el.textContent = st.peers > 0 ? 'Connecting…' : 'Relay';
-      el.classList.remove('p2p-on');
+      el.textContent = st.peers > 0 ? 'Connecting…' : (p2pOnly ? 'P2P only' : 'Relay');
+      el.classList.toggle('p2p-on', false);
     }
   };
   genChatP2P.join(wallet, window._commProfile || {});
@@ -7933,9 +8012,37 @@ function ensureDmP2P() {
       showToast('💬 P2P DM');
     }
   };
+  dmP2P.onStatus = function(st) {
+    const el = document.getElementById('dm-p2p-chip');
+    if (!el) return;
+    if (!currentChat) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    if (st && st.connected) {
+      el.textContent = 'P2P';
+      el.style.background = 'rgba(35,165,89,0.2)';
+      el.style.color = '#23a559';
+    } else {
+      el.textContent = 'Relay';
+      el.style.background = 'rgba(91,75,255,0.15)';
+      el.style.color = 'var(--text2)';
+    }
+  };
+  // Warm channels to local friends
+  try {
+    (dmP2P.listLocalFriends() || []).forEach(function (f) {
+      const w = (f.wallet || f || '').toLowerCase();
+      if (w) dmP2P.openWith(w);
+    });
+  } catch (e) {}
   if (currentChat && currentChat.wallet) {
     dmP2P.openWith(currentChat.wallet);
   }
+}
+
+function toggleP2POnly(on) {
+  try { localStorage.setItem('lc_p2p_only', on ? '1' : '0'); } catch (e) {}
+  showToast(on ? 'Gen Chat: P2P only (no relay)' : 'Gen Chat: P2P + relay fallback');
+  try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
 }
 
 /** P2P-first friend: local list + optional server contact request */
@@ -7964,7 +8071,15 @@ function addP2PFriend(friendWallet, handle) {
 function p2pFriendLink() {
   if (!wallet) return '';
   const base = (typeof location !== 'undefined' && location.origin) ? location.origin : 'https://lightchat.chat';
-  return base + '/?add=' + encodeURIComponent(wallet);
+  const payload = {
+    w: wallet,
+    h: (typeof myHandle !== 'undefined' && myHandle) || (window._commProfile && window._commProfile.display_name) || '',
+    t: Math.floor(Date.now() / 1000),
+    v: 1,
+  };
+  let b64 = btoa(JSON.stringify(payload));
+  b64 = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return base + '/?invite=' + encodeURIComponent(b64);
 }
 
 function copyP2PFriendLink() {
