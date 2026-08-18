@@ -387,28 +387,25 @@ def register_community_routes(app, socketio, get_db):
                 "SELECT COUNT(*) AS c FROM community_members WHERE community_id=?",
                 (COMMUNITY_ID,),
             ).fetchone()["c"]
-            # Gen Chat = only live chat room; others are guide / post-only
-            CHAT_SLUGS = {"general"}
-            POST_ONLY_SLUGS = {"announcements", "media", "links"}
+            # Modes from DB flag: flip readonly_members 0↔1 to open chat as we grow
             GUIDE_SLUGS = {"start-here"}
-            PRIMARY_SLUGS = {"general", "start-here", "announcements", "media"}
+            PRIMARY_SLUGS = {"general", "start-here", "announcements", "media", "links"}
             enriched = []
             for c in channels:
                 d = dict(c)
                 slug = d["slug"]
+                ro = int(d.get("readonly_members") or 0)
                 if slug in GUIDE_SLUGS:
-                    d["mode"] = "guide"       # no chat composer
-                elif slug in CHAT_SLUGS:
-                    d["mode"] = "chat"        # live Gen Chat
-                elif slug in POST_ONLY_SLUGS or d.get("readonly_members"):
-                    d["mode"] = "post"        # mods/posters write; members read
+                    d["mode"] = "guide"
+                elif slug == "general" or ro == 0:
+                    d["mode"] = "chat"  # open chatting (general always; others if flipped)
                 else:
-                    d["mode"] = "hidden"      # not critical — hide from main list
-                d["primary"] = slug in PRIMARY_SLUGS
+                    d["mode"] = "post"  # mods post, members read
+                d["primary"] = slug in PRIMARY_SLUGS or d["mode"] == "chat"
+                if slug not in PRIMARY_SLUGS and d["mode"] != "chat":
+                    d["mode"] = "hidden"
+                    d["primary"] = False
                 enriched.append(d)
-            # ensure media channel exists
-            if not any(c["slug"] == "media" for c in enriched):
-                pass  # seeded below in migrate
             return jsonify({
                 "id": COMMUNITY_ID,
                 "name": meta["name"] if meta else "Lightchain",
@@ -632,16 +629,13 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
-            # Only Gen Chat is open chatting; other channels are guide/post-only
-            if ch["slug"] != "general":
-                if ch["slug"] == "start-here":
-                    return jsonify({"error": "Start Here is info only — no chatting"}), 403
-                # announcements / media / links: mods (or announcement perm) only
-                if not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
-                    return jsonify({"error": "this channel is post-only for mods"}), 403
-            elif ch["readonly_members"] and not has_perm(role, "post_announcements"):
-                if role not in ("owner", "admin", "mod"):
-                    return jsonify({"error": "only mods can post here"}), 403
+            # start-here: never chat. Otherwise readonly_members=1 → mods only;
+            # readonly_members=0 → open chat (Gen Chat now; other channels when we flip).
+            if ch["slug"] == "start-here":
+                return jsonify({"error": "Start Here is info only — no chatting"}), 403
+            ro = int(ch["readonly_members"] or 0)
+            if ro and not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
+                return jsonify({"error": "this channel is read-only — only mods can post"}), 403
             mid = str(uuid.uuid4())
             now = int(time.time())
             conn.execute(
@@ -763,6 +757,37 @@ def register_community_routes(app, socketio, get_db):
                 return jsonify({"error": "must keep at least one owner"}), 400
             conn.commit()
             return jsonify({"ok": True, "target": target, "role": new_role})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/channels/<slug>/mode", methods=["POST"])
+    def api_channel_mode(slug):
+        """Owner/admin: mode 'chat' (everyone) or 'post' (mods only). Growth flip."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        mode = (data.get("mode") or "").lower().strip()
+        if mode not in ("chat", "post"):
+            return jsonify({"error": "mode must be chat or post"}), 400
+        if slug == "start-here":
+            return jsonify({"error": "Start Here stays guide/info only"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if role not in ("owner", "admin"):
+                return jsonify({"error": "owner/admin only"}), 403
+            ch = conn.execute(
+                "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+                (COMMUNITY_ID, slug),
+            ).fetchone()
+            if not ch:
+                return jsonify({"error": "channel not found"}), 404
+            ro = 0 if mode == "chat" else 1
+            conn.execute(
+                "UPDATE community_channels SET readonly_members=? WHERE id=?",
+                (ro, ch["id"]),
+            )
+            conn.commit()
+            return jsonify({"ok": True, "slug": slug, "mode": mode})
         finally:
             conn.close()
 

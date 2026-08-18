@@ -7355,18 +7355,22 @@ async function loadCommunityChannel(slug) {
     await renderStartHereGuide(box);
     return;
   }
-  // Only Gen Chat is live chatting for everyone; post-only channels: mods may post
+  // Gen Chat (or any channel flipped to mode=chat): everyone chats.
+  // mode=post: mods post only. mode=guide: no composer.
   const ch = (communityChannels || []).find(c => c.slug === slug);
   const isMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
+  const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : 'post');
   if (inputRow) {
-    if (slug === 'general') {
+    if (mode === 'guide' || slug === 'start-here') {
+      inputRow.style.display = 'none';
+    } else if (mode === 'chat' || slug === 'general') {
       inputRow.style.display = '';
       const inp = document.getElementById('genchat-input');
-      if (inp) inp.placeholder = 'Message Gen Chat…';
-    } else if ((slug === 'announcements' || slug === 'media' || slug === 'links') && isMod) {
+      if (inp) inp.placeholder = slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…');
+    } else if (mode === 'post' && isMod) {
       inputRow.style.display = '';
       const inp = document.getElementById('genchat-input');
-      if (inp) inp.placeholder = 'Post to #' + slug + ' (mods)…';
+      if (inp) inp.placeholder = 'Post to #' + slug + ' (mods only)…';
     } else {
       inputRow.style.display = 'none';
     }
