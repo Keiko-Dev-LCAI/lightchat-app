@@ -313,6 +313,36 @@ def init_community_db(get_db):
             PRIMARY KEY (community_id, wallet)
         )"""
     )
+    # Shared community garden (Grow-a-Tree style bot) + external bot tokens
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_garden (
+            community_id TEXT PRIMARY KEY,
+            xp INTEGER NOT NULL DEFAULT 0,
+            waters INTEGER NOT NULL DEFAULT 0,
+            stage INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0,
+            last_milestone INTEGER NOT NULL DEFAULT 0
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_garden_waters (
+            community_id TEXT NOT NULL,
+            wallet TEXT NOT NULL,
+            last_water_at INTEGER NOT NULL DEFAULT 0,
+            total_waters INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (community_id, wallet)
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_bot_tokens (
+            token TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            community_id TEXT NOT NULL,
+            created_by TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            last_used_at INTEGER NOT NULL DEFAULT 0
+        )"""
+    )
     conn.commit()
     try:
         conn.execute(
@@ -399,6 +429,46 @@ def init_community_db(get_db):
         conn.commit()
     except Exception as e:
         print("  [community] media channel open:", e)
+
+    # #garden — shared grow-a-tree bot channel
+    try:
+        row_g = conn.execute(
+            "SELECT id FROM community_channels WHERE community_id=? AND slug='garden'",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if not row_g:
+            conn.execute(
+                """INSERT INTO community_channels
+                   (id, community_id, slug, name, kind, description, sort_order, readonly_members)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    f"{COMMUNITY_ID}:garden",
+                    COMMUNITY_ID,
+                    "garden",
+                    "Garden",
+                    "garden",
+                    "Grow the community tree together — water it in-channel",
+                    3,
+                    0,
+                ),
+            )
+        else:
+            conn.execute(
+                """UPDATE community_channels
+                   SET name='Garden', description=?, kind='garden', readonly_members=0
+                   WHERE community_id=? AND slug='garden'""",
+                ("Grow the community tree together — water it in-channel", COMMUNITY_ID),
+            )
+        now_g = int(time.time())
+        conn.execute(
+            """INSERT OR IGNORE INTO community_garden
+               (community_id, xp, waters, stage, updated_at, last_milestone)
+               VALUES (?,?,?,?,?,?)""",
+            (COMMUNITY_ID, 0, 0, 0, now_g, 0),
+        )
+        conn.commit()
+    except Exception as e:
+        print("  [community] garden channel seed:", e)
 
     # keep start-here / links read-only for members (migrate existing DBs)
     try:
@@ -876,6 +946,102 @@ def can_moderate(actor_role: str, target_role: str, action: str = "") -> bool:
     return True
 
 
+# Grow-a-tree stages: (min_xp, emoji, label)
+GARDEN_STAGES = [
+    (0, "🌱", "Seed"),
+    (10, "🌿", "Sprout"),
+    (40, "🪴", "Sapling"),
+    (100, "🌳", "Young Tree"),
+    (250, "🌲", "Tree"),
+    (500, "🌴", "Grove"),
+    (1000, "🏯", "Legendary Grove"),
+]
+GARDEN_WATER_COOLDOWN = 60  # seconds between waters per wallet
+GARDEN_BOT_NAME = "Garden Bot"
+
+
+def garden_stage_for_xp(xp: int) -> tuple[int, str, str]:
+    stage_i = 0
+    emoji, label = GARDEN_STAGES[0][1], GARDEN_STAGES[0][2]
+    for i, (need, em, lab) in enumerate(GARDEN_STAGES):
+        if xp >= need:
+            stage_i, emoji, label = i, em, lab
+    return stage_i, emoji, label
+
+
+def garden_next_need(xp: int) -> int | None:
+    for need, _em, _lab in GARDEN_STAGES:
+        if xp < need:
+            return need
+    return None
+
+
+def garden_state_dict(conn) -> dict:
+    row = conn.execute(
+        "SELECT xp, waters, stage, updated_at FROM community_garden WHERE community_id=?",
+        (COMMUNITY_ID,),
+    ).fetchone()
+    if not row:
+        return {
+            "xp": 0,
+            "waters": 0,
+            "stage": 0,
+            "emoji": "🌱",
+            "label": "Seed",
+            "next_xp": 10,
+            "updated_at": 0,
+        }
+    xp = int(row["xp"] or 0)
+    stage_i, emoji, label = garden_stage_for_xp(xp)
+    return {
+        "xp": xp,
+        "waters": int(row["waters"] or 0),
+        "stage": stage_i,
+        "emoji": emoji,
+        "label": label,
+        "next_xp": garden_next_need(xp),
+        "updated_at": int(row["updated_at"] or 0),
+        "cooldown_sec": GARDEN_WATER_COOLDOWN,
+    }
+
+
+def post_channel_bot_message(conn, socketio, slug: str, content: str, bot_name: str = "Bot") -> dict | None:
+    """Insert a channel message as a bot (no real wallet) and emit live."""
+    ch = conn.execute(
+        "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+        (COMMUNITY_ID, slug),
+    ).fetchone()
+    if not ch:
+        return None
+    mid = str(uuid.uuid4())
+    now = int(time.time())
+    # Synthetic sender — not a real 0x wallet; clients show bot_name
+    sender = "bot:garden" if "garden" in (bot_name or "").lower() else "bot:system"
+    conn.execute(
+        """INSERT INTO community_messages
+           (id, community_id, channel_id, sender_wallet, content, created_at)
+           VALUES (?,?,?,?,?,?)""",
+        (mid, COMMUNITY_ID, ch["id"], sender, content, now),
+    )
+    conn.commit()
+    msg = {
+        "id": mid,
+        "sender_wallet": sender,
+        "content": content,
+        "created_at": now,
+        "display_name": bot_name,
+        "role": "bot",
+        "has_avatar": False,
+        "slug": slug,
+        "bot": True,
+    }
+    try:
+        socketio.emit("community_message", msg, room=f"community:{slug}")
+    except Exception:
+        pass
+    return msg
+
+
 def profile_dict(conn, wallet: str) -> dict:
     wallet = _norm(wallet)
     p = conn.execute(
@@ -975,7 +1141,7 @@ def register_community_routes(app, socketio, get_db):
             STAFF_ONLY_SLUGS = {"mods"}
             PRIMARY_SLUGS = {
                 "general", "dev", "nodes", "mods",
-                "start-here", "announcements", "media", "links",
+                "start-here", "announcements", "media", "links", "garden",
             }
             P2P_CHAT_SLUGS = {"general", "dev", "nodes", "mods"}
             # wallet from query for staff-only channel filtering
@@ -996,13 +1162,16 @@ def register_community_routes(app, socketio, get_db):
                 elif slug == "media":
                     d["mode"] = "media"  # everyone can post images/GIF/video links
                     d["staff_only"] = False
+                elif slug == "garden":
+                    d["mode"] = "garden"  # shared grow-a-tree + chat
+                    d["staff_only"] = False
                 elif slug in P2P_CHAT_SLUGS or ro == 0:
                     d["mode"] = "chat"
                     d["staff_only"] = False
                 else:
                     d["mode"] = "post"
                     d["staff_only"] = False
-                d["primary"] = slug in PRIMARY_SLUGS or d["mode"] in ("chat", "media")
+                d["primary"] = slug in PRIMARY_SLUGS or d["mode"] in ("chat", "media", "garden")
                 if slug not in PRIMARY_SLUGS and d["mode"] != "chat":
                     d["mode"] = "hidden"
                     d["primary"] = False
@@ -1363,16 +1532,33 @@ def register_community_routes(app, socketio, get_db):
                 ).fetchall()
             msgs = []
             for r in reversed(list(rows)):
-                prof = profile_dict(conn, r["sender_wallet"])
+                sw = r["sender_wallet"] or ""
                 edited_at = None
                 try:
                     edited_at = r["edited_at"]
                 except Exception:
                     edited_at = None
+                if str(sw).startswith("bot:"):
+                    msgs.append(
+                        {
+                            "id": r["id"],
+                            "sender_wallet": sw,
+                            "content": r["content"],
+                            "created_at": r["created_at"],
+                            "edited": bool(edited_at),
+                            "edited_at": edited_at,
+                            "display_name": GARDEN_BOT_NAME if "garden" in sw else "Bot",
+                            "role": "bot",
+                            "has_avatar": False,
+                            "bot": True,
+                        }
+                    )
+                    continue
+                prof = profile_dict(conn, sw)
                 msgs.append(
                     {
                         "id": r["id"],
-                        "sender_wallet": r["sender_wallet"],
+                        "sender_wallet": sw,
                         "content": r["content"],
                         "created_at": r["created_at"],
                         "edited": bool(edited_at),
@@ -2403,6 +2589,203 @@ def register_community_routes(app, socketio, get_db):
         try:
             if can_see_thread(conn, tid, wallet):
                 join_room(f"thread:{tid}")
+        finally:
+            conn.close()
+
+    # ── Garden bot (shared grow-a-tree) + external bot webhook ──
+
+    @app.route("/api/community/garden")
+    def api_garden_status():
+        wallet = _norm(request.args.get("wallet", ""))
+        conn = get_db()
+        try:
+            st = garden_state_dict(conn)
+            st["can_water"] = False
+            st["cooldown_remaining"] = 0
+            if wallet.startswith("0x"):
+                row = conn.execute(
+                    """SELECT last_water_at FROM community_garden_waters
+                       WHERE community_id=? AND wallet=?""",
+                    (COMMUNITY_ID, wallet),
+                ).fetchone()
+                last = int(row["last_water_at"]) if row else 0
+                now = int(time.time())
+                left = max(0, GARDEN_WATER_COOLDOWN - (now - last))
+                st["cooldown_remaining"] = left
+                st["can_water"] = left == 0
+                st["my_waters"] = int(
+                    (
+                        conn.execute(
+                            """SELECT total_waters FROM community_garden_waters
+                               WHERE community_id=? AND wallet=?""",
+                            (COMMUNITY_ID, wallet),
+                        ).fetchone()
+                        or {"total_waters": 0}
+                    )["total_waters"]
+                    or 0
+                )
+            return jsonify(st)
+        finally:
+            conn.close()
+
+    @app.route("/api/community/garden/water", methods=["POST"])
+    def api_garden_water():
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "banned", "code": "banned"}), 403
+            ensure_member(conn, wallet)
+            now = int(time.time())
+            row = conn.execute(
+                """SELECT last_water_at, total_waters FROM community_garden_waters
+                   WHERE community_id=? AND wallet=?""",
+                (COMMUNITY_ID, wallet),
+            ).fetchone()
+            last = int(row["last_water_at"]) if row else 0
+            left = max(0, GARDEN_WATER_COOLDOWN - (now - last))
+            if left > 0:
+                return jsonify({
+                    "error": f"Wait {left}s before watering again",
+                    "code": "cooldown",
+                    "cooldown_remaining": left,
+                    "garden": garden_state_dict(conn),
+                }), 429
+            conn.execute(
+                """INSERT INTO community_garden (community_id, xp, waters, stage, updated_at, last_milestone)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(community_id) DO NOTHING""",
+                (COMMUNITY_ID, 0, 0, 0, now, 0),
+            )
+            g = conn.execute(
+                "SELECT xp, waters, stage, last_milestone FROM community_garden WHERE community_id=?",
+                (COMMUNITY_ID,),
+            ).fetchone()
+            old_xp = int(g["xp"] or 0)
+            new_xp = old_xp + 1
+            new_waters = int(g["waters"] or 0) + 1
+            old_stage, _, _ = garden_stage_for_xp(old_xp)
+            new_stage, emoji, label = garden_stage_for_xp(new_xp)
+            conn.execute(
+                """UPDATE community_garden
+                   SET xp=?, waters=?, stage=?, updated_at=? WHERE community_id=?""",
+                (new_xp, new_waters, new_stage, now, COMMUNITY_ID),
+            )
+            if row:
+                conn.execute(
+                    """UPDATE community_garden_waters
+                       SET last_water_at=?, total_waters=total_waters+1
+                       WHERE community_id=? AND wallet=?""",
+                    (now, COMMUNITY_ID, wallet),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO community_garden_waters
+                       (community_id, wallet, last_water_at, total_waters)
+                       VALUES (?,?,?,?)""",
+                    (COMMUNITY_ID, wallet, now, 1),
+                )
+            conn.commit()
+            prof = profile_dict(conn, wallet)
+            who = (prof.get("display_name") or "").strip() or (
+                wallet[:6] + "…" + wallet[-4:] if len(wallet) > 10 else wallet
+            )
+            # Always acknowledge in-channel lightly; celebrate stage-ups
+            if new_stage > old_stage:
+                post_channel_bot_message(
+                    conn,
+                    socketio,
+                    "garden",
+                    f"{emoji} The community tree grew into a **{label}**! (thanks {who} and everyone watering)",
+                    GARDEN_BOT_NAME,
+                )
+            elif new_xp % 10 == 0:
+                post_channel_bot_message(
+                    conn,
+                    socketio,
+                    "garden",
+                    f"{emoji} {who} watered the tree · {new_xp} XP · {label}",
+                    GARDEN_BOT_NAME,
+                )
+            st = garden_state_dict(conn)
+            st["can_water"] = False
+            st["cooldown_remaining"] = GARDEN_WATER_COOLDOWN
+            st["my_waters"] = int(row["total_waters"] + 1) if row else 1
+            try:
+                socketio.emit("community_garden", st, room="community:garden")
+            except Exception:
+                pass
+            return jsonify({"ok": True, "garden": st, "grew": new_stage > old_stage})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/bots/message", methods=["POST"])
+    def api_bot_message():
+        """External bots: POST with header X-LightChat-Bot-Token.
+        Body: { channel, content, display_name? }
+        """
+        token = (
+            request.headers.get("X-LightChat-Bot-Token")
+            or request.headers.get("Authorization", "").replace("Bearer", "").strip()
+        )
+        data = request.json or {}
+        content = (data.get("content") or "").strip()
+        channel = (data.get("channel") or data.get("slug") or "garden").strip().lower()
+        bot_name = (data.get("display_name") or data.get("name") or "Bot").strip()[:40] or "Bot"
+        if not token or not content or len(content) > 4000:
+            return jsonify({"error": "token + content required (max 4000)"}), 400
+        if channel in ("start-here", "mods") and channel == "start-here":
+            return jsonify({"error": "cannot post to this channel"}), 403
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT name FROM community_bot_tokens WHERE token=? AND community_id=?",
+                (token, COMMUNITY_ID),
+            ).fetchone()
+            # Allow env fallback for handoff demos
+            env_tok = (os.environ.get("LIGHTCHAT_BOT_TOKEN") or "").strip()
+            if not row and not (env_tok and token == env_tok):
+                return jsonify({"error": "invalid bot token"}), 401
+            if row:
+                bot_name = row["name"] or bot_name
+                conn.execute(
+                    "UPDATE community_bot_tokens SET last_used_at=? WHERE token=?",
+                    (int(time.time()), token),
+                )
+                conn.commit()
+            if channel == "start-here":
+                return jsonify({"error": "cannot post to start-here"}), 403
+            msg = post_channel_bot_message(conn, socketio, channel, content, bot_name)
+            if not msg:
+                return jsonify({"error": "channel not found"}), 404
+            return jsonify({"ok": True, "message": msg})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/bots/tokens", methods=["POST"])
+    def api_bot_create_token():
+        """Staff: create a bot token for external integrations."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        name = (data.get("name") or "Community Bot").strip()[:40] or "Community Bot"
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if not is_staff(role):
+                return jsonify({"error": "staff only"}), 403
+            token = "lcb_" + uuid.uuid4().hex + uuid.uuid4().hex[:8]
+            now = int(time.time())
+            conn.execute(
+                """INSERT INTO community_bot_tokens
+                   (token, name, community_id, created_by, created_at, last_used_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (token, name, COMMUNITY_ID, wallet, now, 0),
+            )
+            conn.commit()
+            return jsonify({"ok": True, "token": token, "name": name})
         finally:
             conn.close()
 
