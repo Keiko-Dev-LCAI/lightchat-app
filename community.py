@@ -931,7 +931,7 @@ def register_community_routes(app, socketio, get_db):
         wallet = _norm(data.get("wallet", ""))
         if not wallet.startswith("0x"):
             return jsonify({"error": "wallet required"}), 400
-        display = (data.get("display_name") or "")[:40].strip()
+        display = (data.get("display_name") or "")[:40].strip().lstrip("@")
         bio = (data.get("bio") or "")[:280].strip()
         hide_wallet = 1 if data.get("hide_wallet") in (True, 1, "1", "true", "True") else 0
         if "hide_wallet" not in data:
@@ -942,6 +942,7 @@ def register_community_routes(app, socketio, get_db):
             if pm not in ("online", "invisible"):
                 return jsonify({"error": "presence_mode must be online or invisible"}), 400
             presence_mode = pm
+        display = display.lstrip("@")
         now = int(time.time())
         conn = get_db()
         try:

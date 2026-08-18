@@ -166,6 +166,10 @@ def init_db():
     conn.close()
 
 init_db()
+try:
+    migrate_strip_at_handles()
+except Exception as _e:
+    print(f'  [handles] migrate @ strip failed: {_e}')
 
 # Migrate memories table: add media_type column if it doesn't exist yet
 try:
@@ -222,6 +226,37 @@ NEVER_EXPIRES = 32503680000
 def get_room(w1, w2):
     return '_'.join(sorted([w1.lower(), w2.lower()]))
 
+def _strip_at_handle(h):
+    return (h or '').lstrip('@')
+
+
+def migrate_strip_at_handles(conn=None):
+    """Rewrite legacy @handle rows to handle without @ (idempotent)."""
+    close = conn is None
+    if close:
+        conn = get_db()
+    try:
+        rows = conn.execute("SELECT wallet, handle FROM handles WHERE handle LIKE '@%'").fetchall()
+        for r in rows:
+            clean = _strip_at_handle(r['handle']).lower()
+            if not clean:
+                continue
+            # Avoid unique conflicts if both @x and x exist
+            other = conn.execute(
+                'SELECT wallet FROM handles WHERE handle = ? AND wallet != ?',
+                (clean, r['wallet']),
+            ).fetchone()
+            if other:
+                continue
+            conn.execute('UPDATE handles SET handle = ? WHERE wallet = ?', (clean, r['wallet']))
+        conn.commit()
+    except Exception as e:
+        print(f'  [handles] strip @ migrate: {e}')
+    finally:
+        if close:
+            conn.close()
+
+
 def get_handle_for(wallet, conn=None):
     close = conn is None
     if close:
@@ -230,7 +265,7 @@ def get_handle_for(wallet, conn=None):
     if close:
         conn.close()
     if row and row['handle']:
-        return (row['handle'] or '').lstrip('@')
+        return _strip_at_handle(row['handle'])
     return wallet[:8] + '...'
 
 def send_push_notification(to_wallet, title, body, extra_data=None):
