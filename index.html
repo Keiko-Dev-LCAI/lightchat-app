@@ -1864,6 +1864,20 @@ body {
             <button type="button" onclick="sendThreadMsg()">Send</button>
           </div>
         </div>
+        <div id="garden-panel" style="display:none;padding:12px 14px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(46,160,67,0.12),rgba(91,75,255,0.08))">
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <div id="garden-emoji" style="font-size:48px;line-height:1">🌱</div>
+            <div style="flex:1;min-width:140px">
+              <div style="font-weight:800;font-size:16px" id="garden-label">Seed</div>
+              <div style="font-size:13px;color:var(--text2);margin-top:4px" id="garden-stats">0 XP · 0 waters</div>
+              <div style="height:8px;border-radius:99px;background:rgba(255,255,255,0.08);margin-top:8px;overflow:hidden">
+                <div id="garden-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2ea043,#5B4BFF);border-radius:99px;transition:width 0.35s"></div>
+              </div>
+            </div>
+            <button type="button" id="garden-water-btn" onclick="waterCommunityGarden()" class="comm-gif-btn" style="height:42px;padding:0 16px;font-weight:800">💧 Water</button>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-top:8px">Everyone grows one community tree. Water once per minute. Stage-ups post as <b style="color:var(--text)">Garden Bot</b>.</div>
+        </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div id="genchat-compose">
           <div id="mention-ac" class="mention-ac" role="listbox" aria-label="Mention members"></div>
@@ -3419,6 +3433,95 @@ function updateUI() {
 }
 
 /** Clear local delete tombstones so P2P history can show again (does not undelete server rows). */
+let _gardenState = null;
+let _gardenCooldownTimer = null;
+
+function renderGardenPanel(st) {
+  _gardenState = st || _gardenState;
+  if (!_gardenState) return;
+  const emoji = document.getElementById('garden-emoji');
+  const label = document.getElementById('garden-label');
+  const stats = document.getElementById('garden-stats');
+  const bar = document.getElementById('garden-bar');
+  const btn = document.getElementById('garden-water-btn');
+  if (emoji) emoji.textContent = _gardenState.emoji || '🌱';
+  if (label) label.textContent = _gardenState.label || 'Seed';
+  const next = _gardenState.next_xp;
+  const xp = _gardenState.xp || 0;
+  let prog = 100;
+  if (next != null) {
+    const stages = [0, 10, 40, 100, 250, 500, 1000];
+    let prev = 0;
+    for (let i = 0; i < stages.length; i++) {
+      if (xp >= stages[i]) prev = stages[i];
+    }
+    prog = Math.max(0, Math.min(100, ((xp - prev) / Math.max(1, next - prev)) * 100));
+  }
+  if (stats) {
+    stats.textContent = xp + ' XP · ' + (_gardenState.waters || 0) + ' waters'
+      + (next != null ? (' · next stage at ' + next + ' XP') : ' · max stage!')
+      + (_gardenState.my_waters != null ? (' · you watered ' + _gardenState.my_waters + '×') : '');
+  }
+  if (bar) bar.style.width = prog + '%';
+  if (btn) {
+    const left = _gardenState.cooldown_remaining || 0;
+    if (!_gardenState.can_water && left > 0) {
+      btn.disabled = true;
+      btn.textContent = '⏳ ' + left + 's';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '💧 Water';
+    }
+  }
+}
+
+async function refreshGardenPanel() {
+  try {
+    const r = await fetch(BACKEND + '/api/community/garden' + (wallet ? ('?wallet=' + encodeURIComponent(wallet)) : ''));
+    const j = await r.json();
+    renderGardenPanel(j);
+    if (_gardenCooldownTimer) clearInterval(_gardenCooldownTimer);
+    if (j.cooldown_remaining > 0) {
+      _gardenCooldownTimer = setInterval(function () {
+        if (!_gardenState) return;
+        _gardenState.cooldown_remaining = Math.max(0, (_gardenState.cooldown_remaining || 0) - 1);
+        if (_gardenState.cooldown_remaining === 0) _gardenState.can_water = true;
+        renderGardenPanel(_gardenState);
+        if (_gardenState.cooldown_remaining === 0 && _gardenCooldownTimer) {
+          clearInterval(_gardenCooldownTimer);
+          _gardenCooldownTimer = null;
+        }
+      }, 1000);
+    }
+  } catch (e) { console.warn('garden', e); }
+}
+
+async function waterCommunityGarden() {
+  if (!wallet) { showToast('Connect wallet to water'); return; }
+  const btn = document.getElementById('garden-water-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(BACKEND + '/api/community/garden/water', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      showToast(j.error || 'Could not water');
+      if (j.garden) renderGardenPanel(j.garden);
+      else refreshGardenPanel();
+      return;
+    }
+    if (j.garden) renderGardenPanel(j.garden);
+    showToast(j.grew ? '🌳 The tree grew!' : '💧 Watered!');
+    if (_activeCommSlug === 'garden') loadCommunityChannel('garden');
+    else refreshGardenPanel();
+  } catch (e) {
+    showToast('Water failed');
+  }
+}
+
 function clearCommDeleteTombstones() {
   if (!confirm('Clear local delete memory?\n\nHidden P2P copies may show again. Server-deleted posts stay deleted.')) {
     return;
@@ -8685,7 +8788,7 @@ function _visibleCommunityChannels() {
     c.mode !== 'hidden' &&
     (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'nodes' ||
      c.slug === 'mods' || c.slug === 'start-here' || c.slug === 'announcements' ||
-     c.slug === 'media' || c.slug === 'links')
+     c.slug === 'media' || c.slug === 'links' || c.slug === 'garden')
   );
 }
 
@@ -8763,6 +8866,7 @@ function setCommunityChannelHeader(slug) {
     else if (slug === 'nodes') s.textContent = '#Nodes · operators & validators';
     else if (slug === 'mods') s.textContent = '#Mods · staff only';
     else if (slug === 'media') s.textContent = 'Images · GIFs · video links';
+    else if (slug === 'garden') s.textContent = 'Grow the community tree together';
     else s.textContent = ch ? (ch.description || 'Lightchain community') : 'Lightchain community';
   }
 }
@@ -8811,8 +8915,13 @@ async function loadCommunityChannel(slug) {
   // mode=post: mods post only. mode=guide: no composer.
   const ch = (communityChannels || []).find(c => c.slug === slug);
   const isMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
-  const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : (slug === 'media' ? 'media' : 'post'));
+  const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : (slug === 'media' ? 'media' : (slug === 'garden' ? 'garden' : 'post')));
   const mediaBtn = document.getElementById('genchat-media-btn');
+  const gardenPanel = document.getElementById('garden-panel');
+  if (gardenPanel) gardenPanel.style.display = (slug === 'garden') ? '' : 'none';
+  if (slug === 'garden') {
+    try { refreshGardenPanel(); } catch (e) {}
+  }
   if (compose) {
     if (mode === 'guide' || slug === 'start-here') {
       compose.style.display = 'none';
@@ -8822,6 +8931,11 @@ async function loadCommunityChannel(slug) {
       const inp = document.getElementById('genchat-input');
       if (inp) inp.placeholder = 'Paste YouTube / GIF / video · or tap ＋ to upload';
       if (mediaBtn) mediaBtn.style.display = '';
+    } else if (mode === 'garden' || slug === 'garden') {
+      compose.style.display = '';
+      const inp = document.getElementById('genchat-input');
+      if (inp) inp.placeholder = 'Chat about the tree · or tap Water above';
+      if (mediaBtn) mediaBtn.style.display = 'none';
     } else if (mode === 'chat' || slug === 'general' || isP2PChatChannel(slug)) {
       compose.style.display = '';
       const inp = document.getElementById('genchat-input');
@@ -9263,12 +9377,13 @@ function appendCommunityMessage(m) {
   if (m.transport === 'p2p' || m.transport === 'holepunch') {
     try { alertCommunityMention(m); } catch (e) {}
   }
-  const letter = (m.display_name || '?').replace('@', '').charAt(0).toUpperCase();
-  const av = m.has_avatar
+  const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
+  const letter = isBot ? '🤖' : (m.display_name || '?').replace('@', '').charAt(0).toUpperCase();
+  const av = (!isBot && m.has_avatar)
     ? '<img src="' + BACKEND + '/api/community/avatar/' + m.sender_wallet + '" alt="">'
     : letter;
   const when = formatMessageTime(m.created_at);
-  const roleLbl = displayRoleLabel(m.role);
+  const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
   const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
   const via = m.transport === 'p2p' ? ' · P2P' : '';
   const edited = m.edited ? ' · edited' : '';
@@ -9276,8 +9391,8 @@ function appendCommunityMessage(m) {
   el.className = 'comm-msg';
   el.setAttribute('data-msg-id', m.id || '');
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
-    _commMsgMenuBtn(m) +
-    '<div class="who">' + escapeHtml(stripAt(m.display_name) || shortenWallet(m.sender_wallet)) + role + '</div>' +
+    (isBot ? '' : _commMsgMenuBtn(m)) +
+    '<div class="who">' + escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet))) + role + '</div>' +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
     '<div class="when" title="Shown in your local timezone">' + escapeHtml(when) + via + edited + '</div></div>';
   box.appendChild(el);
@@ -9292,20 +9407,22 @@ function renderCommunityMessages(msgs) {
     return;
   }
   box.innerHTML = msgs.map(m => {
-    const letter = (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
-    const av = m.has_avatar
+    const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
+    const letter = isBot ? '🤖' : (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
+    const av = (!isBot && m.has_avatar)
       ? `<img src="${BACKEND}/api/community/avatar/${m.sender_wallet}" alt="">`
       : letter;
     const when = formatMessageTime(m.created_at);
-    const roleLbl = displayRoleLabel(m.role);
+    const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
     const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
     const via = m.transport === 'p2p' ? ' · P2P' : '';
     const edited = m.edited ? ' · edited' : '';
+    const who = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
-        ${_commMsgMenuBtn(m)}
-        <div class="who">${escapeHtml(stripAt(m.display_name)||shortenWallet(m.sender_wallet))}${role}</div>
+        ${isBot ? '' : _commMsgMenuBtn(m)}
+        <div class="who">${who}${role}</div>
         <div class="body">${renderCommBodyHtml(m.content)}</div>
         <div class="when" title="Shown in your local timezone">${escapeHtml(when)}${via}${edited}</div>
       </div>
@@ -11117,6 +11234,9 @@ async function saveCommunityProfile() { return saveEditProfile(); }
           if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
           else loadCommunityChannel(_activeCommSlug || 'general');
         }
+      });
+      socket.on('community_garden', (st) => {
+        if (_activeCommSlug === 'garden') renderGardenPanel(st);
       });
       socket.on('community_message_deleted', (data) => {
         const id = data && data.id;
