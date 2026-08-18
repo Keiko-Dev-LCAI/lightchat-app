@@ -1599,6 +1599,9 @@ def on_auth(data):
         return
     _socket_wallets[request.sid] = wallet
     join_room(wallet)
+    # Catch-all room so Gen Chat posts reach every logged-in device even if
+    # channel join was missed after reconnect (client still filters by slug).
+    join_room('community:all')
     emit('auth_ok', {'wallet': wallet, 'mode': row.get('mode', 'soft')})
     try:
         from community import presence_on_auth

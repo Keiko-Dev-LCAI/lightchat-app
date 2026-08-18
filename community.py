@@ -890,6 +890,27 @@ def all_member_wallets(conn) -> list[str]:
     return [_norm(r["wallet"]) for r in rows]
 
 
+def emit_community_message(socketio, msg: dict, slug: str) -> None:
+    """Push a new channel message to live clients.
+
+    Emits to the channel room and to community:all (every authenticated
+    socket joins all on auth) so phone→desktop delivery does not depend
+    solely on join_community_channel surviving reconnects.
+    """
+    slug = (slug or (msg or {}).get("slug") or "general").lower().strip() or "general"
+    if isinstance(msg, dict):
+        msg = dict(msg)
+        msg["slug"] = msg.get("slug") or slug
+    try:
+        socketio.emit("community_message", msg, room=f"community:{slug}")
+    except Exception as e:
+        print(f"  [community] emit room {slug}: {e}", flush=True)
+    try:
+        socketio.emit("community_message", msg, room="community:all")
+    except Exception as e:
+        print(f"  [community] emit community:all: {e}", flush=True)
+
+
 def emit_community_mentions(socketio, conn, msg: dict, everyone: bool, wallets: list, sender: str):
     """Alert mentioned members (wallet rooms). @everyone → all members except sender."""
     payload = {
@@ -1653,7 +1674,7 @@ def post_channel_bot_message(conn, socketio, slug: str, content: str, bot_name: 
         "bot": True,
     }
     try:
-        socketio.emit("community_message", msg, room=f"community:{slug}")
+        emit_community_message(socketio, msg, slug)
     except Exception:
         pass
     return msg
@@ -2364,7 +2385,7 @@ def register_community_routes(app, socketio, get_db):
             }
             enrich_channel_message(conn, msg, wallet)
             try:
-                socketio.emit("community_message", msg, room=f"community:{slug}")
+                emit_community_message(socketio, msg, slug)
             except Exception:
                 pass
             if mention_everyone or mention_wallets:
@@ -4038,8 +4059,11 @@ def register_community_routes(app, socketio, get_db):
 
     @socketio.on("join_community_channel")
     def on_join_community(data):
-        slug = (data or {}).get("slug") or "general"
-        join_room(f"community:{slug}")
+        from flask_socketio import join_room as _join_room
+
+        slug = ((data or {}).get("slug") or "general").lower().strip() or "general"
+        _join_room(f"community:{slug}")
+        _join_room("community:all")
 
     @socketio.on("set_presence")
     def on_set_presence(data):
