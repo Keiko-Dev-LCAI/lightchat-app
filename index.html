@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=2"></script>
-<script src="dm-p2p.js?v=2"></script>
+<script src="genchat-p2p.js?v=3"></script>
+<script src="dm-p2p.js?v=3"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -6607,7 +6607,7 @@ function closeCreateGroupModal() {
 }
 
 // Helper: route message emit to DM or group — prefer P2P DM when live
-function _emitMsg(content, type) {
+async function _emitMsg(content, type) {
   if (isGroupChat && currentGroupChat) {
     if (!socket) return;
     socket.emit('send_group_message', {wallet: wallet, group_id: currentGroupChat.id, content: content, type: type});
@@ -6627,6 +6627,12 @@ function _emitMsg(content, type) {
     if (window.dmP2P) {
       ensureDmP2P();
       dmP2P.openWith(peer);
+      if (dmP2P.send(peer, msg)) {
+        showToast('DM via P2P');
+        return;
+      }
+      // Brief wait for channel to open (first message after open)
+      await new Promise(function (r) { setTimeout(r, 900); });
       if (dmP2P.send(peer, msg)) {
         showToast('DM via P2P');
         return;
@@ -8003,6 +8009,16 @@ function ensureGenChatP2P() {
       el.textContent = st.peers > 0 ? 'Connecting…' : (p2pOnly ? 'P2P only' : 'Relay');
       el.classList.toggle('p2p-on', false);
     }
+    const sub = document.querySelector('#tab-genchat .comm-sub');
+    if (sub && (_activeCommSlug === 'general' || !_activeCommSlug)) {
+      if (st.connected > 0) {
+        sub.textContent = 'P2P mesh · ' + st.connected + ' peer' + (st.connected === 1 ? '' : 's') + ' live';
+      } else if (p2pOnly) {
+        sub.textContent = 'P2P only · waiting for peers';
+      } else {
+        sub.textContent = 'Everyone · Lightchain community';
+      }
+    }
   };
   genChatP2P.join(wallet, window._commProfile || {});
 }
@@ -8512,7 +8528,10 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       window._commSockBound = true;
       socket.on('community_message', (msg) => {
         if (msg.slug === _activeCommSlug || (!msg.slug && _activeCommSlug==='general')) {
-          loadCommunityChannel(_activeCommSlug);
+          msg.transport = msg.transport || 'relay';
+          const tab = document.getElementById('tab-genchat');
+          if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
+          else loadCommunityChannel(_activeCommSlug || 'general');
         }
       });
       clearInterval(trySock);

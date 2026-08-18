@@ -21,6 +21,7 @@
     this._joined = false;
     this._seenIds = new Set();
     this._sockBound = false;
+    this._meshTimer = null;
     this._hydrateSeen();
   }
 
@@ -49,16 +50,83 @@
 
   GenChatP2P.prototype._emitStatus = function () {
     let connected = 0;
-    this.peers.forEach(function (p) {
-      if (p.dc && p.dc.readyState === 'open') connected++;
+    const wallets = [];
+    this.peers.forEach(function (p, w) {
+      if (p.dc && p.dc.readyState === 'open') {
+        connected++;
+        wallets.push(w);
+      }
     });
     const status = {
       mode: connected > 0 ? 'p2p' : 'relay',
       peers: this.peers.size,
       connected: connected,
+      wallets: wallets,
     };
     if (typeof this.onStatus === 'function') this.onStatus(status);
     return status;
+  };
+
+  GenChatP2P.prototype.connectedWallets = function () {
+    const out = [];
+    this.peers.forEach(function (p, w) {
+      if (p.dc && p.dc.readyState === 'open') out.push(w);
+    });
+    return out;
+  };
+
+  GenChatP2P.prototype._startMeshTimer = function () {
+    const self = this;
+    if (this._meshTimer) return;
+    this._meshTimer = setInterval(function () {
+      if (!self._joined) return;
+      self._maintainMesh();
+    }, 12000);
+  };
+
+  GenChatP2P.prototype._stopMeshTimer = function () {
+    if (this._meshTimer) {
+      clearInterval(this._meshTimer);
+      this._meshTimer = null;
+    }
+  };
+
+  /** Retry failed peers, re-join room, nudge sync on open channels */
+  GenChatP2P.prototype._maintainMesh = function () {
+    const self = this;
+    if (this.socket && this.socket.connected && this.wallet) {
+      try {
+        this.socket.emit('genchat_p2p_join', { wallet: this.wallet });
+      } catch (e) {}
+    }
+    this.peers.forEach(function (entry, w) {
+      const open = entry.dc && entry.dc.readyState === 'open';
+      if (open) {
+        self._requestSync(w);
+        self._pushRecent(w);
+        return;
+      }
+      const state = entry.pc && entry.pc.connectionState;
+      if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+        self._teardownPeer(w);
+        self._ensurePeer(w, true);
+      } else if (self._impolite(w) && !entry.makingOffer) {
+        self._makeOffer(w);
+      }
+    });
+    this._emitStatus();
+  };
+
+  GenChatP2P.prototype._pushRecent = function (remoteWallet) {
+    const entry = this.peers.get(remoteWallet);
+    if (!entry || !entry.dc || entry.dc.readyState !== 'open') return;
+    const msgs = this.loadLocal().slice(-40);
+    if (!msgs.length) return;
+    try {
+      entry.dc.send(
+        JSON.stringify({ v: 1, kind: 'sync_res', msgs: msgs, from: this.wallet, push: true })
+      );
+    } catch (e) {}
   };
 
   GenChatP2P.prototype.attachSocket = function (socket) {
@@ -116,6 +184,7 @@
     if (this.socket && this.socket.connected) {
       this.socket.emit('genchat_p2p_join', { wallet: this.wallet });
     }
+    this._startMeshTimer();
     this._emitStatus();
   };
 
@@ -130,6 +199,7 @@
       self._teardownPeer(w);
     });
     this._joined = false;
+    this._stopMeshTimer();
     this._emitStatus();
   };
 
@@ -293,6 +363,7 @@
     dc.onopen = function () {
       self._emitStatus();
       self._requestSync(remoteWallet);
+      self._pushRecent(remoteWallet);
     };
     dc.onclose = function () {
       self._emitStatus();
