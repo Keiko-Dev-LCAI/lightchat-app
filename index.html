@@ -1843,7 +1843,6 @@ body {
           </div>
           <div class="comm-header-actions">
             <button type="button" id="threads-toggle-btn" class="comm-gif-btn" onclick="toggleThreadsPanel()" title="Threads" style="height:34px;padding:0 12px;display:none">Threads</button>
-            <button type="button" id="new-thread-btn" class="comm-gif-btn" onclick="createChannelThread()" title="New thread (admins)" style="height:34px;padding:0 12px;display:none">New thread</button>
             <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
         </div>
@@ -9216,7 +9215,6 @@ function setCommunityChannelHeader(slug) {
   const s = document.querySelector('#tab-genchat .comm-sub');
   const p2p = document.getElementById('genchat-p2p-status');
   const thrBtn = document.getElementById('threads-toggle-btn');
-  const newThr = document.getElementById('new-thread-btn');
   const ch = (communityChannels || []).find(c => c.slug === slug);
   try { renderChannelRail(); } catch (e) {}
   if (slug === 'start-here') {
@@ -9224,7 +9222,6 @@ function setCommunityChannelHeader(slug) {
     if (s) s.textContent = 'Welcome · rules · Lightchain links · stay safe';
     if (p2p) p2p.style.display = 'none';
     if (thrBtn) thrBtn.style.display = 'none';
-    if (newThr) newThr.style.display = 'none';
     return;
   }
   if (p2p) p2p.style.display = '';
@@ -9327,13 +9324,11 @@ async function loadCommunityChannel(slug) {
       if (mediaBtn) mediaBtn.style.display = 'none';
     }
   }
-  // Threads UI (admins create; tagged members join)
+  // Threads list toggle (no header "+ New" — removed)
   try {
     const thrBtn = document.getElementById('threads-toggle-btn');
-    const newThr = document.getElementById('new-thread-btn');
     const showThr = mode === 'chat' || mode === 'post' || isP2PChatChannel(slug);
     if (thrBtn) thrBtn.style.display = showThr && slug !== 'start-here' ? '' : 'none';
-    if (newThr) newThr.style.display = (communityRole === 'owner' || communityRole === 'admin') && slug !== 'start-here' ? '' : 'none';
     closeThreadChat(true);
     const tp = document.getElementById('threads-panel');
     if (tp) tp.style.display = 'none';
