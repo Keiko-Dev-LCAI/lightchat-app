@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=8"></script>
-<script src="dm-p2p.js?v=8"></script>
+<script src="genchat-p2p.js?v=9"></script>
+<script src="dm-p2p.js?v=9"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1190,6 +1190,16 @@ body {
 .comm-bubble { position:relative; }
 .comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
 .comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
+.comm-bubble .body .mention {
+  color:#fff; background:rgba(91,75,255,0.45); border-radius:6px; padding:1px 5px;
+  font-weight:700; white-space:nowrap;
+}
+.comm-bubble .body .mention.mention-everyone {
+  background:rgba(255,107,107,0.35); color:#ffc9c9;
+}
+.comm-bubble .body .mention.mention-me {
+  background:rgba(255,200,60,0.4); color:#fff6d0; box-shadow:0 0 0 1px rgba(255,200,60,0.5);
+}
 .comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
 .comm-msg-more {
   position:absolute; top:6px; right:6px;
@@ -1424,6 +1434,16 @@ body {
 .comm-bubble { position:relative; }
 .comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
 .comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
+.comm-bubble .body .mention {
+  color:#fff; background:rgba(91,75,255,0.45); border-radius:6px; padding:1px 5px;
+  font-weight:700; white-space:nowrap;
+}
+.comm-bubble .body .mention.mention-everyone {
+  background:rgba(255,107,107,0.35); color:#ffc9c9;
+}
+.comm-bubble .body .mention.mention-me {
+  background:rgba(255,200,60,0.4); color:#fff6d0; box-shadow:0 0 0 1px rgba(255,200,60,0.5);
+}
 .comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
 .comm-msg-more {
   position:absolute; top:6px; right:6px;
@@ -1652,6 +1672,7 @@ body {
   <div class="sidebar-nav">
     <button class="sidebar-tab active" id="snav-genchat" onclick="switchTab('genchat')">
       <span class="sidebar-tab-icon">#</span> Gen Chat
+      <span class="sidebar-notif" id="sgenchat-dot"></span>
     </button>
     <button class="sidebar-tab" id="snav-channels" onclick="switchTab('channels')">
       <span class="sidebar-tab-icon">📂</span> Channels
@@ -1743,7 +1764,7 @@ body {
           <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
           <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('sticker')" title="Stickers">🎭</button>
           <button type="button" class="comm-gif-btn" onclick="openGifSheet('genchat')" title="Send a GIF">GIF</button>
-          <input id="genchat-input" placeholder="Message #general…" maxlength="4000" onkeydown="if(event.key==='Enter')sendCommunityMsg('general')">
+          <input id="genchat-input" placeholder="Message…  @name  ·  staff: @everyone" maxlength="4000" onkeydown="if(event.key==='Enter')sendCommunityMsg('general')">
           <button type="button" onclick="sendCommunityMsg('general')">Send</button>
         </div>
       </div>
@@ -4428,7 +4449,11 @@ function switchTab(name) {
   if (name === 'chats') { document.getElementById('chats-dot')?.classList.remove('show'); document.getElementById('schats-dot')?.classList.remove('show'); }
   if (name === 'contacts' && wallet) { document.getElementById('contacts-dot')?.classList.remove('show'); document.getElementById('scontacts-dot')?.classList.remove('show'); loadContacts(); }
   if (name === 'memories') { switchTab('genchat'); return; }
-  if (name === 'genchat') { loadCommunityChannel('general'); showScamWarnIfNeeded(); }
+  if (name === 'genchat') {
+    try { document.getElementById('sgenchat-dot')?.classList.remove('show'); } catch (e) {}
+    loadCommunityChannel('general');
+    showScamWarnIfNeeded();
+  }
   if (name === 'tickets') { loadTicketsList(); }
   if (name === 'channels') { loadChannelsList(); }
   if (name === 'directory') { loadDirectory(); }
@@ -8411,11 +8436,11 @@ async function loadCommunityChannel(slug) {
     } else if (mode === 'chat' || slug === 'general' || isP2PChatChannel(slug)) {
       inputRow.style.display = '';
       const inp = document.getElementById('genchat-input');
-      if (inp) inp.placeholder = slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…');
+      if (inp) inp.placeholder = (slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…')) + '  @name · staff @everyone';
     } else if (mode === 'post' && isMod) {
       inputRow.style.display = '';
       const inp = document.getElementById('genchat-input');
-      if (inp) inp.placeholder = 'Post to #' + slug + ' (mods only)…';
+      if (inp) inp.placeholder = 'Post to #' + slug + '…  @name · @everyone';
     } else {
       inputRow.style.display = 'none';
     }
@@ -8518,6 +8543,94 @@ function startHereAction(act) {
   if (act === 'tickets') { switchTab('tickets'); return; }
 }
 
+function _myMentionTokens() {
+  const tokens = new Set();
+  try {
+    const h = stripAt(typeof myHandle !== 'undefined' ? (myHandle || '') : '');
+    if (h) tokens.add(h.toLowerCase());
+  } catch (e) {}
+  try {
+    const d = stripAt((window._commProfile && window._commProfile.display_name) || '');
+    if (d) tokens.add(d.toLowerCase());
+  } catch (e) {}
+  if (wallet) tokens.add(String(wallet).toLowerCase());
+  return tokens;
+}
+
+function highlightMentionsHtml(escapedText) {
+  const me = _myMentionTokens();
+  return String(escapedText || '').replace(/@([A-Za-z0-9_]{2,40}|everyone)\b/gi, function (_m, token) {
+    const t = String(token || '').toLowerCase();
+    let cls = 'mention';
+    if (t === 'everyone') cls += ' mention-everyone';
+    else if (me.has(t)) cls += ' mention-me';
+    return '<span class="' + cls + '">@' + token + '</span>';
+  });
+}
+
+function contentHasEveryone(content) {
+  return /@everyone\b/i.test(String(content || ''));
+}
+
+function messageMentionsMe(content) {
+  const c = String(content || '');
+  if (!c) return false;
+  if (contentHasEveryone(c)) return true;
+  const me = _myMentionTokens();
+  if (!me.size) return false;
+  let hit = false;
+  c.replace(/@([A-Za-z0-9_]{2,40})\b/gi, function (_m, token) {
+    if (me.has(String(token || '').toLowerCase())) hit = true;
+    return _m;
+  });
+  return hit;
+}
+
+function shouldAlertMention(m) {
+  if (!m || !wallet) return false;
+  const sender = (m.sender_wallet || m.from_wallet || '').toLowerCase();
+  if (sender && sender === String(wallet).toLowerCase()) return false;
+  // Server already targeted this wallet room
+  if (m._serverMention) return true;
+  const content = m.content || m.preview || '';
+  if (!messageMentionsMe(content)) return false;
+  // @everyone only alerts when from staff (owner/admin/mod)
+  if (contentHasEveryone(content)) {
+    const r = (m.role || '').toLowerCase();
+    if (m.everyone === true) return true;
+    return r === 'owner' || r === 'admin' || r === 'mod';
+  }
+  return true;
+}
+
+const _mentionAlertedIds = new Set();
+function alertCommunityMention(m) {
+  if (!shouldAlertMention(m)) return;
+  const mid = String(m.message_id || m.id || '');
+  const key = mid || ((m.from_wallet || m.sender_wallet || '') + '|' + String(m.preview || m.content || '').slice(0, 48));
+  if (key && _mentionAlertedIds.has(key)) return;
+  if (key) {
+    _mentionAlertedIds.add(key);
+    if (_mentionAlertedIds.size > 100) {
+      const first = _mentionAlertedIds.values().next().value;
+      _mentionAlertedIds.delete(first);
+    }
+  }
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(40);
+  } catch (e) {}
+  const who = stripAt(m.from_name || m.display_name || '') || shortenWallet(m.from_wallet || m.sender_wallet || '');
+  const slug = m.slug ? ('#' + m.slug) : 'chat';
+  const everyone = m.everyone || contentHasEveryone(m.content || m.preview || '');
+  showToast((everyone ? '📣 @everyone from ' : '📣 Mention from ') + who + ' · ' + slug, 4200);
+  try {
+    const tab = document.getElementById('tab-genchat');
+    if (!(tab && tab.classList.contains('active'))) {
+      document.getElementById('sgenchat-dot')?.classList.add('show');
+    }
+  } catch (e) {}
+}
+
 function renderCommBodyHtml(content) {
   const stickerId = parseStickerContent(content);
   if (stickerId) {
@@ -8548,7 +8661,7 @@ function renderCommBodyHtml(content) {
       'data-alts="' + encodeURIComponent(JSON.stringify(alts)) + '" ' +
       'onerror="window._gifImgError&&window._gifImgError(this)">';
   }
-  return escapeHtml(content || '');
+  return highlightMentionsHtml(escapeHtml(content || ''));
 }
 
 window._gifImgError = function (img) {
@@ -8600,6 +8713,10 @@ function appendCommunityMessage(m) {
   if (m.id) {
     const sid = String(m.id).replace(/"/g, '');
     if (box.querySelector('[data-msg-id="' + sid + '"]')) return;
+  }
+  // P2P path has no server community_mention — alert locally. Relay uses socket event.
+  if (m.transport === 'p2p') {
+    try { alertCommunityMention(m); } catch (e) {}
   }
   const letter = (m.display_name || '?').replace('@', '').charAt(0).toUpperCase();
   const av = m.has_avatar
@@ -9078,6 +9195,12 @@ async function sendCommunityContent(slug, content) {
   }
 
   if (!(await enforceLinkAndTimeout(content))) return;
+
+  // @everyone is staff-only (owner/admin/mod) — enforce client-side for P2P path too
+  if (contentHasEveryone(content) && !isCommStaff()) {
+    showToast('Only mods and admins can @everyone');
+    return;
+  }
 
   const prof = window._commProfile || {};
   const msg = {
@@ -9942,6 +10065,10 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       socket.on('community_message_edited', (msg) => {
         if (!msg || !msg.id) return;
         applyCommMsgEditLocal(msg.id, msg.content || '');
+      });
+      socket.on('community_mention', (data) => {
+        if (!data) return;
+        alertCommunityMention(Object.assign({ _serverMention: true }, data));
       });
       socket.on('community_ticket_created', () => {
         if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
