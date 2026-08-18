@@ -73,9 +73,11 @@ If `media.ready` is false with `s3`, fix env / install boto3.
 
 ---
 
-## Smoke
+## Smoke / soak
 
-See `SMOKE.md` (2-wallet checklist). Do not call handoff “done” until that passes on staging.
+- See `SMOKE.md` (2-wallet checklist).  
+- See `SOAK.md` (3+ wallet Discord-replace soak).  
+Do not call handoff “done” until smoke passes on staging; soak before claiming day-to-day Discord replace.
 
 ---
 
