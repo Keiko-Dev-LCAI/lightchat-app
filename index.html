@@ -10001,18 +10001,18 @@ function appendCommunityMessage(m) {
   const when = formatMessageTime(m.created_at);
   const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
   const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
-  const via = m.transport === 'p2p' ? ' · P2P' : '';
-  const edited = m.edited ? ' · edited' : '';
+  const whoName = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
   const el = document.createElement('div');
   el.className = 'comm-msg';
   el.setAttribute('data-msg-id', m.id || '');
+  // Compact Discord-like: avatar + name (+ Mod/Admin badge). No per-post timestamp row.
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
     (isBot ? '' : _commMsgMenuBtn(m)) +
-    '<div class="who">' + escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet))) + role + '</div>' +
+    '<div class="who" title="' + escapeHtml(when) + (m.edited ? ' · edited' : '') + '">' + whoName + role + '</div>' +
     _commReplyQuoteHtml(m) +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
     _commReactionsHtml(m) +
-    '<div class="when" title="Shown in your local timezone">' + escapeHtml(when) + via + edited + '</div></div>';
+    '</div>';
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -10033,18 +10033,16 @@ function renderCommunityMessages(msgs) {
     const when = formatMessageTime(m.created_at);
     const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
     const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
-    const via = m.transport === 'p2p' ? ' · P2P' : '';
-    const edited = m.edited ? ' · edited' : '';
     const who = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
+    const tip = escapeHtml(when) + (m.edited ? ' · edited' : '');
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${isBot ? '' : _commMsgMenuBtn(m)}
-        <div class="who">${who}${role}</div>
+        <div class="who" title="${tip}">${who}${role}</div>
         ${_commReplyQuoteHtml(m)}
         <div class="body">${renderCommBodyHtml(m.content)}</div>
         ${_commReactionsHtml(m)}
-        <div class="when" title="Shown in your local timezone">${escapeHtml(when)}${via}${edited}</div>
       </div>
     </div>`;
   }).join('');
