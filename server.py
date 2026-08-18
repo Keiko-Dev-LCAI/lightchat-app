@@ -1130,6 +1130,12 @@ def on_disconnect():
     if w and _genchat_p2p_peers.get(w) == request.sid:
         _genchat_p2p_peers.pop(w, None)
         socketio.emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', skip_sid=request.sid)
+    if w:
+        try:
+            from community import presence_on_disconnect
+            presence_on_disconnect(w, request.sid, socketio)
+        except Exception as e:
+            print(f'  [presence] disconnect: {e}')
 
 
 @socketio.on('auth')
@@ -1147,6 +1153,11 @@ def on_auth(data):
     _socket_wallets[request.sid] = wallet
     join_room(wallet)
     emit('auth_ok', {'wallet': wallet, 'mode': row.get('mode', 'soft')})
+    try:
+        from community import presence_on_auth
+        presence_on_auth(wallet, request.sid, get_db, socketio)
+    except Exception as e:
+        print(f'  [presence] auth: {e}')
     # Deliver any buffered call offer — handles iOS reconnect after being backgrounded
     pending = pending_calls.get(wallet)
     if pending:
