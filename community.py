@@ -712,7 +712,7 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()["c"]
             # Modes from DB flag: flip readonly_members 0↔1 to open chat as we grow
             GUIDE_SLUGS = {"start-here"}
-            PRIMARY_SLUGS = {"general", "start-here", "announcements", "media", "links"}
+            PRIMARY_SLUGS = {"general", "dev", "start-here", "announcements", "media", "links"}
             enriched = []
             for c in channels:
                 d = dict(c)
@@ -720,7 +720,7 @@ def register_community_routes(app, socketio, get_db):
                 ro = int(d.get("readonly_members") or 0)
                 if slug in GUIDE_SLUGS:
                     d["mode"] = "guide"
-                elif slug == "general" or ro == 0:
+                elif slug in ("general", "dev") or ro == 0:
                     d["mode"] = "chat"  # open chatting (general always; others if flipped)
                 else:
                     d["mode"] = "post"  # mods post, members read

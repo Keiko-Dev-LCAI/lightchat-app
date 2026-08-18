@@ -3203,7 +3203,7 @@ function connectSocket() {
     try {
       if (window.genChatP2P) {
         genChatP2P.attachSocket(socket);
-        if (_activeCommSlug === 'general') ensureGenChatP2P();
+        if (isP2PChatChannel(_activeCommSlug)) ensureGenChatP2P();
       }
     } catch(e) {}
     try { ensureDmP2P(); } catch(e) {}
@@ -8964,12 +8964,15 @@ async function modDeleteMsg(slug, id, skipConfirm) {
 
 function ensureGenChatP2P() {
   if (!window.genChatP2P || !wallet) return;
+  const slug = _activeCommSlug || 'general';
+  if (!isP2PChatChannel(slug)) return;
   genChatP2P.attachSocket(socket);
   genChatP2P.onMessage = function(msg) {
-    if (_activeCommSlug === 'general' || _activeCommSlug === msg.slug || !msg.slug) {
+    const msgSlug = msg.slug || slug;
+    if (_activeCommSlug === msgSlug || (!msg.slug && _activeCommSlug === slug)) {
       const tab = document.getElementById('tab-genchat');
       if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
-      else loadCommunityChannel('general');
+      else loadCommunityChannel(msgSlug);
     }
   };
   genChatP2P.onDelete = function(id) {
@@ -8990,17 +8993,18 @@ function ensureGenChatP2P() {
       el.classList.toggle('p2p-on', false);
     }
     const sub = document.querySelector('#tab-genchat .comm-sub');
-    if (sub && (_activeCommSlug === 'general' || !_activeCommSlug)) {
+    if (sub && isP2PChatChannel(_activeCommSlug || 'general')) {
+      const label = (_activeCommSlug === 'dev') ? '#dev' : 'Gen Chat';
       if (st.connected > 0) {
-        sub.textContent = 'P2P mesh · ' + st.connected + ' peer' + (st.connected === 1 ? '' : 's') + ' live';
+        sub.textContent = label + ' · P2P mesh · ' + st.connected + ' peer' + (st.connected === 1 ? '' : 's');
       } else if (p2pOnly) {
-        sub.textContent = 'P2P only · waiting for peers';
+        sub.textContent = label + ' · P2P only · waiting for peers';
       } else {
-        sub.textContent = 'Everyone · Lightchain community';
+        sub.textContent = label + ' · node ops & builders' + (_activeCommSlug === 'dev' ? '' : ' · Lightchain community');
       }
     }
   };
-  genChatP2P.join(wallet, window._commProfile || {});
+  genChatP2P.join(wallet, window._commProfile || {}, slug);
 }
 
 function ensureDmP2P() {
