@@ -35,6 +35,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 _data_dir = os.environ.get('DATA_DIR', '/app/data')
 os.makedirs(_data_dir, exist_ok=True)
 DB_PATH = os.environ.get('DB_PATH', os.path.join(_data_dir, 'lightchat.db'))
+print(f"[lightchat] DATA_DIR={_data_dir} DB_PATH={DB_PATH}", flush=True)
 
 # AIVM protocol — aligned with lightchain-protocol/lcai-chat-v2 mainnet (config/index.ts)
 # Reference: https://github.com/lightchain-protocol/lcai-chat-v2
@@ -49,8 +50,14 @@ _AIVM_JOB_FEE    = 20_000_000_000_000_000   # 0.02 LCAI in wei
 _AIVM_CHAIN_ID   = 9200
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA busy_timeout=30000')
+    except Exception:
+        pass
     return conn
 
 def init_db():
@@ -541,6 +548,37 @@ def api_auth_logout():
 
 @app.route('/health')
 def health():
+    db_info = {
+        'path': DB_PATH,
+        'data_dir': _data_dir,
+        'exists': os.path.exists(DB_PATH),
+        'bytes': 0,
+        'garden_waters': None,
+        'garden_events': None,
+    }
+    try:
+        if db_info['exists']:
+            db_info['bytes'] = os.path.getsize(DB_PATH)
+        conn = get_db()
+        try:
+            g = conn.execute(
+                "SELECT waters FROM community_garden WHERE community_id=?",
+                ('lightchain-official',),
+            ).fetchone()
+            db_info['garden_waters'] = int(g['waters']) if g else 0
+            try:
+                ev = conn.execute(
+                    "SELECT COUNT(*) AS n, COALESCE(MAX(size),0) AS mx FROM community_garden_events WHERE community_id=?",
+                    ('lightchain-official',),
+                ).fetchone()
+                db_info['garden_events'] = int(ev['n'] or 0) if ev else 0
+                db_info['garden_event_max'] = int(ev['mx'] or 0) if ev else 0
+            except Exception:
+                db_info['garden_events'] = 0
+        finally:
+            conn.close()
+    except Exception as e:
+        db_info['error'] = str(e)[:120]
     return jsonify({
         'status': 'ok',
         'service': 'LightChat',
@@ -549,6 +587,7 @@ def health():
         'aivm_ready': bool(os.environ.get('LIGHTCHAIN_PRIVATE_KEY', '').strip()),
         'job_registry': _AIVM_JOB_REG,
         'auth': 'session-v1',
+        'db': db_info,
     })
 
 STICKERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stickers')
