@@ -4729,8 +4729,8 @@ async function sendCommunityGif(url) {
   url = await resolveGifUrl(url);
   if (!url) return;
   const content = encodeGifContent(url);
+  // sendCommunityContent already toasts P2P/relay status — avoid double toast
   await sendCommunityContent(slug, content);
-  showToast('GIF sent');
 }
 
 async function loadGifs(query) {
@@ -5592,7 +5592,7 @@ let swRegistration = null;
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=p2p2'); } catch(e) {}
+  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=p2p3'); } catch(e) {}
 }
 
 // Listen for messages from the service worker (e.g. incoming call tapped from push notification)
