@@ -10354,10 +10354,10 @@ function ensureGenChatP2P() {
     el.style.display = '';
     const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
     if (st.connected > 0) {
-      el.textContent = 'P2P · ' + st.connected;
+      el.textContent = p2pOnly ? ('P2P · ' + st.connected) : ('P2P · ' + st.connected + ' · saved');
       el.classList.add('p2p-on');
     } else {
-      el.textContent = st.peers > 0 ? 'Connecting…' : (p2pOnly ? 'P2P only' : 'Relay');
+      el.textContent = st.peers > 0 ? 'Connecting…' : (p2pOnly ? 'P2P only' : 'History on');
       el.classList.toggle('p2p-on', false);
     }
     const sub = document.querySelector('#tab-genchat .comm-sub');
@@ -10439,15 +10439,14 @@ function toggleP2POnly(on) {
   try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
 }
 
-/** Force history-save default (handoff): clear leftover P2P-only unless user re-enables in Settings. */
+/** Force history-save default (handoff): clear leftover P2P-only unless user re-enables in Settings.
+ *  Silent — never toast on refresh (was confusing / looked like "Cleared delete memory"). */
 function ensureHistorySaveDefault() {
   try {
-    if (localStorage.getItem('lc_history_default_v1') === '1') return;
-    localStorage.setItem('lc_history_default_v1', '1');
     if (localStorage.getItem('lc_p2p_only') === '1') {
       localStorage.removeItem('lc_p2p_only');
-      showToast('History save is on by default now', 3200);
     }
+    localStorage.setItem('lc_history_default_v1', '1');
   } catch (e) {}
 }
 
