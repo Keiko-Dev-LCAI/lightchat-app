@@ -952,13 +952,22 @@ def can_moderate(actor_role: str, target_role: str, action: str = "") -> bool:
 # Rules copied from Grow a Tree: no same waterer twice in a row; cooldown
 # scales with height; fruit drops into basket lanes you click to catch.
 GARDEN_STAGES = [
-    # min_size (waters), emoji, label, art lines
+    # min_size (waters/ft), emoji, label, art lines — denser early so it visibly grows often
     (0, "🌱", "Seed", ["☁️  ☀️  ☁️", "", "   🌱", "  ═══", "▓▓▓▓▓▓▓"]),
-    (5, "🌿", "Sprout", ["☁️     ☁️", "   🌿", "   │", "  ═══", "▓▓▓▓▓▓▓"]),
-    (15, "🪴", "Sapling", ["☁️  ☀️  ☁️", "  🪴", " ╱│╲", "╱ │ ╲", "══╪══", "▓▓▓▓▓▓▓"]),
-    (40, "🌳", "Young Tree", ["☁️     ☁️", "  🌳🌳", " ╱│╲╱│╲", "  │  │", "══╪══╪══", "▓▓▓▓▓▓▓▓▓"]),
-    (100, "🌲", "Tree", ["☁️  ☀️  ☁️", " 🌲🌲🌲", "╱│╲│╱│╲", " │ │ │", "═╪═╪═╪═", "▓▓▓▓▓▓▓▓▓▓▓"]),
+    (2, "🌱", "Sprouting", ["☁️  ☀️  ☁️", "", "   🌱", "   │", "  ═══", "▓▓▓▓▓▓▓"]),
+    (4, "🌿", "Sprout", ["☁️     ☁️", "   🌿", "   │", "  ═══", "▓▓▓▓▓▓▓"]),
+    (6, "🌿", "Tall Sprout", ["☁️  ☀️  ☁️", "   🌿", "   │", "   │", "  ═══", "▓▓▓▓▓▓▓"]),
+    (8, "🪴", "Baby Sapling", ["☁️     ☁️", "   🪴", "  ╱│╲", "   │", "  ═══", "▓▓▓▓▓▓▓"]),
+    (12, "🪴", "Sapling", ["☁️  ☀️  ☁️", "   🪴", "  ╱│╲", " ╱ │ ╲", "══╪══", "▓▓▓▓▓▓▓"]),
+    (18, "🪴", "Young Sapling", ["☁️     ☁️", "  🪴🪴", " ╱│╲│╲", "  │ │", "═╪═╪═", "▓▓▓▓▓▓▓▓▓"]),
+    (25, "🌳", "Little Tree", ["☁️  ☀️  ☁️", "   🌳", "  ╱│╲", " ╱ │ ╲", "══╪══", "▓▓▓▓▓▓▓"]),
+    (35, "🌳", "Young Tree", ["☁️     ☁️", "  🌳🌳", " ╱│╲╱│╲", "  │  │", "══╪══╪══", "▓▓▓▓▓▓▓▓▓"]),
+    (50, "🌳", "Tree", ["☁️  ☀️  ☁️", " 🌳🌳🌳", "╱│╲│╱│╲", " │ │ │", "═╪═╪═╪═", "▓▓▓▓▓▓▓▓▓▓▓"]),
+    (75, "🌲", "Tall Tree", ["☁️     ☁️", " 🌲🌲🌲", "╱│╲│╱│╲", " │ │ │", " │ │ │", "═╪═╪═╪═", "▓▓▓▓▓▓▓▓▓▓▓"]),
+    (100, "🌲", "Forest Tree", ["☁️  ☀️  ☁️", "🌲🌳🌲🌳", "╱│╲│╱│╲│", " │ │ │ │", "═╪═╪═╪═╪═", "▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
+    (150, "🌴", "Small Grove", ["✨  ☀️  ✨", "🌴🌳🌲", "╱│╲│╱│╲", "═╬═╬═╬═", "▓▓▓▓▓▓▓▓▓▓▓"]),
     (250, "🌴", "Grove", ["✨  ☀️  ✨", "🌴🌳🌲🌳🌴", "╱│╲│╱│╲│╱", "═╬═╬═╬═╬═", "▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
+    (400, "🌴", "Grand Grove", ["✨🌙✨", "🌴🌳🌲🌳🌴🌳", "╱│╲│╱│╲│╱│╲", "═╩═╩═╩═╩═╩═", "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
     (500, "🏯", "Legendary Grove", ["✨🌙✨", "🏯🌳🏯", "🌴🌲🌳🌲🌴", "═╩═╩═╩═╩═", "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
 ]
 GARDEN_BOT_NAME = "Garden Bot"
@@ -997,7 +1006,7 @@ def garden_cooldown_for_size(size: int) -> int:
 
 def garden_cooldown_for_stage(stage_i: int) -> int:
     """Rough stage-based fallback (prefer garden_cooldown_for_size)."""
-    approx = [0, 5, 15, 40, 100, 250, 500]
+    approx = [need for need, *_ in GARDEN_STAGES]
     i = max(0, min(int(stage_i or 0), len(approx) - 1))
     return garden_cooldown_for_size(approx[i] or 1)
 
