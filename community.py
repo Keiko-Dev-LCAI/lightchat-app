@@ -1078,6 +1078,38 @@ def garden_active_apple() -> dict | None:
     return None
 
 
+def garden_contributors(conn, limit: int = 10) -> list[dict]:
+    """Top waterers — Discord Grow-a-Tree style contributor ranking."""
+    garden_ensure_columns(conn)
+    rows = conn.execute(
+        """SELECT wallet, total_waters, COALESCE(apples, 0) AS apples
+           FROM community_garden_waters
+           WHERE community_id=? AND total_waters > 0
+           ORDER BY total_waters DESC, apples DESC
+           LIMIT ?""",
+        (COMMUNITY_ID, max(1, min(int(limit or 10), 25))),
+    ).fetchall()
+    out = []
+    for i, r in enumerate(rows):
+        w = _norm(r["wallet"] or "")
+        name = ""
+        if w.startswith("0x"):
+            try:
+                name = profile_dict(conn, w).get("display_name") or (
+                    w[:6] + "…" + w[-4:] if len(w) > 10 else w
+                )
+            except Exception:
+                name = (w[:6] + "…" + w[-4:]) if len(w) > 10 else w
+        out.append({
+            "rank": i + 1,
+            "wallet": w,
+            "name": name or "Gardener",
+            "waters": int(r["total_waters"] or 0),
+            "apples": int(r["apples"] or 0),
+        })
+    return out
+
+
 def garden_state_dict(conn, viewer: str = "") -> dict:
     garden_ensure_columns(conn)
     row = conn.execute(
@@ -1104,6 +1136,8 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
             "apples": 0,
             "my_apples": 0,
             "my_waters": 0,
+            "my_rank": None,
+            "contributors": [],
             "apple_drop": None,
             "tree_name": "Lightchain Tree",
         }
@@ -1166,6 +1200,21 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
         else:
             can = True
     height = garden_height_ft(size, last_at, cd)
+    contributors = garden_contributors(conn, limit=10)
+    my_rank = None
+    if viewer_n.startswith("0x"):
+        for c in contributors:
+            if (c.get("wallet") or "").lower() == viewer_n.lower():
+                my_rank = c.get("rank")
+                break
+        if my_rank is None and my_waters > 0:
+            # Outside top 10 — compute exact rank
+            ahead = conn.execute(
+                """SELECT COUNT(*) AS n FROM community_garden_waters
+                   WHERE community_id=? AND total_waters > ?""",
+                (COMMUNITY_ID, my_waters),
+            ).fetchone()
+            my_rank = int(ahead["n"] or 0) + 1 if ahead else None
     return {
         "xp": xp if xp else size,
         "waters": size,
@@ -1185,6 +1234,8 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
         "apples": apples_total,
         "my_apples": my_apples,
         "my_waters": my_waters,
+        "my_rank": my_rank,
+        "contributors": contributors,
         "apple_drop": garden_active_apple(),
         "tree_name": "Lightchain Tree",
     }
