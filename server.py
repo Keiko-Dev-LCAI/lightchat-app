@@ -567,6 +567,11 @@ def resolve_handle(handle):
         return jsonify({'wallet': row['wallet']})
     return jsonify({'wallet': None}), 404
 
+# Anti-scam: limit how many friend requests one wallet can send
+_FRIEND_REQ_LIMIT = 8          # max pending/sent requests
+_FRIEND_REQ_WINDOW_SEC = 3600  # per rolling hour
+
+
 @app.route('/contact-request', methods=['POST'])
 def contact_request():
     data = request.json or {}
@@ -587,6 +592,20 @@ def contact_request():
         ).fetchone()
         if approved:
             return jsonify({'status': 'already_contacts'})
+
+        # Rate limit: how many requests this wallet sent recently
+        # Pending rows are stored as (recipient=contact_wallet, sender=wallet) in contact_wallet column
+        since = int(time.time()) - _FRIEND_REQ_WINDOW_SEC
+        recent = conn.execute(
+            '''SELECT COUNT(*) AS c FROM contacts
+               WHERE contact_wallet = ? AND status = ? AND created_at >= ?''',
+            (wallet, 'pending', since),
+        ).fetchone()['c']
+        if recent >= _FRIEND_REQ_LIMIT:
+            return jsonify({
+                'error': f'Too many friend requests — try again later (max {_FRIEND_REQ_LIMIT}/hour)',
+                'code': 'rate_limited',
+            }), 429
 
         # Insert pending request: contact_wallet receives the request
         conn.execute(

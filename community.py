@@ -98,6 +98,15 @@ START_HERE_SECTIONS = [
             {"label": "# Report", "href": "#channel:report", "kind": "channel"},
         ],
     },
+    {
+        "title": "⚠️ Stay safe — official help only",
+        "body": "Real LightChat help is ONLY through Help tickets (sidebar → Help). Mods and admins will NEVER ask for your seed phrase, private key, or to “connect wallet” / sign a mystery transaction. Ignore friend requests or DMs that push airdrops, claims, or wallet connects. Scammers copy staff names — verify in Members (Admin/Mod role) and use tickets.",
+        "links": [
+            {"label": "Open a Help ticket", "href": "#action:tickets", "kind": "action"},
+            {"label": "# Report", "href": "#channel:report", "kind": "channel"},
+            {"label": "Members list", "href": "#action:directory", "kind": "action"},
+        ],
+    },
 ]
 
 # role rank: higher = more power (Discord-style member list order)

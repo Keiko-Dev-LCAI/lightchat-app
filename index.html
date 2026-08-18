@@ -1707,6 +1707,10 @@ body {
     <!-- Gen Chat (official #general) -->
     <div class="tab active" id="tab-genchat">
       <div class="comm-wrap">
+        <div id="scam-warn-banner" style="display:none;margin:10px 12px 0;padding:10px 12px;border-radius:12px;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.45);font-size:13px;line-height:1.45;color:var(--text)">
+          <strong style="color:#f0c040">Stay safe:</strong> Official help = <button type="button" onclick="switchTab('tickets')" style="background:none;border:none;color:var(--lc-primary,#5B4BFF);font-weight:700;cursor:pointer;padding:0;font:inherit;text-decoration:underline">Help tickets</button> only. Staff never ask for seeds or wallet connects.
+          <button type="button" onclick="dismissScamWarn()" style="float:right;background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;line-height:1">✕</button>
+        </div>
         <div class="comm-header">
           <img class="lc-inline-mark" src="brand/symbol-light.svg" alt="" style="width:28px;height:28px">
           <div style="flex:1">
@@ -4404,7 +4408,7 @@ function switchTab(name) {
   if (name === 'chats') { document.getElementById('chats-dot')?.classList.remove('show'); document.getElementById('schats-dot')?.classList.remove('show'); }
   if (name === 'contacts' && wallet) { document.getElementById('contacts-dot')?.classList.remove('show'); document.getElementById('scontacts-dot')?.classList.remove('show'); loadContacts(); }
   if (name === 'memories') { switchTab('genchat'); return; }
-  if (name === 'genchat') { loadCommunityChannel('general'); }
+  if (name === 'genchat') { loadCommunityChannel('general'); showScamWarnIfNeeded(); }
   if (name === 'tickets') { loadTicketsList(); }
   if (name === 'channels') { loadChannelsList(); }
   if (name === 'directory') { loadDirectory(); }
