@@ -984,33 +984,56 @@ def api_gif_resolve():
 
 @app.route('/chat-file', methods=['POST'])
 def post_chat_file():
-    data = request.json or {}
-    wallet = data.get('wallet', '').lower().strip()
-    file_name = data.get('file_name', 'file')
-    file_data = data.get('file_data', '')
-    file_type = data.get('file_type', 'application/octet-stream')
-    file_size = int(data.get('file_size', 0) or 0)
+    """Accept JSON (legacy base64) or multipart FormData (preferred for video)."""
+    wallet = ''
+    file_name = 'file'
+    file_type = 'application/octet-stream'
+    file_size = 0
+    file_data = ''  # base64 for DB storage
+
+    ctype = (request.content_type or '').lower()
+    if 'multipart/form-data' in ctype:
+        wallet = (request.form.get('wallet') or '').lower().strip()
+        f = request.files.get('file')
+        if not f:
+            return jsonify({'error': 'file required'}), 400
+        raw = f.read()
+        file_name = f.filename or request.form.get('file_name') or 'file'
+        file_type = f.mimetype or request.form.get('file_type') or 'application/octet-stream'
+        file_size = len(raw)
+        file_data = base64.b64encode(raw).decode('ascii')
+    else:
+        data = request.json or {}
+        wallet = (data.get('wallet') or '').lower().strip()
+        file_name = data.get('file_name', 'file')
+        file_data = data.get('file_data', '')
+        file_type = data.get('file_type', 'application/octet-stream')
+        file_size = int(data.get('file_size', 0) or 0)
+
     if not wallet or not file_data:
-        return jsonify({'error': 'wallet and file_data required'}), 400
+        return jsonify({'error': 'wallet and file required'}), 400
+
     # Cap uploads (SQLite / Railway memory) — images smaller; video up to ~20MB
     max_bytes = 20 * 1024 * 1024
-    if file_type.startswith('image/'):
+    if (file_type or '').startswith('image/'):
         max_bytes = 8 * 1024 * 1024
-    if file_size and file_size > max_bytes:
-        return jsonify({'error': f'File too large (max {max_bytes // (1024*1024)} MB)'}), 400
-    # Approximate from base64 if size missing
-    approx = int(len(file_data) * 0.75)
+    approx = file_size or int(len(file_data) * 0.75)
     if approx > max_bytes + 500_000:
-        return jsonify({'error': f'File too large (max {max_bytes // (1024*1024)} MB)'}), 400
+        return jsonify({'error': f'File too large (max {max_bytes // (1024 * 1024)} MB)'}), 400
+
     now = int(time.time())
-    conn = get_db()
-    cursor = conn.execute(
-        'INSERT INTO chat_files (wallet, file_name, file_data, file_type, file_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        (wallet, file_name, file_data, file_type, file_size or approx, now, NEVER_EXPIRES)
-    )
-    file_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db()
+        cursor = conn.execute(
+            'INSERT INTO chat_files (wallet, file_name, file_data, file_type, file_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            (wallet, file_name, file_data, file_type, approx, now, NEVER_EXPIRES)
+        )
+        file_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f'  [chat-file] insert failed: {e}')
+        return jsonify({'error': 'Could not save file — try a shorter clip or paste a YouTube link'}), 500
     return jsonify({'file_id': file_id, 'file_type': file_type, 'file_name': file_name})
 
 @app.route('/chat-file/<int:file_id>')
