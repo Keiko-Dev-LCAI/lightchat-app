@@ -10996,11 +10996,7 @@ async function sendCommunityContent(slug, content) {
   if (p2pCount > 0 || hpCount > 0 || relayOk) {
     msg.transport = p2pCount > 0 ? 'p2p' : (hpCount > 0 ? 'holepunch' : 'relay');
     appendCommunityMessage(msg);
-    const bits = [];
-    if (p2pCount > 0) bits.push('P2P · ' + p2pCount);
-    if (hpCount > 0) bits.push('HP · ' + hpCount);
-    if (relayOk) bits.push('saved');
-    showToast(bits.length ? ('Sent · ' + bits.join(' · ')) : 'Sent');
+    // No success toast — Discord doesn't ping on every send (status stays in the header badge)
     return;
   }
 
