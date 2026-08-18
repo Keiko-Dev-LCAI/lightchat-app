@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-goal-1to5">
+<meta name="lc-build" content="2026-08-18-p2p-mesh">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=14"></script>
+<script src="genchat-p2p.js?v=15"></script>
 <script src="dm-p2p.js?v=12"></script>
 <script src="genchat-holepunch.js?v=3"></script>
 <script>
@@ -6633,6 +6633,8 @@ let peerConnection = null, localStream = null, callState = null;
 let iceCandidateQueue = [];
 let keepAliveInterval = null;
 let iceServers = null;
+let iceServersLoadedAt = 0;
+const ICE_TTL_MS = 45 * 60 * 1000; // Metered creds expire — refresh on join
 const FREE_ICE_FALLBACK = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -6643,14 +6645,18 @@ const FREE_ICE_FALLBACK = [
   { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
 ];
-async function loadIceServers() {
+async function loadIceServers(force) {
   // Always hit Railway backend (not GitHub Pages origin) — free path, no new accounts
+  if (!force && iceServers && iceServers.length && (Date.now() - iceServersLoadedAt) < ICE_TTL_MS) {
+    return iceServers;
+  }
   try {
     const resp = await fetch(BACKEND + '/api/turn-credentials');
     if (resp.ok) {
       const servers = await resp.json();
       if (Array.isArray(servers) && servers.length) {
         iceServers = servers;
+        iceServersLoadedAt = Date.now();
         return iceServers;
       }
     }
@@ -6658,6 +6664,7 @@ async function loadIceServers() {
     console.warn('TURN load failed, using free fallback', e);
   }
   iceServers = FREE_ICE_FALLBACK.slice();
+  iceServersLoadedAt = Date.now();
   return iceServers;
 }
 function rtcPeerConfig() {
@@ -11675,18 +11682,34 @@ function ensureGenChatP2P() {
     el.style.display = '';
     const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
     if (st.connected > 0) {
-      el.textContent = p2pOnly ? ('P2P · ' + st.connected) : ('P2P · ' + st.connected + ' · saved');
+      el.textContent = p2pOnly ? ('P2P · ' + st.connected) : ('P2P · ' + st.connected);
+      el.title = 'Direct peer mesh · ' + st.connected + ' connected · history still saved to host unless P2P-only';
       el.classList.add('p2p-on');
+    } else if (st.peers > 0 || st.mode === 'connecting') {
+      el.textContent = 'Connecting…';
+      el.title = 'Found peer(s) — negotiating WebRTC (TURN helps across NATs)';
+      el.classList.toggle('p2p-on', false);
     } else {
-      el.textContent = st.peers > 0 ? 'Connecting…' : (p2pOnly ? 'P2P only' : 'History on');
+      el.textContent = p2pOnly ? 'P2P only' : 'Relay';
+      el.title = p2pOnly
+        ? 'Waiting for peers · host history off'
+        : 'No live peers yet · messages still go via host relay + history';
       el.classList.toggle('p2p-on', false);
     }
     const sub = document.querySelector('#tab-genchat .comm-sub');
     if (sub && isP2PChatChannel(_activeCommSlug || 'general')) {
-      const labels = { general: 'Gen Chat', dev: '#Devs', nodes: '#Nodes', mods: '#Mods' };
+      const labels = {
+        general: 'Gen Chat',
+        'off-topic': '#off-topic',
+        dev: '#Devs',
+        nodes: '#Nodes',
+        mods: '#Mods',
+      };
       const label = labels[_activeCommSlug] || ('#' + (_activeCommSlug || 'chat'));
       if (st.connected > 0) {
         sub.textContent = label + ' · P2P mesh · ' + st.connected + ' peer' + (st.connected === 1 ? '' : 's');
+      } else if (st.peers > 0) {
+        sub.textContent = label + ' · connecting to peers…';
       } else if (p2pOnly) {
         sub.textContent = label + ' · P2P only · waiting for peers';
       } else if (_activeCommSlug === 'dev') {
@@ -11695,8 +11718,10 @@ function ensureGenChatP2P() {
         sub.textContent = '#Nodes · operators & validators';
       } else if (_activeCommSlug === 'mods') {
         sub.textContent = '#Mods · staff only';
+      } else if (_activeCommSlug === 'off-topic') {
+        sub.textContent = '#off-topic · casual chat';
       } else {
-        sub.textContent = 'Everyone · Lightchain community';
+        sub.textContent = 'Everyone · Lightchain community · Relay until peers connect';
       }
     }
   };
