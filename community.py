@@ -574,7 +574,9 @@ def profile_dict(conn, wallet: str) -> dict:
                 (wallet,),
             ).fetchone()
         )
-    handle = h["handle"] if h else ""
+    handle = (h["handle"] if h else "") or ""
+    handle = handle.lstrip("@")
+    display = (display or "").lstrip("@")
     if not display:
         display = handle or (wallet[:6] + "…" + wallet[-4:] if len(wallet) > 10 else wallet)
     hide = False

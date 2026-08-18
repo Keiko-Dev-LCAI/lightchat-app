@@ -229,7 +229,9 @@ def get_handle_for(wallet, conn=None):
     row = conn.execute('SELECT handle FROM handles WHERE wallet = ?', (wallet.lower(),)).fetchone()
     if close:
         conn.close()
-    return row['handle'] if row else wallet[:8] + '...'
+    if row and row['handle']:
+        return (row['handle'] or '').lstrip('@')
+    return wallet[:8] + '...'
 
 def send_push_notification(to_wallet, title, body, extra_data=None):
     if not PUSH_AVAILABLE:
@@ -487,12 +489,13 @@ def register():
     if not re.match(r'^[a-zA-Z0-9_]{2,20}$', handle):
         return jsonify({'error': 'Handle must be 2-20 characters: letters, numbers, underscores only'}), 400
 
-    handle = '@' + handle.lower()
+    handle = handle.lower()  # no @ symbol
     conn = get_db()
     try:
         existing = conn.execute('SELECT handle FROM handles WHERE wallet = ?', (wallet,)).fetchone()
         if existing:
-            return jsonify({'handle': existing['handle'], 'exists': True})
+            clean = (existing['handle'] or '').lstrip('@')
+            return jsonify({'handle': clean, 'exists': True})
 
         conn.execute('INSERT INTO handles (wallet, handle, created_at) VALUES (?, ?, ?)',
                      (wallet, handle, int(time.time())))
@@ -508,13 +511,19 @@ def get_handle(wallet):
     conn = get_db()
     row = conn.execute('SELECT handle FROM handles WHERE wallet = ?', (wallet.lower(),)).fetchone()
     conn.close()
-    return jsonify({'handle': row['handle'] if row else None})
+    if not row or not row['handle']:
+        return jsonify({'handle': None})
+    return jsonify({'handle': (row['handle'] or '').lstrip('@')})
 
 @app.route('/resolve/<handle>')
 def resolve_handle(handle):
-    h = ('@' + handle.lstrip('@')).lower()
+    raw = (handle or '').lstrip('@').lower()
     conn = get_db()
-    row = conn.execute('SELECT wallet FROM handles WHERE handle = ?', (h,)).fetchone()
+    # Accept legacy @handle rows and new handle-without-@
+    row = conn.execute(
+        'SELECT wallet FROM handles WHERE handle = ? OR handle = ?',
+        (raw, '@' + raw),
+    ).fetchone()
     conn.close()
     if row:
         return jsonify({'wallet': row['wallet']})
@@ -629,10 +638,13 @@ def change_handle():
     if not re.match(r'^[a-zA-Z0-9_]{2,20}$', handle):
         return jsonify({'error': 'Handle must be 2-20 characters: letters, numbers, underscores only'}), 400
 
-    handle = '@' + handle.lower()
+    handle = handle.lower()  # no @ symbol
     conn = get_db()
     try:
-        existing = conn.execute('SELECT wallet FROM handles WHERE handle = ?', (handle,)).fetchone()
+        existing = conn.execute(
+            'SELECT wallet FROM handles WHERE handle = ? OR handle = ?',
+            (handle, '@' + handle),
+        ).fetchone()
         if existing and existing['wallet'] != wallet:
             return jsonify({'error': 'Handle already taken, please choose another'}), 409
         conn.execute('INSERT OR REPLACE INTO handles (wallet, handle, created_at) VALUES (?, ?, ?)',
