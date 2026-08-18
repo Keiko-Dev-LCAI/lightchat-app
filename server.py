@@ -223,6 +223,75 @@ threading.Thread(target=cleanup_messages, daemon=True).start()
 # all existing expires_at > now queries working correctly.
 NEVER_EXPIRES = 32503680000
 
+# ── Media storage stub (handoff: object storage, not SQLite forever) ──
+# See ~/Desktop/LightChat/MEDIA-STORAGE.md
+# MEDIA_BACKEND=local (default) | s3
+# When s3: MEDIA_S3_ENDPOINT, MEDIA_S3_BUCKET, MEDIA_S3_ACCESS_KEY, MEDIA_S3_SECRET_KEY, MEDIA_S3_PUBLIC_BASE
+MEDIA_BACKEND = (os.environ.get('MEDIA_BACKEND') or 'local').strip().lower()
+MEDIA_MAX_IMAGE_MB = int(os.environ.get('MEDIA_MAX_IMAGE_MB') or '8')
+MEDIA_MAX_VIDEO_MB = int(os.environ.get('MEDIA_MAX_VIDEO_MB') or '20')
+
+
+def media_store_put(wallet: str, raw: bytes, content_type: str, filename: str = 'file') -> dict:
+    """
+    Store media bytes; return {url, backend, id?}.
+    local → caller should persist via chat-image/chat-file (legacy SQLite).
+    s3   → upload to bucket and return public URL (preferred for lightchain.ai).
+    """
+    wallet = (wallet or '').lower().strip()
+    content_type = content_type or 'application/octet-stream'
+    filename = (filename or 'file').replace('..', '_')
+    if MEDIA_BACKEND == 's3':
+        try:
+            return _media_store_put_s3(wallet, raw, content_type, filename)
+        except Exception as e:
+            print(f'  [media] s3 put failed, caller may fall back: {e}')
+            raise
+    return {
+        'backend': 'local',
+        'url': None,  # local path uses DB ids; see chat-image / chat-file routes
+        'bytes': len(raw or b''),
+        'content_type': content_type,
+        'filename': filename,
+    }
+
+
+def _media_store_put_s3(wallet: str, raw: bytes, content_type: str, filename: str) -> dict:
+    """Minimal S3/R2-compatible put via boto3 if installed + env configured."""
+    endpoint = os.environ.get('MEDIA_S3_ENDPOINT') or ''
+    bucket = os.environ.get('MEDIA_S3_BUCKET') or ''
+    key_id = os.environ.get('MEDIA_S3_ACCESS_KEY') or ''
+    secret = os.environ.get('MEDIA_S3_SECRET_KEY') or ''
+    public_base = (os.environ.get('MEDIA_S3_PUBLIC_BASE') or '').rstrip('/')
+    if not (bucket and key_id and secret and public_base):
+        raise RuntimeError('MEDIA_S3_* env incomplete')
+    try:
+        import boto3  # optional dependency for LC handoff
+    except ImportError as e:
+        raise RuntimeError('boto3 not installed — pip install boto3 for MEDIA_BACKEND=s3') from e
+    import uuid as _uuid
+    ext = ''
+    if '.' in filename:
+        ext = '.' + filename.rsplit('.', 1)[-1][:8]
+    key = f"lightchat/{wallet[:10]}/{int(time.time())}_{_uuid.uuid4().hex[:12]}{ext}"
+    client_kwargs = {
+        'aws_access_key_id': key_id,
+        'aws_secret_access_key': secret,
+    }
+    if endpoint:
+        client_kwargs['endpoint_url'] = endpoint
+    s3 = boto3.client('s3', **client_kwargs)
+    s3.put_object(Bucket=bucket, Key=key, Body=raw, ContentType=content_type)
+    url = f"{public_base}/{key}"
+    return {
+        'backend': 's3',
+        'url': url,
+        'key': key,
+        'bytes': len(raw or b''),
+        'content_type': content_type,
+        'filename': filename,
+    }
+
 def get_room(w1, w2):
     return '_'.join(sorted([w1.lower(), w2.lower()]))
 
@@ -817,6 +886,15 @@ def post_chat_image():
     image_type = data.get('image_type', 'image/jpeg')
     if not wallet or not image_data:
         return jsonify({'error': 'wallet and image_data required'}), 400
+    # Prefer object storage when configured (lightchain.ai handoff path)
+    if MEDIA_BACKEND == 's3':
+        try:
+            raw = base64.b64decode(image_data)
+            put = media_store_put(wallet, raw, image_type, 'image.jpg')
+            if put.get('url'):
+                return jsonify({'url': put['url'], 'backend': 's3', 'image_id': None})
+        except Exception as e:
+            print(f'  [chat-image] s3 failed, falling back to local: {e}')
     now = int(time.time())
     conn = get_db()
     cursor = conn.execute(
@@ -826,7 +904,7 @@ def post_chat_image():
     image_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({'image_id': image_id})
+    return jsonify({'image_id': image_id, 'backend': 'local'})
 
 @app.route('/chat-image/<int:image_id>')
 def get_chat_image(image_id):
@@ -1013,13 +1091,28 @@ def post_chat_file():
     if not wallet or not file_data:
         return jsonify({'error': 'wallet and file required'}), 400
 
-    # Cap uploads (SQLite / Railway memory) — images smaller; video up to ~20MB
-    max_bytes = 20 * 1024 * 1024
+    # Cap uploads — images smaller; video up to MEDIA_MAX_VIDEO_MB
+    max_bytes = MEDIA_MAX_VIDEO_MB * 1024 * 1024
     if (file_type or '').startswith('image/'):
-        max_bytes = 8 * 1024 * 1024
+        max_bytes = MEDIA_MAX_IMAGE_MB * 1024 * 1024
     approx = file_size or int(len(file_data) * 0.75)
     if approx > max_bytes + 500_000:
         return jsonify({'error': f'File too large (max {max_bytes // (1024 * 1024)} MB)'}), 400
+
+    raw = base64.b64decode(file_data)
+    if MEDIA_BACKEND == 's3':
+        try:
+            put = media_store_put(wallet, raw, file_type, file_name)
+            if put.get('url'):
+                return jsonify({
+                    'url': put['url'],
+                    'backend': 's3',
+                    'file_type': file_type,
+                    'file_name': file_name,
+                    'file_id': None,
+                })
+        except Exception as e:
+            print(f'  [chat-file] s3 failed, falling back to local: {e}')
 
     now = int(time.time())
     try:
@@ -1034,7 +1127,7 @@ def post_chat_file():
     except Exception as e:
         print(f'  [chat-file] insert failed: {e}')
         return jsonify({'error': 'Could not save file — try a shorter clip or paste a YouTube link'}), 500
-    return jsonify({'file_id': file_id, 'file_type': file_type, 'file_name': file_name})
+    return jsonify({'file_id': file_id, 'file_type': file_type, 'file_name': file_name, 'backend': 'local'})
 
 @app.route('/chat-file/<int:file_id>')
 def get_chat_file(file_id):
