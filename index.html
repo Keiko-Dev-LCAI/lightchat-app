@@ -1237,6 +1237,30 @@ body {
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
 .comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; height:44px; }
+#genchat-compose { position:relative; flex-shrink:0; }
+.mention-ac {
+  display:none; position:absolute; left:10px; right:10px; bottom:100%;
+  max-height:220px; overflow-y:auto; z-index:40;
+  background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 -8px 28px rgba(0,0,0,0.5); padding:6px; margin-bottom:6px;
+  flex-direction:column; gap:2px;
+}
+.mention-ac.open { display:flex; }
+.mention-ac-item {
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  background:none; border:none; color:var(--text); padding:10px 12px;
+  border-radius:10px; cursor:pointer; font-family:inherit; font-size:14px;
+}
+.mention-ac-item:hover, .mention-ac-item.active { background:rgba(91,75,255,0.28); }
+.mention-ac-item .mac-av {
+  width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary));
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; overflow:hidden;
+}
+.mention-ac-item .mac-av img { width:100%; height:100%; object-fit:cover; }
+.mention-ac-item .mac-name { font-weight:700; }
+.mention-ac-item .mac-sub { font-size:12px; color:var(--text2); margin-left:6px; }
+.mention-ac-item.everyone .mac-name { color:#ffc9c9; }
 .comm-gif-btn { background:var(--bg)!important; border:1px solid var(--border)!important; color:var(--text)!important; font-size:13px!important; padding:0 12px!important; white-space:nowrap; }
 #gif-sheet {
   display:none; position:fixed; left:0; right:0; bottom:0; top:auto;
@@ -1481,6 +1505,30 @@ body {
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
 .comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; height:44px; }
+#genchat-compose { position:relative; flex-shrink:0; }
+.mention-ac {
+  display:none; position:absolute; left:10px; right:10px; bottom:100%;
+  max-height:220px; overflow-y:auto; z-index:40;
+  background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 -8px 28px rgba(0,0,0,0.5); padding:6px; margin-bottom:6px;
+  flex-direction:column; gap:2px;
+}
+.mention-ac.open { display:flex; }
+.mention-ac-item {
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  background:none; border:none; color:var(--text); padding:10px 12px;
+  border-radius:10px; cursor:pointer; font-family:inherit; font-size:14px;
+}
+.mention-ac-item:hover, .mention-ac-item.active { background:rgba(91,75,255,0.28); }
+.mention-ac-item .mac-av {
+  width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary));
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; overflow:hidden;
+}
+.mention-ac-item .mac-av img { width:100%; height:100%; object-fit:cover; }
+.mention-ac-item .mac-name { font-weight:700; }
+.mention-ac-item .mac-sub { font-size:12px; color:var(--text2); margin-left:6px; }
+.mention-ac-item.everyone .mac-name { color:#ffc9c9; }
 .comm-gif-btn { background:var(--bg)!important; border:1px solid var(--border)!important; color:var(--text)!important; font-size:13px!important; padding:0 12px!important; white-space:nowrap; }
 #gif-sheet {
   display:none; position:fixed; left:0; right:0; bottom:0; top:auto;
@@ -1760,12 +1808,18 @@ body {
           </div>
         </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
-        <div class="comm-input-row">
-          <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
-          <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('sticker')" title="Stickers">🎭</button>
-          <button type="button" class="comm-gif-btn" onclick="openGifSheet('genchat')" title="Send a GIF">GIF</button>
-          <input id="genchat-input" placeholder="Message…  @name  ·  staff: @everyone" maxlength="4000" onkeydown="if(event.key==='Enter')sendCommunityMsg('general')">
-          <button type="button" onclick="sendCommunityMsg('general')">Send</button>
+        <div id="genchat-compose">
+          <div id="mention-ac" class="mention-ac" role="listbox" aria-label="Mention members"></div>
+          <div class="comm-input-row">
+            <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
+            <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('sticker')" title="Stickers">🎭</button>
+            <button type="button" class="comm-gif-btn" onclick="openGifSheet('genchat')" title="Send a GIF">GIF</button>
+            <input id="genchat-input" placeholder="Message… type @ to mention" maxlength="4000"
+              autocomplete="off"
+              oninput="onGenchatMentionInput()"
+              onkeydown="return onGenchatKeydown(event)">
+            <button type="button" onclick="sendCommunityMsg('general')">Send</button>
+          </div>
         </div>
       </div>
     </div>
@@ -7990,6 +8044,8 @@ async function communityJoin() {
       // staff room via join_ticket with empty skipped — emit presence join for staff
       if (socket && isCommStaff()) socket.emit('join_community_channel', { slug: '_staff' });
     } catch (e) {}
+    // Prefetch members for @mention autocomplete
+    try { if (!_dirMembers || !_dirMembers.length) loadDirectory(); } catch (e) {}
     return true;
   } catch(e) { console.warn('community join', e); return false; }
 }
@@ -8255,8 +8311,9 @@ async function openThreadChat(tid) {
   _activeThreadId = tid;
   document.getElementById('genchat-msgs').style.display = 'none';
   document.getElementById('threads-panel').style.display = 'none';
-  const inputRow = document.querySelector('#tab-genchat .comm-input-row');
-  if (inputRow) inputRow.style.display = 'none';
+  const compose = document.getElementById('genchat-compose');
+  if (compose) compose.style.display = 'none';
+  closeMentionAc();
   const tc = document.getElementById('thread-chat');
   if (tc) tc.style.display = 'flex';
   try { if (socket) socket.emit('join_thread', { wallet, thread_id: tid }); } catch (e) {}
@@ -8269,11 +8326,11 @@ function closeThreadChat(keepChannel) {
   if (tc) tc.style.display = 'none';
   if (!keepChannel) {
     document.getElementById('genchat-msgs').style.display = '';
-    const inputRow = document.querySelector('#tab-genchat .comm-input-row');
+    const compose = document.getElementById('genchat-compose');
     const slug = _activeCommSlug || 'general';
     const ch = (communityChannels || []).find(c => c.slug === slug);
     const mode = (ch && ch.mode) || (isP2PChatChannel(slug) ? 'chat' : 'post');
-    if (inputRow && (mode === 'chat' || isP2PChatChannel(slug))) inputRow.style.display = '';
+    if (compose && (mode === 'chat' || isP2PChatChannel(slug))) compose.style.display = '';
   }
 }
 
@@ -8410,8 +8467,9 @@ async function loadCommunityChannel(slug) {
   slug = slug || _activeCommSlug || 'general';
   _activeCommSlug = slug;
   const box = document.getElementById('genchat-msgs');
-  const inputRow = document.querySelector('#tab-genchat .comm-input-row');
+  const compose = document.getElementById('genchat-compose');
   if (!box) return;
+  closeMentionAc();
   box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;color:var(--text2)">Loading…</div>';
   if (wallet) {
     try { await communityJoin(); } catch(e) { console.warn('join', e); }
@@ -8421,7 +8479,7 @@ async function loadCommunityChannel(slug) {
   }
   // Start Here = Discord-style info hub (not a chat thread)
   if (slug === 'start-here') {
-    if (inputRow) inputRow.style.display = 'none';
+    if (compose) compose.style.display = 'none';
     await renderStartHereGuide(box);
     return;
   }
@@ -8430,19 +8488,19 @@ async function loadCommunityChannel(slug) {
   const ch = (communityChannels || []).find(c => c.slug === slug);
   const isMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
   const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : 'post');
-  if (inputRow) {
+  if (compose) {
     if (mode === 'guide' || slug === 'start-here') {
-      inputRow.style.display = 'none';
+      compose.style.display = 'none';
     } else if (mode === 'chat' || slug === 'general' || isP2PChatChannel(slug)) {
-      inputRow.style.display = '';
+      compose.style.display = '';
       const inp = document.getElementById('genchat-input');
-      if (inp) inp.placeholder = (slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…')) + '  @name · staff @everyone';
+      if (inp) inp.placeholder = (slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…')) + ' · type @ to mention';
     } else if (mode === 'post' && isMod) {
-      inputRow.style.display = '';
+      compose.style.display = '';
       const inp = document.getElementById('genchat-input');
-      if (inp) inp.placeholder = 'Post to #' + slug + '…  @name · @everyone';
+      if (inp) inp.placeholder = 'Post to #' + slug + '… · type @ to mention';
     } else {
-      inputRow.style.display = 'none';
+      compose.style.display = 'none';
     }
   }
   // Threads UI (admins create; tagged members join)
@@ -8972,6 +9030,7 @@ document.addEventListener('click', function (e) {
 });
 
 async function sendCommunityMsg(slug) {
+  closeMentionAc();
   const inp = document.getElementById('genchat-input');
   let content = (inp && inp.value || '').trim();
   slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
@@ -8983,6 +9042,177 @@ async function sendCommunityMsg(slug) {
   }
   if (inp) inp.value = '';
   await sendCommunityContent(slug, content);
+}
+
+/* ── @mention autocomplete (Discord-style) ── */
+let _mentionAc = { open: false, items: [], index: 0, start: -1, query: '' };
+
+function mentionTokenForMember(m) {
+  const handle = stripAt((m && m.handle) || '').replace(/[^A-Za-z0-9_]/g, '');
+  const display = stripAt((m && m.display_name) || '').replace(/[^A-Za-z0-9_]/g, '');
+  // Prefer handle (stable); else single-token display name
+  if (handle && handle.length >= 2) return handle;
+  if (display && display.length >= 2) return display;
+  const w = ((m && m.wallet) || '').toLowerCase();
+  return w.length === 42 ? w : '';
+}
+
+function closeMentionAc() {
+  _mentionAc.open = false;
+  _mentionAc.items = [];
+  _mentionAc.index = 0;
+  _mentionAc.start = -1;
+  _mentionAc.query = '';
+  const el = document.getElementById('mention-ac');
+  if (el) {
+    el.classList.remove('open');
+    el.innerHTML = '';
+  }
+}
+
+async function _mentionAcEnsureMembers() {
+  if (_dirMembers && _dirMembers.length) return;
+  try { await loadDirectory(); } catch (e) {}
+}
+
+function getMentionQueryAtCursor(inp) {
+  if (!inp) return null;
+  const val = inp.value || '';
+  const caret = typeof inp.selectionStart === 'number' ? inp.selectionStart : val.length;
+  const before = val.slice(0, caret);
+  const m = before.match(/(^|[\s([{:;,])@([A-Za-z0-9_]{0,40})$/);
+  if (!m) return null;
+  return { start: caret - (m[2].length + 1), query: m[2], caret: caret };
+}
+
+function buildMentionAcItems(query) {
+  const q = String(query || '').toLowerCase();
+  const items = [];
+  if (isCommStaff() && (!q || 'everyone'.startsWith(q))) {
+    items.push({ kind: 'everyone', label: 'everyone', sub: 'Alert all members', token: 'everyone' });
+  }
+  const me = (wallet || '').toLowerCase();
+  const members = (_dirMembers || []).slice();
+  members.sort(_dirRoleSort);
+  for (let i = 0; i < members.length; i++) {
+    const m = members[i];
+    const token = mentionTokenForMember(m);
+    if (!token) continue;
+    if ((m.wallet || '').toLowerCase() === me) continue;
+    const name = stripAt(m.display_name || m.handle || '') || shortenWallet(m.wallet);
+    const handle = stripAt(m.handle || '');
+    const blob = (name + ' ' + handle + ' ' + token + ' ' + (m.role || '')).toLowerCase();
+    if (q && blob.indexOf(q) < 0 && token.toLowerCase().indexOf(q) !== 0) continue;
+    items.push({
+      kind: 'member',
+      label: name,
+      sub: (handle && handle.toLowerCase() !== name.toLowerCase() ? '@' + handle + ' · ' : '') + (displayRoleLabel(m.role) || m.role || 'member'),
+      token: token,
+      member: m,
+    });
+    if (items.length >= 12) break;
+  }
+  return items;
+}
+
+function renderMentionAc() {
+  const el = document.getElementById('mention-ac');
+  if (!el) return;
+  const items = _mentionAc.items || [];
+  if (!_mentionAc.open || !items.length) {
+    el.classList.remove('open');
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = items.map(function (it, i) {
+    const active = i === _mentionAc.index ? ' active' : '';
+    const everyone = it.kind === 'everyone' ? ' everyone' : '';
+    let av = '';
+    if (it.kind === 'everyone') {
+      av = '<div class="mac-av">📣</div>';
+    } else {
+      const m = it.member || {};
+      const letter = (it.label || '?').charAt(0).toUpperCase();
+      av = m.has_avatar
+        ? '<div class="mac-av"><img src="' + BACKEND + '/api/community/avatar/' + m.wallet + '" alt=""></div>'
+        : '<div class="mac-av">' + letter + '</div>';
+    }
+    return '<button type="button" class="mention-ac-item' + everyone + active + '" role="option" data-i="' + i + '" ' +
+      'onmousedown="event.preventDefault();pickMentionAc(' + i + ')">' +
+      av + '<span class="mac-name">@' + escapeHtml(it.token) + '</span>' +
+      (it.sub ? '<span class="mac-sub">' + escapeHtml(it.sub) + '</span>' : '') +
+      '</button>';
+  }).join('');
+  el.classList.add('open');
+}
+
+async function onGenchatMentionInput() {
+  const inp = document.getElementById('genchat-input');
+  const hit = getMentionQueryAtCursor(inp);
+  if (!hit) { closeMentionAc(); return; }
+  await _mentionAcEnsureMembers();
+  // Cursor may have moved while loading directory
+  const hit2 = getMentionQueryAtCursor(inp);
+  if (!hit2) { closeMentionAc(); return; }
+  const items = buildMentionAcItems(hit2.query);
+  if (!items.length) { closeMentionAc(); return; }
+  _mentionAc.open = true;
+  _mentionAc.items = items;
+  _mentionAc.index = Math.min(_mentionAc.index, items.length - 1);
+  _mentionAc.start = hit2.start;
+  _mentionAc.query = hit2.query;
+  renderMentionAc();
+}
+
+function pickMentionAc(i) {
+  const inp = document.getElementById('genchat-input');
+  if (!inp || !_mentionAc.open) return;
+  const items = _mentionAc.items || [];
+  const it = items[i];
+  if (!it) return;
+  const val = inp.value || '';
+  const caret = typeof inp.selectionStart === 'number' ? inp.selectionStart : val.length;
+  const start = _mentionAc.start >= 0 ? _mentionAc.start : caret;
+  const before = val.slice(0, start);
+  const after = val.slice(caret);
+  const insert = '@' + it.token + ' ';
+  inp.value = before + insert + after;
+  const next = before.length + insert.length;
+  try { inp.setSelectionRange(next, next); } catch (e) {}
+  closeMentionAc();
+  inp.focus();
+}
+
+function onGenchatKeydown(event) {
+  if (_mentionAc.open && _mentionAc.items.length) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      _mentionAc.index = (_mentionAc.index + 1) % _mentionAc.items.length;
+      renderMentionAc();
+      return false;
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      _mentionAc.index = (_mentionAc.index - 1 + _mentionAc.items.length) % _mentionAc.items.length;
+      renderMentionAc();
+      return false;
+    }
+    if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault();
+      pickMentionAc(_mentionAc.index);
+      return false;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMentionAc();
+      return false;
+    }
+  }
+  if (event.key === 'Enter') {
+    sendCommunityMsg('general');
+    return false;
+  }
+  return true;
 }
 
 function contentHasLink(content) {
