@@ -1713,6 +1713,8 @@ body {
         </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div class="comm-input-row">
+          <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
+          <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('sticker')" title="Stickers">🎭</button>
           <button type="button" class="comm-gif-btn" onclick="openGifSheet('genchat')" title="Send a GIF">GIF</button>
           <input id="genchat-input" placeholder="Message #general…" maxlength="4000" onkeydown="if(event.key==='Enter')sendCommunityMsg('general')">
           <button type="button" onclick="sendCommunityMsg('general')">Send</button>
@@ -2509,6 +2511,38 @@ body {
   <div class="gif-sheet-attr" id="gif-sheet-attr">URL-only · no Railway GIF search</div>
 </div>
 
+<!-- Gen Chat emoji / sticker sheet (Discord-style) -->
+<div id="emoji-sticker-backdrop" onclick="closeEmojiStickerSheet()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:449"></div>
+<div id="emoji-sticker-sheet" role="dialog" aria-label="Emoji and stickers" style="display:none;position:fixed;left:0;right:0;bottom:0;max-height:min(72vh,560px);z-index:450;background:var(--card);border-top:1px solid var(--border);border-radius:18px 18px 0 0;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,0.45)">
+  <div style="display:flex;align-items:center;gap:8px;padding:12px 14px 8px;border-bottom:1px solid var(--border)">
+    <button type="button" class="picker-tab-btn active" id="es-tab-emoji" onclick="switchEsTab('emoji')" style="flex:1">😊 Emoji</button>
+    <button type="button" class="picker-tab-btn" id="es-tab-sticker" onclick="switchEsTab('sticker')" style="flex:1">🎭 Stickers</button>
+    <button type="button" class="picker-tab-btn" id="es-tab-upload" onclick="switchEsTab('upload')" style="flex:1">⬆️ Upload</button>
+    <button type="button" onclick="closeEmojiStickerSheet()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:4px 8px">✕</button>
+  </div>
+  <div id="es-pane-emoji" style="padding:12px;overflow-y:auto;flex:1;min-height:0">
+    <div class="emoji-grid" id="es-emoji-grid"></div>
+  </div>
+  <div id="es-pane-sticker" style="display:none;padding:12px;overflow-y:auto;flex:1;min-height:0">
+    <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.04em">Built-in</div>
+    <div class="sticker-grid" id="es-sticker-builtin"></div>
+    <div style="font-size:12px;font-weight:700;color:var(--text2);margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.04em">Server pack</div>
+    <div class="sticker-grid" id="es-sticker-custom"></div>
+  </div>
+  <div id="es-pane-upload" style="display:none;padding:16px;overflow-y:auto;flex:1;min-height:0">
+    <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">Upload a sticker or custom emoji (PNG/GIF/WebP, max ~500KB). Everyone in Gen Chat can use it.</div>
+    <label class="form-label">Name</label>
+    <input class="form-input" id="es-upload-name" maxlength="40" placeholder="cool-orca" style="margin-bottom:12px">
+    <label class="form-label">Type</label>
+    <select id="es-upload-kind" class="form-input" style="margin-bottom:12px">
+      <option value="sticker">Sticker</option>
+      <option value="emoji">Custom emoji</option>
+    </select>
+    <input type="file" id="es-upload-file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-bottom:12px">
+    <button type="button" class="primary-btn" style="width:100%" onclick="uploadCommunitySticker()">Upload to server pack</button>
+  </div>
+</div>
+
 <!-- Gen Chat message actions -->
 <div id="comm-msg-menu" role="menu" aria-label="Message actions">
   <button type="button" onclick="commMsgCopy()">📋 Copy</button>
@@ -3300,7 +3334,7 @@ function renderContacts() {
         <div class="contact-item">
           <div class="chat-avatar" style="width:46px;height:46px;font-size:20px">${avatarLetter(c.handle)}</div>
           <div style="flex:1">
-            <div style="font-size:18px;font-weight:600">${c.handle || shortenWallet(c.wallet)}</div>
+            <div style="font-size:18px;font-weight:600">${stripAt(c.handle) || shortenWallet(c.wallet)}</div>
             <div style="font-size:14px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
           </div>
           <button class="badge-approve" onclick="approveContact('${c.wallet}')">✓ Accept</button>
@@ -3315,7 +3349,7 @@ function renderContacts() {
       <div class="contact-item" onclick="openChat('${c.wallet}','${(c.handle||'').replace(/'/g,'\\u0027')}')">
         <div class="chat-avatar" style="width:46px;height:46px;font-size:20px">${avatarLetter(c.handle)}</div>
         <div style="flex:1">
-          <div style="font-size:18px;font-weight:600">${c.handle || shortenWallet(c.wallet)}${c.p2p_local ? ' <span style="font-size:11px;color:var(--text2)">· P2P</span>' : ''}</div>
+          <div style="font-size:18px;font-weight:600">${stripAt(c.handle) || shortenWallet(c.wallet)}${c.p2p_local ? ' <span style="font-size:11px;color:var(--text2)">· P2P</span>' : ''}</div>
           <div style="font-size:14px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
         </div>
         <button onclick="event.stopPropagation();deleteContact('${c.wallet}')" style="background:none;border:none;color:var(--red);font-size:26px;cursor:pointer;padding:8px 12px;margin-left:4px;line-height:1" title="Remove contact">🗑</button>
@@ -4348,6 +4382,7 @@ const STICKER_LIST = [
 let gifSearchTimer = null;
 let _gifPickerTarget = 'dm'; // 'dm' | 'genchat'
 const GIF_PREFIX = '[[gif]]';
+const STICKER_PREFIX = '[[sticker]]';
 
 function initPicker() {
   const eg = document.getElementById('emoji-grid');
@@ -7921,6 +7956,18 @@ function startHereAction(act) {
 }
 
 function renderCommBodyHtml(content) {
+  const stickerId = parseStickerContent(content);
+  if (stickerId) {
+    let src = '';
+    if (stickerId.indexOf('builtin:') === 0) {
+      const slug = stickerId.slice(8);
+      src = '/stickers/' + encodeURIComponent(slug) + '.png';
+      return '<img class="comm-gif" src="' + src + '" alt="sticker" loading="lazy" ' +
+        'onerror="this.onerror=null;this.src=\'' + BACKEND + '/stickers/' + encodeURIComponent(slug) + '.png\'" style="max-width:140px;max-height:140px">';
+    }
+    src = BACKEND + '/api/community/stickers/' + encodeURIComponent(stickerId);
+    return '<img class="comm-gif" src="' + escapeHtml(src) + '" alt="sticker" loading="lazy" style="max-width:140px;max-height:140px">';
+  }
   const gifUrl = parseGifContent(content);
   if (gifUrl) {
     const safe = escapeHtml(gifUrl);
@@ -8261,8 +8308,146 @@ async function sendCommunityMsg(slug) {
 function contentHasLink(content) {
   const c = String(content || '').trim();
   if (!c) return false;
+  if (c.startsWith('[[sticker]]') || c.startsWith('[[emoji]]')) return false;
   if (c.startsWith('[[gif]]')) return true;
   return /(https?:\/\/|www\.|discord\.gg\/|t\.me\/)|(\b[a-z0-9-]+\.(com|org|net|io|ai|xyz|app|gg|me|co|info|dev)(\/[^\s]*)?)/i.test(c);
+}
+
+function openEmojiStickerSheet(tab) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  const sheet = document.getElementById('emoji-sticker-sheet');
+  const back = document.getElementById('emoji-sticker-backdrop');
+  if (sheet) { sheet.style.display = 'flex'; }
+  if (back) back.style.display = 'block';
+  const eg = document.getElementById('es-emoji-grid');
+  if (eg && !eg.children.length) {
+    eg.innerHTML = EMOJI_LIST.map(function (e) {
+      return '<button type="button" class="emoji-btn" onclick="sendGenChatEmoji(\'' + e + '\')">' + e + '</button>';
+    }).join('');
+  }
+  const sg = document.getElementById('es-sticker-builtin');
+  if (sg && !sg.children.length) {
+    sg.innerHTML = STICKER_LIST.map(function (s) {
+      return '<button type="button" class="sticker-btn" onclick="sendGenChatSticker(\'builtin:' + s.s + '\')">' +
+        '<img class="sticker-img" src="/stickers/' + s.s + '.png" alt="' + s.l + '" loading="lazy" ' +
+        'onerror="this.src=\'' + BACKEND + '/stickers/' + s.s + '.png\'">' +
+        '<div class="sticker-label">' + s.l + '</div></button>';
+    }).join('');
+  }
+  loadCustomStickers();
+  switchEsTab(tab || 'emoji');
+}
+
+function closeEmojiStickerSheet() {
+  const sheet = document.getElementById('emoji-sticker-sheet');
+  const back = document.getElementById('emoji-sticker-backdrop');
+  if (sheet) sheet.style.display = 'none';
+  if (back) back.style.display = 'none';
+}
+
+function switchEsTab(tab) {
+  ['emoji', 'sticker', 'upload'].forEach(function (t) {
+    const btn = document.getElementById('es-tab-' + t);
+    const pane = document.getElementById('es-pane-' + t);
+    if (btn) btn.classList.toggle('active', t === tab);
+    if (pane) pane.style.display = t === tab ? '' : 'none';
+  });
+}
+
+async function loadCustomStickers() {
+  const el = document.getElementById('es-sticker-custom');
+  if (!el) return;
+  el.innerHTML = '<div style="grid-column:1/-1;color:var(--text2);font-size:13px;padding:8px">Loading…</div>';
+  try {
+    const r = await fetch(BACKEND + '/api/community/stickers');
+    const j = await r.json();
+    const list = j.stickers || [];
+    if (!list.length) {
+      el.innerHTML = '<div style="grid-column:1/-1;color:var(--text2);font-size:13px;padding:8px">No custom stickers yet — upload one!</div>';
+      return;
+    }
+    el.innerHTML = list.map(function (s) {
+      const src = BACKEND + s.url;
+      const del = (isCommStaff() || (wallet && s.uploader === wallet))
+        ? '<button type="button" onclick="event.stopPropagation();deleteCommunitySticker(\'' + s.id + '\')" style="font-size:11px;margin-top:4px;background:none;border:none;color:var(--red);cursor:pointer">Delete</button>'
+        : '';
+      return '<button type="button" class="sticker-btn" onclick="sendGenChatSticker(\'' + s.id + '\')">' +
+        '<img class="sticker-img" src="' + src + '" alt="' + escapeHtml(s.name) + '" loading="lazy">' +
+        '<div class="sticker-label">' + escapeHtml(s.name) + '</div>' + del + '</button>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="grid-column:1/-1;color:var(--text2);font-size:13px">Could not load pack</div>';
+  }
+}
+
+async function sendGenChatEmoji(e) {
+  closeEmojiStickerSheet();
+  await sendCommunityContent(_activeCommSlug || 'general', e);
+}
+
+async function sendGenChatSticker(idOrBuiltin) {
+  closeEmojiStickerSheet();
+  const content = STICKER_PREFIX + idOrBuiltin;
+  await sendCommunityContent(_activeCommSlug || 'general', content);
+}
+
+async function uploadCommunitySticker() {
+  if (!wallet) { showToast('Connect wallet'); return; }
+  const file = document.getElementById('es-upload-file')?.files?.[0];
+  const name = (document.getElementById('es-upload-name')?.value || '').trim() || 'sticker';
+  const kind = document.getElementById('es-upload-kind')?.value || 'sticker';
+  if (!file) { showToast('Choose an image'); return; }
+  if (file.size > 500000) { showToast('Max ~500KB'); return; }
+  const dataUrl = await new Promise(function (res, rej) {
+    const fr = new FileReader();
+    fr.onload = function () { res(fr.result); };
+    fr.onerror = rej;
+    fr.readAsDataURL(file);
+  });
+  try {
+    const r = await fetch(BACKEND + '/api/community/stickers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet,
+        name,
+        kind,
+        image_data: dataUrl,
+        image_type: file.type || 'image/png',
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Upload failed'); return; }
+    showToast('Uploaded to server pack');
+    document.getElementById('es-upload-file').value = '';
+    switchEsTab('sticker');
+    loadCustomStickers();
+  } catch (e) {
+    showToast('Upload failed');
+  }
+}
+
+async function deleteCommunitySticker(id) {
+  if (!confirm('Delete this sticker from the server pack?')) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/stickers/' + encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Delete failed'); return; }
+    showToast('Deleted');
+    loadCustomStickers();
+  } catch (e) {
+    showToast('Delete failed');
+  }
+}
+
+function parseStickerContent(content) {
+  const c = String(content || '');
+  if (!c.startsWith(STICKER_PREFIX)) return null;
+  return c.slice(STICKER_PREFIX.length).trim();
 }
 
 function isCommStaff() {
