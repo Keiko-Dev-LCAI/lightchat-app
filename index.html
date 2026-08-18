@@ -26,7 +26,7 @@
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="genchat-p2p.js?v=10"></script>
 <script src="dm-p2p.js?v=10"></script>
-<script src="genchat-holepunch.js?v=2"></script>
+<script src="genchat-holepunch.js?v=3"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -8873,8 +8873,23 @@ function appendCommunityMessage(m) {
     const sid = String(m.id).replace(/"/g, '');
     if (box.querySelector('[data-msg-id="' + sid + '"]')) return;
   }
-  // P2P path has no server community_mention — alert locally. Relay uses socket event.
-  if (m.transport === 'p2p') {
+  // Skip on-screen content twins (same sender+body) — stops GIF doubles from P2P+relay
+  try {
+    if (m.content && m.sender_wallet) {
+      const sender = String(m.sender_wallet).toLowerCase();
+      let twin = false;
+      box.querySelectorAll('.comm-msg .comm-bubble').forEach(function (b) {
+        if (twin) return;
+        if ((b.getAttribute('data-sender') || '').toLowerCase() !== sender) return;
+        let c = '';
+        try { c = decodeURIComponent(b.getAttribute('data-content') || ''); } catch (e) { return; }
+        if (c === m.content) twin = true;
+      });
+      if (twin) return;
+    }
+  } catch (e) {}
+  // P2P / Holepunch path has no server community_mention — alert locally
+  if (m.transport === 'p2p' || m.transport === 'holepunch') {
     try { alertCommunityMention(m); } catch (e) {}
   }
   const letter = (m.display_name || '?').replace('@', '').charAt(0).toUpperCase();

@@ -1926,6 +1926,12 @@ def register_community_routes(app, socketio, get_db):
                     "error": "Only admins and mods can post links. Ask staff to share links.",
                     "code": "link_blocked",
                 }), 403
+            mention_everyone, mention_wallets = parse_mentions(conn, content)
+            if mention_everyone and not is_staff(role):
+                return jsonify({
+                    "error": "Only mods and admins can @everyone",
+                    "code": "mention_everyone_denied",
+                }), 403
             mid = str(uuid.uuid4())
             conn.execute(
                 """INSERT INTO community_ticket_messages
@@ -1944,6 +1950,9 @@ def register_community_routes(app, socketio, get_db):
                 "display_name": prof["display_name"],
                 "role": prof["role"],
                 "has_avatar": prof["has_avatar"],
+                "slug": "ticket:" + tid,
+                "mention_everyone": mention_everyone,
+                "mention_wallets": mention_wallets,
             }
             try:
                 socketio.emit("community_ticket_message", msg, room=f"ticket:{tid}")
@@ -1951,6 +1960,10 @@ def register_community_routes(app, socketio, get_db):
                 socketio.emit("community_ticket_message", msg, room=_norm(t["opener_wallet"]))
             except Exception:
                 pass
+            if mention_everyone or mention_wallets:
+                emit_community_mentions(
+                    socketio, conn, msg, mention_everyone, mention_wallets, wallet
+                )
             return jsonify({"ok": True, "message": msg})
         finally:
             conn.close()
@@ -2220,6 +2233,12 @@ def register_community_routes(app, socketio, get_db):
             role = ensure_member(conn, wallet)
             if content_has_link(content) and not is_staff(role):
                 return jsonify({"error": "Only admins/mods can post links"}), 403
+            mention_everyone, mention_wallets = parse_mentions(conn, content)
+            if mention_everyone and not is_staff(role):
+                return jsonify({
+                    "error": "Only mods and admins can @everyone",
+                    "code": "mention_everyone_denied",
+                }), 403
             mid = str(uuid.uuid4())
             now = int(time.time())
             conn.execute(
@@ -2237,6 +2256,9 @@ def register_community_routes(app, socketio, get_db):
                 "created_at": now,
                 "display_name": prof["display_name"],
                 "role": prof["role"],
+                "slug": "thread:" + tid,
+                "mention_everyone": mention_everyone,
+                "mention_wallets": mention_wallets,
             }
             try:
                 members = conn.execute(
@@ -2248,6 +2270,15 @@ def register_community_routes(app, socketio, get_db):
                     socketio.emit("community_thread_message", msg, room=m["wallet"])
             except Exception:
                 pass
+            if mention_everyone or mention_wallets:
+                # Prefer alerting tagged thread members; @everyone still expands to community
+                targets = mention_wallets
+                if not mention_everyone:
+                    member_set = {_norm(m["wallet"]) for m in members}
+                    targets = [w for w in mention_wallets if w in member_set] or mention_wallets
+                emit_community_mentions(
+                    socketio, conn, msg, mention_everyone, targets, wallet
+                )
             return jsonify({"ok": True, "message": msg})
         finally:
             conn.close()

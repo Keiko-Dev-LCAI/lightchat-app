@@ -22,7 +22,9 @@ npm run relay
 
 - **HTTPS health:** https://lightchat-holepunch-production.up.railway.app/health  
 - **WSS (browser):** `wss://lightchat-holepunch-production.up.railway.app`  
-- Railway project: `lightchat-holepunch` (separate from Flask LightChat)
+- Railway project: `lightchat-holepunch` (separate from Flask LightChat)  
+- **Verified 2026-08-18:** `node smoke-live.mjs` — two Node peers exchange chat over the public relay ✅  
+- Browser path still experimental (esm.sh Hyperswarm / sodium); WebRTC remains default
 
 ## Enable in the app
 
