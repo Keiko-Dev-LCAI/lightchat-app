@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-live-delete">
+<meta name="lc-build" content="2026-08-18-delete-reconcile">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -9830,7 +9830,9 @@ async function loadCommunityChannel(slug) {
       try {
         ensureGenChatP2P();
         try { genChatP2P.dedupeLocal(); } catch (e0) {}
-        const local = (
+        // Drop ghosts deleted on another device (local p2p copy) before merge
+        try { reconcileCommunityWithServer(slug, msgs); } catch (eR) {}
+        const local2 = (
           (typeof genChatP2P.loadLocalFiltered === 'function'
             ? genChatP2P.loadLocalFiltered()
             : genChatP2P.loadLocal()) || []
@@ -9845,7 +9847,7 @@ async function loadCommunityChannel(slug) {
             return true;
           }
         });
-        msgs = mergeCommunityMessages(msgs, local);
+        msgs = mergeCommunityMessages(msgs, local2);
         msgs = (msgs || []).filter(function (m) {
           try {
             return !(genChatP2P._isTombstoned && genChatP2P._isTombstoned(m));
@@ -9856,6 +9858,7 @@ async function loadCommunityChannel(slug) {
       } catch(e) { console.warn(e); }
     }
     if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
+    try { reconcileCommunityWithServer(slug, j.messages || msgs || []); } catch (eR2) {}
     renderCommunityMessages(msgs);
     // Rejoin live relay room for this channel
     try {
@@ -12824,6 +12827,80 @@ function onLiveCommunityDeleted(data) {
   } catch (e) {}
 }
 
+/**
+ * Drop ghosts: messages on screen / in P2P localStorage that are gone from the server.
+ * Fixes phone still showing a post after PC deleted it (local p2p-* copy resurrecting).
+ */
+function reconcileCommunityWithServer(slug, serverMsgs) {
+  slug = slug || _activeCommSlug || 'general';
+  serverMsgs = serverMsgs || [];
+  const serverIds = {};
+  const serverBodies = {};
+  serverMsgs.forEach(function (m) {
+    if (!m || !m.id) return;
+    serverIds[String(m.id)] = true;
+    try {
+      if (window.genChatP2P) {
+        const ck = genChatP2P._contentKey && genChatP2P._contentKey(m.content);
+        const fp = genChatP2P._mediaFingerprint && genChatP2P._mediaFingerprint(m.content);
+        if (ck) serverBodies[ck] = true;
+        if (fp) serverBodies[fp] = true;
+      } else if (m.content) {
+        serverBodies['c:' + String(m.content).slice(0, 240)] = true;
+      }
+    } catch (e) {}
+  });
+
+  function bodyOnServer(content) {
+    if (!content) return false;
+    try {
+      if (window.genChatP2P) {
+        const ck = genChatP2P._contentKey && genChatP2P._contentKey(content);
+        const fp = genChatP2P._mediaFingerprint && genChatP2P._mediaFingerprint(content);
+        if (ck && serverBodies[ck]) return true;
+        if (fp && serverBodies[fp]) return true;
+      }
+    } catch (e) {}
+    return !!(serverBodies['c:' + String(content).slice(0, 240)]);
+  }
+
+  // DOM
+  try {
+    const box = document.getElementById('genchat-msgs');
+    if (box) {
+      box.querySelectorAll('.comm-msg').forEach(function (row) {
+        const id = row.getAttribute('data-msg-id') || '';
+        if (!id) return;
+        if (serverIds[id]) return;
+        const bub = row.querySelector('.comm-bubble');
+        let content = '';
+        let sender = '';
+        if (bub) {
+          sender = (bub.getAttribute('data-sender') || '').toLowerCase();
+          try { content = decodeURIComponent(bub.getAttribute('data-content') || ''); } catch (e) { content = ''; }
+        }
+        if (bodyOnServer(content)) return;
+        // Not on server by id or body — treat as deleted everywhere
+        try { removeCommMsgLocal(id, content, sender); } catch (e2) {}
+      });
+    }
+  } catch (e) {}
+
+  // P2P localStorage (the usual resurrection source after refresh)
+  try {
+    if (window.genChatP2P && isP2PChatChannel(slug) && serverMsgs.length >= 0) {
+      const local = (genChatP2P.loadLocal && genChatP2P.loadLocal()) || [];
+      local.forEach(function (m) {
+        if (!m || !m.id) return;
+        if (m.slug && m.slug !== slug) return;
+        if (serverIds[String(m.id)]) return;
+        if (bodyOnServer(m.content)) return;
+        try { genChatP2P.removeLocal(m.id, m.content || '', m.sender_wallet || ''); } catch (e3) {}
+      });
+    }
+  } catch (e) {}
+}
+
 /** Backup when socket rooms miss a post/delete: sync while Gen Chat is open. */
 let _commPollTimer = null;
 let _commPollInFlight = false;
@@ -12869,6 +12946,8 @@ async function softPollCommunityChannel() {
         try { removeCommMsgLocal(id); } catch (e) {}
       });
     }
+    // Also purge local p2p-* / DOM ghosts not on server (cross-device delete)
+    try { reconcileCommunityWithServer(slug, msgs); } catch (e) {}
     _commPollIdSets[slug] = nowIds;
   } catch (e) {
   } finally {
