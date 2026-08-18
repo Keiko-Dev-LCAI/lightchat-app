@@ -911,6 +911,21 @@ def emit_community_message(socketio, msg: dict, slug: str) -> None:
         print(f"  [community] emit community:all: {e}", flush=True)
 
 
+def emit_community_message_deleted(socketio, payload: dict, slug: str) -> None:
+    """Notify live clients a message was deleted (channel room + community:all)."""
+    slug = (slug or (payload or {}).get("slug") or "general").lower().strip() or "general"
+    data = dict(payload or {})
+    data["slug"] = data.get("slug") or slug
+    try:
+        socketio.emit("community_message_deleted", data, room=f"community:{slug}")
+    except Exception as e:
+        print(f"  [community] emit deleted room {slug}: {e}", flush=True)
+    try:
+        socketio.emit("community_message_deleted", data, room="community:all")
+    except Exception as e:
+        print(f"  [community] emit deleted community:all: {e}", flush=True)
+
+
 def emit_community_mentions(socketio, conn, msg: dict, everyone: bool, wallets: list, sender: str):
     """Alert mentioned members (wallet rooms). @everyone → all members except sender."""
     payload = {
@@ -2705,18 +2720,18 @@ def register_community_routes(app, socketio, get_db):
             conn.commit()
             try:
                 for did in deleted_ids:
-                    socketio.emit(
-                        "community_message_deleted",
+                    emit_community_message_deleted(
+                        socketio,
                         {
                             "id": did,
                             "slug": slug,
                             "content": content,
                             "sender_wallet": sender,
                         },
-                        room=f"community:{slug}",
+                        slug,
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  [community] delete emit: {e}", flush=True)
             return jsonify({"ok": True, "deleted_ids": deleted_ids})
         finally:
             conn.close()
