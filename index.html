@@ -8028,13 +8028,16 @@ function _dirMemberRow(m) {
     ? '<span class="dir-online-dot" title="Online"></span>'
     : (selfInv ? '<span class="dir-online-dot" title="Invisible" style="background:#747f8d"></span>' : '');
   const statusHint = selfInv && !online ? '<div class="d">Invisible — others see you offline</div>' : '';
-  return `<div class="dir-item" onclick="if(wallet){ openChat && openChat('${m.wallet}', '${escapeHtml(m.display_name)}') }">
-    <div class="dir-av-wrap"><div class="comm-av">${av}</div>${dot}</div>
-    <div class="meta" style="flex:1;min-width:0">
-      <div class="n">${escapeHtml(m.display_name)}${roleHtml}</div>
+  const w = escapeHtml(m.wallet);
+  const dn = escapeHtml(m.display_name);
+  return `<div class="dir-item">
+    <div class="dir-av-wrap" onclick="if(wallet){ openChat('${w}', '${dn.replace(/'/g, "\\'")}') }"><div class="comm-av">${av}</div>${dot}</div>
+    <div class="meta" style="flex:1;min-width:0" onclick="if(wallet){ openChat('${w}', '${dn.replace(/'/g, "\\'")}') }">
+      <div class="n">${dn}${roleHtml}</div>
       <div class="d">${m.hide_wallet ? '' : escapeHtml(shortenWallet(m.wallet))}</div>
       ${statusHint}
     </div>
+    <button type="button" title="Add friend (P2P)" onclick="event.stopPropagation();addP2PFriend('${w}','${dn.replace(/'/g, "\\'")}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">＋</button>
   </div>`;
 }
 
