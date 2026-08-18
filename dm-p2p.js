@@ -20,6 +20,7 @@
     this.onStatus = null;
     this._seen = new Set();
     this._sockBound = false;
+    this._tick = null;
   }
 
   DmP2P.prototype.attachSocket = function (socket) {
@@ -56,6 +57,46 @@
     if (this.socket && this.socket.connected) {
       this.socket.emit('dm_p2p_hello', { wallet: this.wallet });
     }
+    this._startTick();
+  };
+
+  DmP2P.prototype._startTick = function () {
+    const self = this;
+    if (this._tick) return;
+    this._tick = setInterval(function () {
+      if (!self.wallet) return;
+      if (self.socket && self.socket.connected) {
+        try {
+          self.socket.emit('dm_p2p_hello', { wallet: self.wallet });
+        } catch (e) {}
+      }
+      self.peers.forEach(function (entry, w) {
+        const open = entry.dc && entry.dc.readyState === 'open';
+        if (open) {
+          self._emitStatus(w);
+          return;
+        }
+        const st = entry.pc && entry.pc.connectionState;
+        if (st === 'failed' || st === 'disconnected' || st === 'closed') {
+          try {
+            if (entry.dc) entry.dc.close();
+          } catch (e) {}
+          try {
+            if (entry.pc) entry.pc.close();
+          } catch (e) {}
+          self.peers.delete(w);
+          self._ensurePeer(w, true);
+        } else if (self._wantPeer(w)) {
+          self._ensurePeer(w, true);
+        }
+      });
+      // Re-warm friends / open chat
+      try {
+        if (typeof currentChat !== 'undefined' && currentChat && currentChat.wallet) {
+          self.openWith(currentChat.wallet);
+        }
+      } catch (e) {}
+    }, 15000);
   };
 
   DmP2P.prototype._wantPeer = function (remote) {
