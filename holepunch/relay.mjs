@@ -10,23 +10,41 @@
  * Usage:
  *   node relay.mjs
  *   HOLEPUNCH_PORT=49443 node relay.mjs
+ *   PORT=8080 node relay.mjs   # Railway sets PORT
  *
- * Client sets localStorage lc_holepunch_relay = "ws://HOST:PORT"
- * (or wss:// when terminated TLS is in front).
+ * Serves:
+ *   GET /health  → 200 ok
+ *   WS  /        → DHT relay stream
  */
+import http from 'http'
 import { WebSocketServer } from 'ws'
 import DHT from 'hyperdht'
 import { relay } from '@hyperswarm/dht-relay'
 import Stream from '@hyperswarm/dht-relay/ws'
 
-const PORT = parseInt(process.env.HOLEPUNCH_PORT || process.env.PORT || '49443', 10)
+const PORT = parseInt(process.env.PORT || process.env.HOLEPUNCH_PORT || '49443', 10)
 const HOST = process.env.HOLEPUNCH_HOST || '0.0.0.0'
 
 const dht = new DHT()
 await dht.ready()
 
-const wss = new WebSocketServer({ host: HOST, port: PORT })
-console.log(`[holepunch-relay] listening ws://${HOST}:${PORT}`)
+const server = http.createServer((req, res) => {
+  const path = (req.url || '/').split('?')[0]
+  if (path === '/health' || path === '/') {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({
+      ok: true,
+      service: 'lightchat-holepunch-relay',
+      experimental: true,
+    }))
+    return
+  }
+  res.writeHead(404)
+  res.end('not found')
+})
+
+const wss = new WebSocketServer({ server })
+console.log(`[holepunch-relay] listening http+ws://${HOST}:${PORT}`)
 console.log(`[holepunch-relay] dht key ${dht.defaultKeyPair.publicKey.toString('hex').slice(0, 16)}…`)
 
 wss.on('connection', (ws, req) => {
@@ -42,9 +60,12 @@ wss.on('connection', (ws, req) => {
 
 wss.on('error', (e) => console.error('[holepunch-relay] wss', e))
 
+server.listen(PORT, HOST)
+
 async function shutdown() {
   console.log('[holepunch-relay] shutting down')
   try { wss.close() } catch (_) {}
+  try { server.close() } catch (_) {}
   try { await dht.destroy() } catch (_) {}
   process.exit(0)
 }

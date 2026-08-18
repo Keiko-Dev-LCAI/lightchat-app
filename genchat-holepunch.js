@@ -14,6 +14,8 @@
   const ESM_WS = 'https://esm.sh/@hyperswarm/dht-relay@0.4.3/ws';
   const ESM_SWARM = 'https://esm.sh/hyperswarm@4.11.7';
   const ESM_B4A = 'https://esm.sh/b4a@1.6.7';
+  /** Public experimental DHT relay (Railway). Override via Me → relay URL. */
+  const DEFAULT_RELAY = 'wss://lightchat-holepunch-production.up.railway.app';
 
   function GenChatHolepunch() {
     this.wallet = null;
@@ -78,10 +80,15 @@
 
   GenChatHolepunch.prototype.getRelayUrl = function () {
     try {
-      return (localStorage.getItem('lc_holepunch_relay') || '').trim();
+      const custom = (localStorage.getItem('lc_holepunch_relay') || '').trim();
+      return custom || DEFAULT_RELAY;
     } catch (e) {
-      return '';
+      return DEFAULT_RELAY;
     }
+  };
+
+  GenChatHolepunch.prototype.defaultRelayUrl = function () {
+    return DEFAULT_RELAY;
   };
 
   GenChatHolepunch.prototype.setEnabled = function (on) {
