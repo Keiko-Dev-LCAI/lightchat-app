@@ -1864,19 +1864,127 @@ body {
             <button type="button" onclick="sendThreadMsg()">Send</button>
           </div>
         </div>
-        <div id="garden-panel" style="display:none;padding:12px 14px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(46,160,67,0.12),rgba(91,75,255,0.08))">
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <div id="garden-emoji" style="font-size:48px;line-height:1">🌱</div>
-            <div style="flex:1;min-width:140px">
-              <div style="font-weight:800;font-size:16px" id="garden-label">Seed</div>
-              <div style="font-size:13px;color:var(--text2);margin-top:4px" id="garden-stats">0 XP · 0 waters</div>
-              <div style="height:8px;border-radius:99px;background:rgba(255,255,255,0.08);margin-top:8px;overflow:hidden">
-                <div id="garden-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#2ea043,#5B4BFF);border-radius:99px;transition:width 0.35s"></div>
+        <style>
+        /* Discord-style Grow a Tree embed */
+        #garden-panel { display:none; padding:10px 12px 12px; border-bottom:1px solid var(--border); background:var(--bg); }
+        #garden-panel.is-open { display:block; }
+        .garden-embed {
+          display:flex; border-radius:4px; overflow:hidden; background:#2b2d31;
+          border:1px solid rgba(255,255,255,0.06); box-shadow:0 2px 8px rgba(0,0,0,0.25);
+        }
+        .garden-embed-bar { width:4px; flex-shrink:0; background:#57F287; }
+        .garden-embed-body { flex:1; min-width:0; padding:12px 14px 12px 12px; }
+        .garden-embed-author { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+        .garden-embed-av {
+          width:22px; height:22px; border-radius:50%; background:linear-gradient(135deg,#2ea043,#57F287);
+          display:flex; align-items:center; justify-content:center; font-size:12px;
+        }
+        .garden-embed-author-name { font-weight:700; font-size:13px; color:#fff; }
+        .garden-embed-author-bot {
+          font-size:10px; font-weight:700; background:#5865F2; color:#fff; border-radius:3px;
+          padding:1px 4px; letter-spacing:0.02em;
+        }
+        .garden-embed-title { font-weight:800; font-size:15px; color:#fff; margin-bottom:8px; }
+        .garden-art-wrap {
+          background:linear-gradient(180deg,#87CEEB 0%,#b8e0f0 40%,#90c890 70%,#5a8f5a 100%);
+          border-radius:4px; padding:10px 8px 6px; text-align:center; margin-bottom:10px;
+          font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+          font-size:13px; line-height:1.25; color:#1a3a1a; white-space:pre; overflow:hidden;
+          min-height:88px; position:relative;
+        }
+        .garden-art-emoji { font-size:42px; line-height:1; display:block; margin-bottom:2px; font-family:inherit; }
+        .garden-desc { font-size:13px; color:#dbdee1; line-height:1.45; }
+        .garden-desc strong { color:#fff; }
+        .garden-desc .g-muted { color:#b5bac1; }
+        .garden-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+        .garden-btn {
+          appearance:none; border:none; border-radius:3px; padding:6px 14px; font-size:14px;
+          font-weight:600; cursor:pointer; font-family:inherit; line-height:1.4;
+        }
+        .garden-btn-water { background:#5865F2; color:#fff; }
+        .garden-btn-water:hover:not(:disabled) { background:#4752C4; }
+        .garden-btn-water:disabled { opacity:0.55; cursor:not-allowed; }
+        .garden-btn-refresh { background:#4e5058; color:#fff; }
+        .garden-btn-refresh:hover { background:#6d6f78; }
+        .garden-meta { font-size:11px; color:#949ba4; margin-top:8px; }
+        .garden-apple {
+          display:none; margin-top:10px; padding:10px; border-radius:4px;
+          background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08);
+        }
+        .garden-apple.active { display:block; }
+        .garden-apple-hint { font-size:12px; color:#dbdee1; margin-bottom:8px; text-align:center; }
+        .garden-apple-stage {
+          position:relative; height:72px; margin-bottom:6px;
+          background:linear-gradient(180deg,rgba(135,206,235,0.35),rgba(90,143,90,0.25));
+          border-radius:4px; overflow:hidden;
+        }
+        .garden-apple-fruit {
+          position:absolute; top:4px; font-size:28px; line-height:1;
+          transform:translateX(-50%);
+          animation:gardenAppleFall 2.4s linear infinite;
+          filter:drop-shadow(0 2px 2px rgba(0,0,0,0.35));
+        }
+        @keyframes gardenAppleFall {
+          0% { top:2px; opacity:1; }
+          85% { opacity:1; }
+          100% { top:48px; opacity:0.85; }
+        }
+        .garden-baskets { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+        .garden-basket {
+          appearance:none; border:2px solid transparent; background:rgba(0,0,0,0.28);
+          border-radius:6px; padding:8px 4px; font-size:26px; cursor:pointer; line-height:1;
+          transition:border-color 0.15s, background 0.15s, transform 0.1s;
+        }
+        .garden-basket:hover { border-color:#57F287; background:rgba(87,242,135,0.12); transform:translateY(-1px); }
+        .garden-basket:active { transform:scale(0.96); }
+        .garden-basket.miss { border-color:#ed4245; animation:gardenShake 0.35s; }
+        @keyframes gardenShake {
+          0%,100% { transform:translateX(0); }
+          25% { transform:translateX(-3px); }
+          75% { transform:translateX(3px); }
+        }
+        </style>
+        <div id="garden-panel">
+          <div class="garden-embed">
+            <div class="garden-embed-bar" aria-hidden="true"></div>
+            <div class="garden-embed-body">
+              <div class="garden-embed-author">
+                <div class="garden-embed-av">🌳</div>
+                <span class="garden-embed-author-name">Garden Bot</span>
+                <span class="garden-embed-author-bot">BOT</span>
               </div>
+              <div class="garden-embed-title" id="garden-tree-name">Lightchain Tree</div>
+              <div class="garden-art-wrap" id="garden-art" aria-hidden="true">
+                <span class="garden-art-emoji" id="garden-emoji">🌱</span>
+                <div id="garden-art-lines">☁️  ☀️  ☁️
+
+   🌱
+  ═══
+▓▓▓▓▓▓▓</div>
+              </div>
+              <div class="garden-desc" id="garden-desc">
+                <strong>Your tree is 0ft tall.</strong><br>
+                <span class="g-muted">Plant started — press 💧 to grow!</span>
+              </div>
+              <div class="garden-actions">
+                <button type="button" id="garden-water-btn" class="garden-btn garden-btn-water" onclick="waterCommunityGarden()">💧</button>
+                <button type="button" class="garden-btn garden-btn-refresh" onclick="refreshGardenPanel()" title="Refresh">🔄</button>
+                <span id="garden-label" style="font-size:12px;color:#b5bac1"></span>
+              </div>
+              <div class="garden-apple" id="garden-apple">
+                <div class="garden-apple-hint" id="garden-apple-hint">🍎 Fruit dropping! Tap the basket under the apple.</div>
+                <div class="garden-apple-stage" id="garden-apple-stage">
+                  <span class="garden-apple-fruit" id="garden-apple-fruit">🍎</span>
+                </div>
+                <div class="garden-baskets" id="garden-baskets">
+                  <button type="button" class="garden-basket" data-lane="0" onclick="catchGardenApple(0)" aria-label="Left basket">🧺</button>
+                  <button type="button" class="garden-basket" data-lane="1" onclick="catchGardenApple(1)" aria-label="Middle basket">🧺</button>
+                  <button type="button" class="garden-basket" data-lane="2" onclick="catchGardenApple(2)" aria-label="Right basket">🧺</button>
+                </div>
+              </div>
+              <div class="garden-meta" id="garden-stats">Same person can't water twice in a row · taller = longer grow time · catch apples for the community</div>
             </div>
-            <button type="button" id="garden-water-btn" onclick="waterCommunityGarden()" class="comm-gif-btn" style="height:42px;padding:0 16px;font-weight:800">💧 Water</button>
           </div>
-          <div style="font-size:12px;color:var(--text2);margin-top:8px">Everyone grows one community tree. Water once per minute. Stage-ups post as <b style="color:var(--text)">Garden Bot</b>.</div>
         </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div id="genchat-compose">
@@ -3435,6 +3543,41 @@ function updateUI() {
 /** Clear local delete tombstones so P2P history can show again (does not undelete server rows). */
 let _gardenState = null;
 let _gardenCooldownTimer = null;
+let _gardenAppleDrop = null;
+
+function _gardenFmtHeight(h) {
+  if (h == null) return '0';
+  const n = Number(h);
+  if (!isFinite(n)) return '0';
+  return (Math.round(n * 10) / 10).toString().replace(/\.0$/, '');
+}
+
+function renderGardenApple(drop) {
+  const box = document.getElementById('garden-apple');
+  const fruit = document.getElementById('garden-apple-fruit');
+  const hint = document.getElementById('garden-apple-hint');
+  if (!box) return;
+  const expired = !!(drop && drop.exp && Number(drop.exp) < (Date.now() / 1000));
+  if (!drop || drop.caught || expired) {
+    box.classList.remove('active');
+    _gardenAppleDrop = null;
+    return;
+  }
+  _gardenAppleDrop = drop;
+  box.classList.add('active');
+  const lanes = drop.lanes || 3;
+  const lane = Math.max(0, Math.min(lanes - 1, Number(drop.lane) || 0));
+  // Position fruit over the matching basket lane (center of that third)
+  if (fruit) {
+    fruit.style.left = (((lane + 0.5) / lanes) * 100) + '%';
+  }
+  if (hint) {
+    const left = drop.expires_in != null
+      ? drop.expires_in
+      : Math.max(0, Math.floor(Number(drop.exp) - Date.now() / 1000));
+    hint.textContent = '🍎 Fruit dropping! Tap the basket under the apple' + (left ? (' · ' + left + 's') : '');
+  }
+}
 
 function renderGardenPanel(st) {
   _gardenState = st || _gardenState;
@@ -3442,37 +3585,58 @@ function renderGardenPanel(st) {
   const emoji = document.getElementById('garden-emoji');
   const label = document.getElementById('garden-label');
   const stats = document.getElementById('garden-stats');
-  const bar = document.getElementById('garden-bar');
+  const desc = document.getElementById('garden-desc');
+  const artLines = document.getElementById('garden-art-lines');
+  const treeName = document.getElementById('garden-tree-name');
   const btn = document.getElementById('garden-water-btn');
   if (emoji) emoji.textContent = _gardenState.emoji || '🌱';
-  if (label) label.textContent = _gardenState.label || 'Seed';
-  const next = _gardenState.next_xp;
-  const xp = _gardenState.xp || 0;
-  let prog = 100;
-  if (next != null) {
-    const stages = [0, 10, 40, 100, 250, 500, 1000];
-    let prev = 0;
-    for (let i = 0; i < stages.length; i++) {
-      if (xp >= stages[i]) prev = stages[i];
-    }
-    prog = Math.max(0, Math.min(100, ((xp - prev) / Math.max(1, next - prev)) * 100));
+  if (label) label.textContent = (_gardenState.label || 'Seed') + ' · ' + _gardenFmtHeight(_gardenState.height_ft) + 'ft';
+  if (treeName) treeName.textContent = _gardenState.tree_name || 'Lightchain Tree';
+  if (artLines && Array.isArray(_gardenState.art)) {
+    artLines.textContent = _gardenState.art.join('\n');
   }
+  const height = _gardenFmtHeight(_gardenState.height_ft);
+  const lastName = _gardenState.last_waterer_name || '';
+  const left = _gardenState.cooldown_remaining || 0;
+  const blocked = _gardenState.blocked_reason || '';
+  let body = '<strong>Your tree is ' + height + 'ft tall.</strong><br>';
+  if (!_gardenState.waters) {
+    body += '<span class="g-muted">Press 💧 below to water it for the first time!</span>';
+  } else if (left > 0) {
+    body += '<strong>Thanks ' + (lastName || 'someone') + ' for watering the tree!</strong><br>';
+    body += '<span class="g-muted">It\'s growing right now — come back in ' + left + 's.</span>';
+  } else if (blocked === 'same_waterer') {
+    body += '<span class="g-muted">Last watered by: <strong style="color:#fff">' + (lastName || 'you') + '</strong></span><br>';
+    body += '<span class="g-muted">You watered last — someone else has to water it first.</span>';
+  } else {
+    body += '<span class="g-muted">Last watered by: <strong style="color:#fff">' + (lastName || '—') + '</strong></span><br>';
+    body += '<strong style="color:#57F287">Ready to be watered!</strong>';
+  }
+  if (desc) desc.innerHTML = body;
   if (stats) {
-    stats.textContent = xp + ' XP · ' + (_gardenState.waters || 0) + ' waters'
-      + (next != null ? (' · next stage at ' + next + ' XP') : ' · max stage!')
-      + (_gardenState.my_waters != null ? (' · you watered ' + _gardenState.my_waters + '×') : '');
+    const parts = [];
+    parts.push((_gardenState.waters || 0) + ' waters');
+    if (_gardenState.apples) parts.push(_gardenState.apples + ' 🍎 caught');
+    if (_gardenState.my_waters != null) parts.push('you watered ' + _gardenState.my_waters + '×');
+    if (_gardenState.my_apples) parts.push('you caught ' + _gardenState.my_apples);
+    if (_gardenState.next_xp != null) parts.push('next look at ' + _gardenState.next_xp + 'ft');
+    else parts.push('max stage!');
+    parts.push('grow wait ' + (_gardenState.cooldown_sec || 5) + 's');
+    stats.textContent = parts.join(' · ');
   }
-  if (bar) bar.style.width = prog + '%';
   if (btn) {
-    const left = _gardenState.cooldown_remaining || 0;
-    if (!_gardenState.can_water && left > 0) {
+    if (!_gardenState.can_water) {
       btn.disabled = true;
-      btn.textContent = '⏳ ' + left + 's';
+      if (blocked === 'same_waterer') btn.textContent = '💧 (wait for someone else)';
+      else if (left > 0) btn.textContent = '💧 Growing… ' + left + 's';
+      else btn.textContent = '💧';
     } else {
       btn.disabled = false;
-      btn.textContent = '💧 Water';
+      btn.textContent = '💧';
     }
   }
+  if (_gardenState.apple_drop) renderGardenApple(_gardenState.apple_drop);
+  else if (!_gardenAppleDrop) renderGardenApple(null);
 }
 
 async function refreshGardenPanel() {
@@ -3481,13 +3645,36 @@ async function refreshGardenPanel() {
     const j = await r.json();
     renderGardenPanel(j);
     if (_gardenCooldownTimer) clearInterval(_gardenCooldownTimer);
-    if (j.cooldown_remaining > 0) {
+    const needsTick = (j.cooldown_remaining > 0) || (j.apple_drop && !j.apple_drop.caught);
+    if (needsTick) {
       _gardenCooldownTimer = setInterval(function () {
         if (!_gardenState) return;
-        _gardenState.cooldown_remaining = Math.max(0, (_gardenState.cooldown_remaining || 0) - 1);
-        if (_gardenState.cooldown_remaining === 0) _gardenState.can_water = true;
+        if (_gardenState.cooldown_remaining > 0) {
+          _gardenState.cooldown_remaining = Math.max(0, (_gardenState.cooldown_remaining || 0) - 1);
+          if (_gardenState.cooldown_remaining === 0 && _gardenState.blocked_reason === 'growing') {
+            _gardenState.blocked_reason = '';
+            // Recheck same-waterer: still can't if we were last
+            const me = (wallet || '').toLowerCase();
+            const last = (_gardenState.last_waterer || '').toLowerCase();
+            if (me && last && me === last) {
+              _gardenState.blocked_reason = 'same_waterer';
+              _gardenState.can_water = false;
+            } else if (me) {
+              _gardenState.can_water = true;
+            }
+          }
+        }
+        if (_gardenAppleDrop && _gardenAppleDrop.exp) {
+          const leftA = Math.max(0, Math.floor(Number(_gardenAppleDrop.exp) - Date.now() / 1000));
+          _gardenAppleDrop.expires_in = leftA;
+          if (leftA <= 0) {
+            _gardenAppleDrop = null;
+            if (_gardenState) _gardenState.apple_drop = null;
+          }
+        }
         renderGardenPanel(_gardenState);
-        if (_gardenState.cooldown_remaining === 0 && _gardenCooldownTimer) {
+        const done = (!_gardenState.cooldown_remaining || _gardenState.cooldown_remaining <= 0) && !_gardenAppleDrop;
+        if (done && _gardenCooldownTimer) {
           clearInterval(_gardenCooldownTimer);
           _gardenCooldownTimer = null;
         }
@@ -3514,11 +3701,51 @@ async function waterCommunityGarden() {
       return;
     }
     if (j.garden) renderGardenPanel(j.garden);
-    showToast(j.grew ? '🌳 The tree grew!' : '💧 Watered!');
+    if (j.apple_drop) renderGardenApple(j.apple_drop);
+    showToast(j.grew ? ('🌳 Grew to ' + (j.height_ft || '') + 'ft!') : ('💧 Watered · ' + (j.height_ft || '') + 'ft'));
+    refreshGardenPanel();
     if (_activeCommSlug === 'garden') loadCommunityChannel('garden');
-    else refreshGardenPanel();
   } catch (e) {
     showToast('Water failed');
+  }
+}
+
+async function catchGardenApple(lane) {
+  if (!wallet) { showToast('Connect wallet to catch'); return; }
+  const drop = _gardenAppleDrop || (_gardenState && _gardenState.apple_drop);
+  if (!drop || !drop.id) {
+    showToast('No apple falling right now');
+    return;
+  }
+  const baskets = document.querySelectorAll('.garden-basket');
+  try {
+    const r = await fetch(BACKEND + '/api/community/garden/catch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: wallet, drop_id: drop.id, lane: lane }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      if (j.code === 'miss' && baskets[lane]) {
+        baskets[lane].classList.remove('miss');
+        void baskets[lane].offsetWidth;
+        baskets[lane].classList.add('miss');
+        setTimeout(function () { baskets[lane].classList.remove('miss'); }, 400);
+      }
+      showToast(j.error || 'Missed');
+      if (j.code === 'gone' || j.code === 'expired' || j.code === 'caught') {
+        renderGardenApple(null);
+        refreshGardenPanel();
+      }
+      return;
+    }
+    showToast('🍎 Caught!');
+    renderGardenApple(null);
+    if (j.garden) renderGardenPanel(j.garden);
+    else refreshGardenPanel();
+    if (_activeCommSlug === 'garden') loadCommunityChannel('garden');
+  } catch (e) {
+    showToast('Catch failed');
   }
 }
 
@@ -8918,7 +9145,10 @@ async function loadCommunityChannel(slug) {
   const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : (slug === 'media' ? 'media' : (slug === 'garden' ? 'garden' : 'post')));
   const mediaBtn = document.getElementById('genchat-media-btn');
   const gardenPanel = document.getElementById('garden-panel');
-  if (gardenPanel) gardenPanel.style.display = (slug === 'garden') ? '' : 'none';
+  if (gardenPanel) {
+    if (slug === 'garden') gardenPanel.classList.add('is-open');
+    else gardenPanel.classList.remove('is-open');
+  }
   if (slug === 'garden') {
     try { refreshGardenPanel(); } catch (e) {}
   }
@@ -11236,7 +11466,36 @@ async function saveCommunityProfile() { return saveEditProfile(); }
         }
       });
       socket.on('community_garden', (st) => {
-        if (_activeCommSlug === 'garden') renderGardenPanel(st);
+        if (_activeCommSlug !== 'garden') return;
+        // Recompute can_water for *this* wallet (event may be from another waterer)
+        if (st && wallet) {
+          const me = wallet.toLowerCase();
+          const last = (st.last_waterer || '').toLowerCase();
+          const left = st.cooldown_remaining || 0;
+          if (last && me === last && (st.waters || 0) > 0) {
+            st.can_water = false;
+            st.blocked_reason = 'same_waterer';
+          } else if (left > 0) {
+            st.can_water = false;
+            st.blocked_reason = 'growing';
+          } else {
+            st.can_water = true;
+            st.blocked_reason = '';
+          }
+        }
+        renderGardenPanel(st);
+        if (st && st.apple_drop) renderGardenApple(st.apple_drop);
+      });
+      socket.on('community_garden_apple', (drop) => {
+        if (_activeCommSlug !== 'garden') return;
+        if (!drop || drop.caught) {
+          renderGardenApple(null);
+          if (drop && drop.caught) refreshGardenPanel();
+          return;
+        }
+        renderGardenApple(drop);
+        // Keep countdown ticking
+        refreshGardenPanel();
       });
       socket.on('community_message_deleted', (data) => {
         const id = data && data.id;
