@@ -446,7 +446,7 @@ def init_community_db(get_db):
                     f"{COMMUNITY_ID}:garden",
                     COMMUNITY_ID,
                     "garden",
-                    "Garden",
+                    "Tree",
                     "garden",
                     "Grow the community tree together — water it in-channel",
                     3,
@@ -456,7 +456,7 @@ def init_community_db(get_db):
         else:
             conn.execute(
                 """UPDATE community_channels
-                   SET name='Garden', description=?, kind='garden', readonly_members=0
+                   SET name='Tree', description=?, kind='garden', readonly_members=0
                    WHERE community_id=? AND slug='garden'""",
                 ("Grow the community tree together — water it in-channel", COMMUNITY_ID),
             )
