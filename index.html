@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-react-delete">
+<meta name="lc-build" content="2026-08-18-all-reacts">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2038,10 +2038,17 @@ body {
           .comm-react-pill {
             appearance:none; border:1px solid var(--border); background:rgba(255,255,255,0.04);
             border-radius:999px; padding:2px 8px; font-size:13px; cursor:pointer; color:var(--text);
-            line-height:1.4; font-family:inherit;
+            line-height:1.4; font-family:inherit; display:inline-flex; align-items:center; gap:4px;
           }
           .comm-react-pill.me { border-color:var(--lc-primary,#5B4BFF); background:rgba(91,75,255,0.18); }
           .comm-react-pill:hover { border-color:var(--lc-primary,#5B4BFF); }
+          .comm-react-pill img { width:18px; height:18px; object-fit:contain; border-radius:3px; }
+          #emoji-sticker-sheet.react-mode .es-react-banner { display:block; }
+          .es-react-banner {
+            display:none; padding:8px 14px; font-size:13px; font-weight:700;
+            color:var(--lc-primary,#5B4BFF); background:rgba(91,75,255,0.1);
+            border-bottom:1px solid var(--border);
+          }
           .comm-reply-bar {
             display:flex; align-items:center; gap:10px; padding:8px 12px 0; border-top:1px solid var(--border);
             background:var(--card);
@@ -2989,6 +2996,7 @@ body {
 <!-- Gen Chat emoji / sticker sheet (Discord-style) -->
 <div id="emoji-sticker-backdrop" onclick="closeEmojiStickerSheet()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:449"></div>
 <div id="emoji-sticker-sheet" role="dialog" aria-label="Emoji and stickers" style="display:none;position:fixed;left:0;right:0;bottom:0;max-height:min(72vh,560px);z-index:450;background:var(--card);border-top:1px solid var(--border);border-radius:18px 18px 0 0;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,0.45)">
+  <div class="es-react-banner" id="es-react-banner">Pick a reaction — emoji or custom pack</div>
   <div style="display:flex;align-items:center;gap:8px;padding:12px 14px 8px;border-bottom:1px solid var(--border)">
     <button type="button" class="picker-tab-btn active" id="es-tab-emoji" onclick="switchEsTab('emoji')" style="flex:1">😊 Emoji</button>
     <button type="button" class="picker-tab-btn" id="es-tab-sticker" onclick="switchEsTab('sticker')" style="flex:1">🎭 Stickers</button>
@@ -3028,6 +3036,7 @@ body {
     <button type="button" onclick="commMsgReact('🔥')">🔥</button>
     <button type="button" onclick="commMsgReact('😮')">😮</button>
     <button type="button" onclick="commMsgReact('😢')">😢</button>
+    <button type="button" onclick="commMsgReactMore()" title="All emoji &amp; custom" style="font-size:13px;font-weight:800">＋</button>
   </div>
   <button type="button" onclick="commMsgCopy()">📋 Copy</button>
   <button type="button" id="comm-msg-edit-btn" onclick="commMsgEdit()">✏️ Edit</button>
@@ -3043,6 +3052,7 @@ body {
   <button type="button" onclick="quickReactPick('🔥')">🔥</button>
   <button type="button" onclick="quickReactPick('😮')">😮</button>
   <button type="button" onclick="quickReactPick('😢')">😢</button>
+  <button type="button" title="More emoji &amp; custom" onclick="quickReactOpenFull()" style="font-size:14px;font-weight:700">＋</button>
 </div>
 
 <!-- Members moderation (mods + admins) -->
@@ -9915,8 +9925,6 @@ function _commMsgMenuBtn(m) {
 function _commMsgHoverBar(m) {
   const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
   if (isBot) return '';
-  const mid = escapeHtml(m.id || '');
-  const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
   const isMine = wallet && (m.sender_wallet || '').toLowerCase() === wallet.toLowerCase();
   const editBtn = isMine
     ? '<button type="button" title="Edit" onclick="event.stopPropagation();hoverBarEdit(this)" aria-label="Edit">✏️</button>'
@@ -9987,6 +9995,13 @@ async function quickReactPick(emoji) {
   await toggleCommReaction(ctx.id, ctx.slug, emoji);
 }
 
+function quickReactOpenFull() {
+  const ctx = _quickReactMsg;
+  closeQuickReact();
+  if (!ctx || !ctx.id) return;
+  openReactPickerForMessage(ctx.id, ctx.slug);
+}
+
 function _commReplyQuoteHtml(m) {
   const r = m && m.reply;
   if (!r) return '';
@@ -10007,17 +10022,7 @@ function _commReactionsHtml(m) {
   // Return placeholder; fill after insert when possible — for map() use inline same as apply
   const staff = typeof isCommStaff === 'function' && isCommStaff();
   return '<div class="comm-reactions" data-react-host="' + mid + '">' + list.map(function (r) {
-    const me = r.me ? ' me' : '';
-    const tip = r.me
-      ? 'Remove your reaction'
-      : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction');
-    const em = escapeHtml(r.emoji);
-    const sl = escapeHtml(slug);
-    const meFlag = r.me ? 'true' : 'false';
-    return '<button type="button" class="comm-react-pill' + me + '" title="' + tip + '" ' +
-      'onclick="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')" ' +
-      'oncontextmenu="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')">' +
-      em + ' ' + (r.count || 1) + '</button>';
+    return _reactPillHtml(m.id || '', slug, r, staff);
   }).join('') + '</div>';
 }
 
@@ -10081,6 +10086,14 @@ async function commMsgReact(emoji) {
   await toggleCommReaction(id, slug, emoji);
 }
 
+function commMsgReactMore() {
+  if (!_commMsgMenuCtx || !_commMsgMenuCtx.id) { closeCommMsgMenu(); return; }
+  const id = _commMsgMenuCtx.id;
+  const slug = _commMsgMenuCtx.slug || _activeCommSlug || 'general';
+  closeCommMsgMenu();
+  openReactPickerForMessage(id, slug);
+}
+
 async function toggleCommReaction(msgId, slug, emoji, opts) {
   if (!wallet) { showToast('Connect wallet to react'); return; }
   if (!msgId || !emoji) return;
@@ -10124,19 +10137,30 @@ function applyCommReactions(msgId, reactions) {
   if (!reactions || !reactions.length) { host.innerHTML = ''; return; }
   const staff = isCommStaff();
   host.innerHTML = reactions.map(function (r) {
-    const me = r.me ? ' me' : '';
-    const tip = r.me
-      ? 'Remove your reaction'
-      : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction');
-    const em = escapeHtml(r.emoji);
-    const mid = escapeHtml(msgId);
-    const sl = escapeHtml(slug);
-    const meFlag = r.me ? 'true' : 'false';
-    return '<button type="button" class="comm-react-pill' + me + '" title="' + tip + '" ' +
-      'onclick="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')" ' +
-      'oncontextmenu="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')">' +
-      em + ' ' + (r.count || 1) + '</button>';
+    return _reactPillHtml(msgId, slug, r, staff);
   }).join('');
+}
+
+function _reactPillHtml(msgId, slug, r, staff) {
+  staff = !!staff;
+  const me = r.me ? ' me' : '';
+  const tip = r.me
+    ? 'Remove your reaction'
+    : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction');
+  const token = String(r.emoji || '');
+  const emAttr = escapeHtml(token).replace(/'/g, '&#39;');
+  const mid = escapeHtml(msgId);
+  const sl = escapeHtml(slug);
+  const meFlag = r.me ? 'true' : 'false';
+  let face = escapeHtml(token);
+  if (r.custom && r.url) {
+    const src = r.url.indexOf('http') === 0 ? r.url : (BACKEND + r.url);
+    face = '<img src="' + escapeHtml(src) + '" alt="' + escapeHtml(r.name || 'emoji') + '" loading="lazy">';
+  }
+  return '<button type="button" class="comm-react-pill' + me + '" title="' + tip + '" ' +
+    'onclick="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + emAttr + '\',' + meFlag + ')" ' +
+    'oncontextmenu="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + emAttr + '\',' + meFlag + ')">' +
+    face + ' ' + (r.count || 1) + '</button>';
 }
 
 function appendCommunityMessage(m) {
@@ -10891,22 +10915,28 @@ function isMediaOnlyContentClient(content) {
   return false;
 }
 
-function openEmojiStickerSheet(tab) {
+let _reactPickerTarget = null; // { id, slug } when sheet is used to pick a reaction
+
+function openEmojiStickerSheet(tab, reactTarget) {
   if (!wallet) { showToast('Connect your wallet first'); return; }
+  _reactPickerTarget = reactTarget || null;
   const sheet = document.getElementById('emoji-sticker-sheet');
   const back = document.getElementById('emoji-sticker-backdrop');
-  if (sheet) { sheet.style.display = 'flex'; }
+  if (sheet) {
+    sheet.style.display = 'flex';
+    sheet.classList.toggle('react-mode', !!_reactPickerTarget);
+  }
   if (back) back.style.display = 'block';
   const eg = document.getElementById('es-emoji-grid');
-  if (eg && !eg.children.length) {
+  if (eg) {
     eg.innerHTML = EMOJI_LIST.map(function (e) {
-      return '<button type="button" class="emoji-btn" onclick="sendGenChatEmoji(\'' + e + '\')">' + e + '</button>';
+      return '<button type="button" class="emoji-btn" onclick="pickSheetEmoji(\'' + e + '\')">' + e + '</button>';
     }).join('');
   }
   const sg = document.getElementById('es-sticker-builtin');
-  if (sg && !sg.children.length) {
+  if (sg) {
     sg.innerHTML = STICKER_LIST.map(function (s) {
-      return '<button type="button" class="sticker-btn" onclick="sendGenChatSticker(\'builtin:' + s.s + '\')">' +
+      return '<button type="button" class="sticker-btn" onclick="pickSheetSticker(\'b:' + s.s + '\')">' +
         '<img class="sticker-img" src="/stickers/' + s.s + '.png" alt="' + s.l + '" loading="lazy" ' +
         'onerror="this.src=\'' + BACKEND + '/stickers/' + s.s + '.png\'">' +
         '<div class="sticker-label">' + s.l + '</div></button>';
@@ -10916,11 +10946,48 @@ function openEmojiStickerSheet(tab) {
   switchEsTab(tab || 'emoji');
 }
 
+function openReactPickerForMessage(msgId, slug) {
+  closeQuickReact();
+  closeCommMsgMenu();
+  openEmojiStickerSheet('emoji', { id: msgId, slug: slug || _activeCommSlug || 'general' });
+}
+
 function closeEmojiStickerSheet() {
   const sheet = document.getElementById('emoji-sticker-sheet');
   const back = document.getElementById('emoji-sticker-backdrop');
-  if (sheet) sheet.style.display = 'none';
+  if (sheet) {
+    sheet.style.display = 'none';
+    sheet.classList.remove('react-mode');
+  }
   if (back) back.style.display = 'none';
+  _reactPickerTarget = null;
+}
+
+function pickSheetEmoji(e) {
+  if (_reactPickerTarget && _reactPickerTarget.id) {
+    const t = _reactPickerTarget;
+    closeEmojiStickerSheet();
+    toggleCommReaction(t.id, t.slug, e);
+    return;
+  }
+  sendGenChatEmoji(e);
+}
+
+function pickSheetSticker(token) {
+  // token: b:name or c:id
+  if (_reactPickerTarget && _reactPickerTarget.id) {
+    const t = _reactPickerTarget;
+    closeEmojiStickerSheet();
+    toggleCommReaction(t.id, t.slug, token);
+    return;
+  }
+  if (String(token).indexOf('b:') === 0) {
+    sendGenChatSticker('builtin:' + String(token).slice(2));
+  } else if (String(token).indexOf('c:') === 0) {
+    sendGenChatSticker(String(token).slice(2));
+  } else {
+    sendGenChatSticker(token);
+  }
 }
 
 function switchEsTab(tab) {
@@ -10949,9 +11016,10 @@ async function loadCustomStickers() {
       const del = (isCommStaff() || (wallet && s.uploader === wallet))
         ? '<button type="button" onclick="event.stopPropagation();deleteCommunitySticker(\'' + s.id + '\')" style="font-size:11px;margin-top:4px;background:none;border:none;color:var(--red);cursor:pointer">Delete</button>'
         : '';
-      return '<button type="button" class="sticker-btn" onclick="sendGenChatSticker(\'' + s.id + '\')">' +
+      const kindTag = s.kind === 'emoji' ? ' · emoji' : '';
+      return '<button type="button" class="sticker-btn" onclick="pickSheetSticker(\'c:' + s.id + '\')">' +
         '<img class="sticker-img" src="' + src + '" alt="' + escapeHtml(s.name) + '" loading="lazy">' +
-        '<div class="sticker-label">' + escapeHtml(s.name) + '</div>' + del + '</button>';
+        '<div class="sticker-label">' + escapeHtml(s.name) + kindTag + '</div>' + del + '</button>';
     }).join('');
   } catch (e) {
     el.innerHTML = '<div style="grid-column:1/-1;color:var(--text2);font-size:13px">Could not load pack</div>';

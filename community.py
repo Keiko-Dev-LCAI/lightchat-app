@@ -1428,10 +1428,64 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
     }
 
 
-# Discord-style quick reactions (keep small + familiar)
-REACTION_EMOJI_ALLOW = frozenset(
-    ["👍", "😂", "❤️", "🔥", "😮", "😢", "🎉", "👀", "💯", "🤔"]
-)
+# Reactions: any unicode emoji, or custom pack `c:<stickerId>`, or builtin `b:<name>`
+REACTION_QUICK = ["👍", "😂", "❤️", "🔥", "😮", "😢", "🎉", "👀", "💯", "🤔"]
+
+
+def reaction_token_valid(conn, token: str) -> bool:
+    """Allow unicode emoji OR custom/builtin sticker reaction tokens."""
+    token = (token or "").strip()
+    if not token or len(token) > 48:
+        return False
+    if any(ch in token for ch in ("\n", "\r", " ", "\t")):
+        return False
+    if token.startswith("http") or token.startswith("[[") or "/" in token:
+        return False
+    if token.startswith("c:"):
+        sid = token[2:].strip()
+        if not sid or len(sid) > 64:
+            return False
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM community_stickers WHERE id=? AND community_id=?",
+                (sid, COMMUNITY_ID),
+            ).fetchone()
+            return bool(row)
+        except Exception:
+            return False
+    if token.startswith("b:"):
+        name = token[2:].strip()
+        return bool(re.fullmatch(r"[a-z0-9_-]{1,40}", name or ""))
+    # Unicode / ZWJ emoji sequences (no control chars)
+    if any(ord(ch) < 32 for ch in token):
+        return False
+    return True
+
+
+def reaction_display_meta(conn, token: str) -> dict:
+    """Extra fields for rendering custom/builtin reaction pills."""
+    token = (token or "").strip()
+    meta = {"emoji": token, "custom": False, "url": None, "name": None}
+    if token.startswith("c:"):
+        sid = token[2:]
+        meta["custom"] = True
+        meta["sticker_id"] = sid
+        meta["url"] = f"/api/community/stickers/{sid}"
+        try:
+            row = conn.execute(
+                "SELECT name FROM community_stickers WHERE id=? AND community_id=?",
+                (sid, COMMUNITY_ID),
+            ).fetchone()
+            if row:
+                meta["name"] = row["name"]
+        except Exception:
+            pass
+    elif token.startswith("b:"):
+        name = token[2:]
+        meta["custom"] = True
+        meta["name"] = name
+        meta["url"] = f"/stickers/{name}.png"
+    return meta
 
 
 def messages_ensure_extras(conn) -> None:
@@ -1463,7 +1517,7 @@ def messages_ensure_extras(conn) -> None:
 
 
 def message_reactions_summary(conn, message_id: str, viewer: str = "") -> list:
-    """[{emoji, count, me}] ordered by count desc."""
+    """[{emoji, count, me, custom?, url?, name?}] ordered by count desc."""
     messages_ensure_extras(conn)
     rows = conn.execute(
         """SELECT emoji, COUNT(*) AS c,
@@ -1476,11 +1530,14 @@ def message_reactions_summary(conn, message_id: str, viewer: str = "") -> list:
     ).fetchall()
     out = []
     for r in rows:
-        out.append({
-            "emoji": r["emoji"],
+        token = r["emoji"]
+        item = {
+            "emoji": token,
             "count": int(r["c"] or 0),
             "me": bool(int(r["me"] or 0)),
-        })
+        }
+        item.update(reaction_display_meta(conn, token))
+        out.append(item)
     return out
 
 
@@ -2312,8 +2369,6 @@ def register_community_routes(app, socketio, get_db):
         msg_id = (msg_id or "").strip()
         if not wallet.startswith("0x"):
             return jsonify({"error": "wallet required"}), 400
-        if emoji not in REACTION_EMOJI_ALLOW:
-            return jsonify({"error": "emoji not allowed", "allowed": sorted(REACTION_EMOJI_ALLOW)}), 400
         if not msg_id:
             return jsonify({"error": "message id required"}), 400
         conn = get_db()
@@ -2322,6 +2377,11 @@ def register_community_routes(app, socketio, get_db):
                 return jsonify({"error": "banned", "code": "banned"}), 403
             role = ensure_member(conn, wallet)
             messages_ensure_extras(conn)
+            if not reaction_token_valid(conn, emoji):
+                return jsonify({
+                    "error": "emoji not allowed",
+                    "hint": "Use a unicode emoji or a server custom sticker/emoji",
+                }), 400
             ch = conn.execute(
                 "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
                 (COMMUNITY_ID, slug),
