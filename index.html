@@ -2434,9 +2434,9 @@ body {
   </div>
   <div style="padding:12px 14px;overflow-y:auto;flex:1;min-height:0">
     <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">
-      Search popup (Tenor/Giphy) will live off our app server — P2P-first. For now, paste a <strong style="color:var(--text)">Tenor GIF link</strong> and send. The chat stores only the URL (<code style="font-size:12px">[[gif]]…</code>), so Gen Chat can carry it over P2P/relay.
+      On Tenor/Giphy: <strong style="color:var(--text)">right‑click (or long‑press) the GIF → Copy image address</strong>, paste here, then Send. Page links often fail — use the direct <code style="font-size:12px">.gif</code> media URL. Stored as URL-only for P2P.
     </div>
-    <input class="gif-search-input" id="gif-sheet-url" type="url" placeholder="https://media.tenor.com/….gif" autocomplete="off" style="margin-bottom:10px">
+    <input class="gif-search-input" id="gif-sheet-url" type="url" placeholder="https://media1.tenor.com/m/….gif" autocomplete="off" style="margin-bottom:10px">
     <button type="button" class="primary-btn" style="width:100%;margin-bottom:14px" onclick="sendGifFromPaste()">Send GIF</button>
     <div id="gif-sheet-grid" class="gif-grid" style="display:none" aria-hidden="true"></div>
   </div>
@@ -4319,17 +4319,36 @@ function closeGifSheet() {
   document.getElementById('gif-sheet')?.classList.remove('open');
 }
 
+function normalizeGifUrl(raw) {
+  let url = String(raw || '').trim();
+  if (!url) return '';
+  if (url.startsWith(GIF_PREFIX)) url = url.slice(GIF_PREFIX.length).trim();
+  // Extract first https URL if user pasted junk around it
+  const m = url.match(/https?:\/\/[^\s<>"']+/i);
+  if (m) url = m[0].replace(/[),.;]+$/, '');
+  const low = url.toLowerCase();
+  if (!low.startsWith('https://')) return '';
+  if (!(low.includes('tenor.com') || low.includes('tenor.co') || low.includes('giphy.com') || low.includes('giphy.gif'))) {
+    return '';
+  }
+  // Tenor often 404s on media.tenor.com/ID — try modern media1 /m/ form as primary
+  const media = url.match(/^https?:\/\/media\.tenor\.com\/([^/]+)\/([^?\s]+)/i);
+  if (media) {
+    return 'https://media1.tenor.com/m/' + media[1] + '/' + media[2];
+  }
+  return url;
+}
+
 function sendGifFromPaste() {
   const raw = (document.getElementById('gif-sheet-url')?.value || '').trim();
-  if (!raw) { showToast('Paste a Tenor GIF URL first'); return; }
-  let url = raw;
-  // Allow wrapping if user pasted [[gif]]… already
-  if (url.startsWith(GIF_PREFIX)) url = url.slice(GIF_PREFIX.length).trim();
-  const low = url.toLowerCase();
-  if (!(low.startsWith('https://') && (low.includes('tenor.com') || low.includes('tenor.co')))) {
-    showToast('Need an https:// Tenor GIF link');
+  if (!raw) { showToast('Paste a Tenor/Giphy GIF URL first'); return; }
+  const url = normalizeGifUrl(raw);
+  if (!url) {
+    showToast('Need an https:// Tenor or Giphy media link (right‑click GIF → Copy image address)');
     return;
   }
+  const inp = document.getElementById('gif-sheet-url');
+  if (inp) inp.value = url;
   sendGif(url);
 }
 
@@ -4354,15 +4373,18 @@ function encodeGifContent(url) {
 }
 
 function parseGifContent(content) {
-  const c = String(content || '');
-  if (c.startsWith(GIF_PREFIX)) return c.slice(GIF_PREFIX.length).trim();
-  // legacy: bare tenor URL stored as content
-  if (/^https?:\/\/([a-z0-9.-]+\.)?tenor\.(com|co)\//i.test(c)) return c;
+  let c = String(content || '').trim();
+  if (!c) return null;
+  if (c.startsWith(GIF_PREFIX)) c = c.slice(GIF_PREFIX.length).trim();
+  // Bare media URL pasted into chat
+  const normalized = normalizeGifUrl(c);
+  if (normalized) return normalized;
+  if (/^https?:\/\/\S+\.(gif|webp)(\?\S*)?$/i.test(c)) return c;
   return null;
 }
 
 function sendGif(url) {
-  url = String(url || '').trim();
+  url = normalizeGifUrl(url) || String(url || '').trim();
   if (!url) return;
   if (_gifPickerTarget === 'genchat') {
     closeGifSheet();
@@ -4381,8 +4403,10 @@ function sendGif(url) {
 async function sendCommunityGif(url) {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   const slug = (document.getElementById('genchat-input')?.dataset.slug) || _activeCommSlug || 'general';
+  url = normalizeGifUrl(url) || url;
   const content = encodeGifContent(url);
   await sendCommunityContent(slug, content);
+  showToast('GIF sent');
 }
 
 async function loadGifs(query) {
@@ -7777,14 +7801,44 @@ function startHereAction(act) {
 function renderCommBodyHtml(content) {
   const gifUrl = parseGifContent(content);
   if (gifUrl) {
-    // Prefer Tenor CDN directly (no Railway). Optional proxy only as fallback.
     const safe = escapeHtml(gifUrl);
-    const proxy = BACKEND + '/proxy-gif?url=' + encodeURIComponent(gifUrl) + '&name=gif.gif';
-    return '<img class="comm-gif" src="' + safe + '" data-fallback="' + escapeHtml(proxy) +
-      '" alt="GIF" loading="lazy" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback">';
+    // Alternate Tenor CDN if first form 404s
+    let alt = '';
+    const m1 = gifUrl.match(/^https?:\/\/media1\.tenor\.com\/m\/([^/]+)\/([^?\s]+)/i);
+    const m0 = gifUrl.match(/^https?:\/\/media\.tenor\.com\/([^/]+)\/([^?\s]+)/i);
+    if (m1) alt = 'https://media.tenor.com/' + m1[1] + '/' + m1[2];
+    else if (m0) alt = 'https://media1.tenor.com/m/' + m0[1] + '/' + m0[2];
+    const alts = [gifUrl];
+    if (alt) alts.push(alt);
+    const cTenor = gifUrl.replace(/^https?:\/\/media[0-9]*\.tenor\.com\/m\//i, 'https://c.tenor.com/').replace(/^https?:\/\/media\.tenor\.com\//i, 'https://c.tenor.com/');
+    if (cTenor !== gifUrl) alts.push(cTenor);
+    return '<img class="comm-gif" src="' + safe + '" alt="GIF" loading="lazy" ' +
+      'data-alts="' + encodeURIComponent(JSON.stringify(alts)) + '" ' +
+      'onerror="window._gifImgError&&window._gifImgError(this)">';
   }
   return escapeHtml(content || '');
 }
+
+window._gifImgError = function (img) {
+  try {
+    let alts = [];
+    try { alts = JSON.parse(decodeURIComponent(img.getAttribute('data-alts') || '%5B%5D')); } catch (e) {}
+    const i = parseInt(img.getAttribute('data-alt-i') || '0', 10) + 1;
+    if (i < alts.length) {
+      img.setAttribute('data-alt-i', String(i));
+      img.src = alts[i];
+      return;
+    }
+    const url = alts[0] || img.src;
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'font-size:13px;line-height:1.4';
+    wrap.innerHTML = '<div style="color:var(--text2);margin-bottom:6px">GIF couldn’t load (link may be expired).</div>' +
+      '<a href="' + String(url).replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" style="color:var(--lc-primary,#5B4BFF);font-weight:600">Open GIF ↗</a>';
+    if (img.parentNode) img.parentNode.replaceChild(wrap, img);
+  } catch (e) {
+    img.style.display = 'none';
+  }
+};
 
 function appendCommunityMessage(m) {
   const box = document.getElementById('genchat-msgs');
@@ -7853,9 +7907,12 @@ function renderCommunityMessages(msgs) {
 
 async function sendCommunityMsg(slug) {
   const inp = document.getElementById('genchat-input');
-  const content = (inp && inp.value || '').trim();
+  let content = (inp && inp.value || '').trim();
   slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
   if (!content) return;
+  // If they paste a GIF media URL in the text box, send as GIF
+  const asGif = normalizeGifUrl(content);
+  if (asGif && content.length < 500) content = encodeGifContent(asGif);
   if (inp) inp.value = '';
   await sendCommunityContent(slug, content);
 }
