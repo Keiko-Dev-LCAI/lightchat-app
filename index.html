@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-p2p-mesh">
+<meta name="lc-build" content="2026-08-18-chat-chrome">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1266,24 +1266,25 @@ body {
 }
 .cal-color-swatch.selected { border-color: #fff; transform: scale(1.15); }
 
-/* ── Community / Gen Chat ── */
+/* ── Community / Gen Chat (Discord-density: flatter, tighter) ── */
 .comm-wrap { display:flex; flex-direction:column; height:100%; min-height:0; }
-.comm-header { padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
-.comm-header h2 { font-size:20px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-.comm-sub { font-size:13px; color:var(--text2); }
-.comm-msgs { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; min-height:0; }
-.comm-msg { display:flex; gap:10px; max-width:100%; }
-.comm-av { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; }
+.comm-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.comm-header h2 { font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.comm-sub { font-size:12px; color:var(--text2); }
+.comm-msgs { flex:1; overflow-y:auto; padding:8px 12px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
+.comm-msg { display:flex; gap:12px; max-width:100%; padding:2px 8px; border-radius:4px; margin:0 -4px; }
+.comm-msg:hover { background:rgba(255,255,255,0.03); }
+.comm-av { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; margin-top:2px; }
 .comm-av img { width:100%; height:100%; object-fit:cover; }
-.comm-bubble { background:var(--bubble-in); border:1px solid var(--border); border-radius:12px; padding:10px 12px; max-width:min(560px,85%); }
-.comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
-.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble { background:transparent; border:none; border-radius:0; padding:0; max-width:min(720px,100%); flex:1; min-width:0; }
+.comm-bubble .who { font-size:15px; font-weight:600; color:var(--text); margin-bottom:2px; }
+.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:10px; margin-left:6px; text-transform:uppercase; }
 .comm-bubble { position:relative; }
-.comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
-.comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
+.comm-bubble .body { font-size:15px; line-height:1.375; word-break:break-word; white-space:pre-wrap; color:var(--text); }
+.comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:8px; display:block; margin-top:4px; background:var(--bg); }
 .comm-bubble .body .mention {
-  color:#fff; background:rgba(91,75,255,0.45); border-radius:6px; padding:1px 5px;
-  font-weight:700; white-space:nowrap;
+  color:#fff; background:rgba(91,75,255,0.45); border-radius:4px; padding:0 4px;
+  font-weight:600; white-space:nowrap;
 }
 .comm-bubble .body .mention.mention-everyone {
   background:rgba(255,107,107,0.35); color:#ffc9c9;
@@ -1291,7 +1292,8 @@ body {
 .comm-bubble .body .mention.mention-me {
   background:rgba(255,200,60,0.4); color:#fff6d0; box-shadow:0 0 0 1px rgba(255,200,60,0.5);
 }
-.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
+.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:4px; opacity:0.8; }
+.comm-msg-time { font-size:11px !important; font-weight:500; color:var(--text2); opacity:0.75; margin-left:6px; }
 .comm-msg-more {
   position:absolute; top:6px; right:6px;
   background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text2);
@@ -1534,24 +1536,25 @@ body {
   .settings-android-box { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:16px 18px; margin-top:22px; }
   .settings-android-box a.apk-btn { display:inline-block; background:#00d4ff; color:#000; font-weight:800; font-size:15px; padding:10px 16px; border-radius:10px; text-decoration:none; margin-top:10px; }
 
-/* ── Community / Gen Chat ── */
+/* ── Community / Gen Chat (Discord-density: flatter, tighter) ── */
 .comm-wrap { display:flex; flex-direction:column; height:100%; min-height:0; }
-.comm-header { padding:16px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
-.comm-header h2 { font-size:20px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
-.comm-sub { font-size:13px; color:var(--text2); }
-.comm-msgs { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; min-height:0; }
-.comm-msg { display:flex; gap:10px; max-width:100%; }
-.comm-av { width:36px; height:36px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; }
+.comm-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.comm-header h2 { font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.comm-sub { font-size:12px; color:var(--text2); }
+.comm-msgs { flex:1; overflow-y:auto; padding:8px 12px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
+.comm-msg { display:flex; gap:12px; max-width:100%; padding:2px 8px; border-radius:4px; margin:0 -4px; }
+.comm-msg:hover { background:rgba(255,255,255,0.03); }
+.comm-av { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; margin-top:2px; }
 .comm-av img { width:100%; height:100%; object-fit:cover; }
-.comm-bubble { background:var(--bubble-in); border:1px solid var(--border); border-radius:12px; padding:10px 12px; max-width:min(560px,85%); }
-.comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
-.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble { background:transparent; border:none; border-radius:0; padding:0; max-width:min(720px,100%); flex:1; min-width:0; }
+.comm-bubble .who { font-size:15px; font-weight:600; color:var(--text); margin-bottom:2px; }
+.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:10px; margin-left:6px; text-transform:uppercase; }
 .comm-bubble { position:relative; }
-.comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
-.comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
+.comm-bubble .body { font-size:15px; line-height:1.375; word-break:break-word; white-space:pre-wrap; color:var(--text); }
+.comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:8px; display:block; margin-top:4px; background:var(--bg); }
 .comm-bubble .body .mention {
-  color:#fff; background:rgba(91,75,255,0.45); border-radius:6px; padding:1px 5px;
-  font-weight:700; white-space:nowrap;
+  color:#fff; background:rgba(91,75,255,0.45); border-radius:4px; padding:0 4px;
+  font-weight:600; white-space:nowrap;
 }
 .comm-bubble .body .mention.mention-everyone {
   background:rgba(255,107,107,0.35); color:#ffc9c9;
@@ -1559,7 +1562,8 @@ body {
 .comm-bubble .body .mention.mention-me {
   background:rgba(255,200,60,0.4); color:#fff6d0; box-shadow:0 0 0 1px rgba(255,200,60,0.5);
 }
-.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
+.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:4px; opacity:0.8; }
+.comm-msg-time { font-size:11px !important; font-weight:500; color:var(--text2); opacity:0.75; margin-left:6px; }
 .comm-msg-more {
   position:absolute; top:6px; right:6px;
   background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text2);
@@ -1874,20 +1878,15 @@ body {
         <div id="channel-rail-list"><div class="empty-text" style="padding:12px;font-size:13px">Loading…</div></div>
       </aside>
       <div class="comm-wrap">
-        <div id="scam-warn-banner" style="display:none;margin:10px 12px 0;padding:10px 12px;border-radius:12px;background:rgba(240,192,64,0.12);border:1px solid rgba(240,192,64,0.45);font-size:13px;line-height:1.45;color:var(--text)">
-          <strong style="color:#f0c040">Stay safe:</strong> Official help = <button type="button" onclick="switchTab('tickets')" style="background:none;border:none;color:var(--lc-primary,#5B4BFF);font-weight:700;cursor:pointer;padding:0;font:inherit;text-decoration:underline">Help tickets</button> only. Staff never ask for seeds or wallet connects.
-          <button type="button" onclick="dismissScamWarn()" style="float:right;background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px;line-height:1">✕</button>
-        </div>
-        <div class="comm-header">
-          <img class="lc-inline-mark" src="brand/symbol-light.svg" alt="" style="width:28px;height:28px">
+        <!-- Title bar only for guide/info channels (Start Here, etc.) — hidden for live chat so posts aren't covered -->
+        <div class="comm-header" id="genchat-titlebar" style="display:none">
+          <img class="lc-inline-mark" src="brand/symbol-light.svg" alt="" style="width:22px;height:22px">
           <div style="flex:1;min-width:0">
             <h2># Gen Chat</h2>
             <div class="comm-sub">Everyone · Lightchain community</div>
           </div>
           <div class="comm-header-actions">
-            <button type="button" class="comm-gif-btn mobile-chan-btn" onclick="switchTab('channels')" title="Channels" style="height:34px;padding:0 12px;display:none;align-items:center;gap:4px">#</button>
             <button type="button" id="threads-toggle-btn" class="comm-gif-btn" onclick="toggleThreadsPanel()" title="Threads" style="height:34px;padding:0 12px;display:none">Threads</button>
-            <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
         </div>
         <div id="threads-panel" style="display:none;border-bottom:1px solid var(--border);max-height:160px;overflow-y:auto;padding:8px 12px;background:var(--card)"></div>
@@ -2077,11 +2076,11 @@ body {
           }
           .comm-reply-quote .rq-who { font-weight:700; color:var(--text); font-size:12px; }
           .comm-reply-quote .rq-body { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
-          .comm-reactions { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+          .comm-reactions { display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; }
           .comm-react-pill {
             appearance:none; border:1px solid var(--border); background:rgba(255,255,255,0.04);
-            border-radius:999px; padding:2px 8px; font-size:13px; cursor:pointer; color:var(--text);
-            line-height:1.4; font-family:inherit; display:inline-flex; align-items:center; gap:4px;
+            border-radius:999px; padding:1px 6px; font-size:12px; cursor:pointer; color:var(--text);
+            line-height:1.35; font-family:inherit; display:inline-flex; align-items:center; gap:3px;
           }
           .comm-react-pill.me { border-color:var(--lc-primary,#5B4BFF); background:rgba(91,75,255,0.18); }
           .comm-react-pill:hover { border-color:var(--lc-primary,#5B4BFF); }
@@ -2106,9 +2105,10 @@ body {
           .comm-reply-bar-x:hover { background:rgba(255,255,255,0.06); color:var(--text); }
           .comm-msg .who { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
           .comm-msg-time {
-            font-size:11px; font-weight:500; color:var(--text2); opacity:0.85;
-            margin-left:2px; white-space:nowrap;
+            font-size:11px; font-weight:500; color:var(--text2); opacity:0.7;
+            margin-left:6px; white-space:nowrap;
           }
+          .comm-bubble .who { color:var(--text); }
           /* Discord-style hover action bar */
           .comm-bubble { position:relative; }
           .comm-msg-hoverbar {
@@ -2148,6 +2148,11 @@ body {
               <div class="comm-reply-bar-preview" id="comm-reply-bar-preview"></div>
             </div>
             <button type="button" class="comm-reply-bar-x" onclick="clearCommReply()" title="Cancel reply" aria-label="Cancel reply">✕</button>
+          </div>
+          <div id="genchat-status-strip" style="display:flex;align-items:center;gap:8px;padding:4px 12px 0;background:var(--card);border-top:1px solid var(--border)">
+            <button type="button" class="comm-gif-btn mobile-chan-btn" onclick="switchTab('channels')" title="Channels" style="height:28px;padding:0 10px;display:none;align-items:center;font-size:12px!important">#</button>
+            <span id="genchat-channel-chip" style="font-size:12px;font-weight:700;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#gen-chat</span>
+            <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
           <div class="comm-input-row">
             <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
@@ -9539,7 +9544,7 @@ function renderChannelRail() {
     rail.innerHTML = '<div class="empty-text" style="padding:12px;font-size:13px">No channels</div>';
     return;
   }
-  rail.innerHTML = visible.map(function (c) {
+  let html = visible.map(function (c) {
     const slug = c.slug || '';
     const label = slug === 'general' ? 'gen-chat' : (c.name || slug);
     const isActive = slug === active ? ' active' : '';
@@ -9549,6 +9554,11 @@ function renderChannelRail() {
       hash + ' ' + escapeHtml(String(label).toLowerCase().replace(/\s+/g, '-')) +
       '</button>';
   }).join('');
+  // Help tickets + safety tip at bottom of channel list (not covering chat)
+  html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>';
+  html += '<button type="button" class="channel-rail-item" onclick="switchTab(\'tickets\')">🎫 help-tickets</button>';
+  html += '<div style="padding:8px 10px 4px;font-size:11px;line-height:1.4;color:var(--text2)">Staff never ask for seeds. Official help = tickets only.</div>';
+  rail.innerHTML = html;
 }
 
 async function loadChannelsList() {
@@ -9559,7 +9569,7 @@ async function loadChannelsList() {
     const visible = _visibleCommunityChannels();
     const el = document.getElementById('channels-list');
     if (el) {
-      el.innerHTML = visible.map(c => {
+      let html = visible.map(c => {
         const mode = c.mode || (isP2PChatChannel(c.slug) ? 'chat' : 'post');
         const tag = c.staff_only ? 'Staff · P2P' : (mode === 'chat' || mode === 'media'
           ? (isP2PChatChannel(c.slug) ? 'P2P chat' : (mode === 'media' ? 'Media' : 'Live chat'))
@@ -9572,18 +9582,44 @@ async function loadChannelsList() {
           </div>
         </div>`;
       }).join('') || '<div class="empty-text" style="padding:24px">No channels</div>';
+      html += `<div class="chan-item" onclick="switchTab('tickets')" style="margin-top:8px;border-top:1px solid var(--border);border-radius:0 0 12px 12px">
+        <div class="hash">🎫</div>
+        <div class="meta">
+          <div class="n">Help tickets</div>
+          <div class="d">Official help only · staff never ask for seeds</div>
+        </div>
+      </div>`;
+      el.innerHTML = html;
     }
     renderChannelRail();
   } catch(e) { console.warn(e); }
 }
 
 function setCommunityChannelHeader(slug) {
+  const titlebar = document.getElementById('genchat-titlebar');
   const h = document.querySelector('#tab-genchat .comm-header h2');
   const s = document.querySelector('#tab-genchat .comm-sub');
   const p2p = document.getElementById('genchat-p2p-status');
   const thrBtn = document.getElementById('threads-toggle-btn');
+  const chip = document.getElementById('genchat-channel-chip');
+  const statusStrip = document.getElementById('genchat-status-strip');
   const ch = (communityChannels || []).find(c => c.slug === slug);
   try { renderChannelRail(); } catch (e) {}
+
+  const label = slug === 'general'
+    ? '#gen-chat'
+    : (slug === 'start-here' ? '👋 start-here' : ('#' + (ch ? String(ch.name || slug).toLowerCase().replace(/\s+/g, '-') : slug)));
+  if (chip) chip.textContent = label;
+
+  // Live chat: no top title bar (frees space for posts). Guide/info keeps a small title.
+  const showTitle = (slug === 'start-here' || slug === 'links' || slug === 'announcements');
+  if (titlebar) titlebar.style.display = showTitle ? 'flex' : 'none';
+  if (statusStrip) {
+    // Hide strip on guide pages with no composer; show for chat/media/garden
+    const hideStrip = (slug === 'start-here' || slug === 'links' || slug === 'announcements');
+    statusStrip.style.display = hideStrip ? 'none' : 'flex';
+  }
+
   if (slug === 'start-here') {
     if (h) h.textContent = '👋 Start Here';
     if (s) s.textContent = 'Welcome · rules · Lightchain links · stay safe';
@@ -9591,7 +9627,7 @@ function setCommunityChannelHeader(slug) {
     if (thrBtn) thrBtn.style.display = 'none';
     return;
   }
-  if (p2p) p2p.style.display = '';
+  if (p2p) p2p.style.display = isP2PChatChannel(slug) ? '' : 'none';
   if (h) {
     if (slug === 'general') h.textContent = '# Gen Chat';
     else h.textContent = '# ' + (ch ? ch.name : slug);
@@ -11873,16 +11909,17 @@ async function ensureGenChatHolepunch(force) {
 }
 
 function showScamWarnIfNeeded() {
+  // Safety tip lives at bottom of Channels list now — do not cover Gen Chat posts
   try {
-    if (localStorage.getItem('lc_scam_warn_dismissed') === '1') return;
+    if (localStorage.getItem('lc_scam_warn_toast') === '1') return;
+    localStorage.setItem('lc_scam_warn_toast', '1');
   } catch (e) {}
-  const el = document.getElementById('scam-warn-banner');
-  if (el) el.style.display = 'block';
+  try {
+    showToast('Stay safe: official help = Help tickets only (bottom of Channels)', 4500);
+  } catch (e) {}
 }
 function dismissScamWarn() {
-  try { localStorage.setItem('lc_scam_warn_dismissed', '1'); } catch (e) {}
-  const el = document.getElementById('scam-warn-banner');
-  if (el) el.style.display = 'none';
+  try { localStorage.setItem('lc_scam_warn_toast', '1'); } catch (e) {}
 }
 function warnFriendOrDmSafety(kind) {
   try {
