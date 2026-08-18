@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-hoverbar">
+<meta name="lc-build" content="2026-08-18-react-delete">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -9999,14 +9999,25 @@ function _commReplyQuoteHtml(m) {
 
 function _commReactionsHtml(m) {
   const list = (m && m.reactions) || [];
-  if (!list.length) return '<div class="comm-reactions" data-react-host="' + escapeHtml(m.id || '') + '"></div>';
   const mid = escapeHtml(m.id || '');
-  const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
+  if (!list.length) return '<div class="comm-reactions" data-react-host="' + mid + '"></div>';
+  // Build via applyCommReactions-compatible markup
+  const slug = m.slug || _activeCommSlug || 'general';
+  const wrap = '<div class="comm-reactions" data-react-host="' + mid + '"></div>';
+  // Return placeholder; fill after insert when possible — for map() use inline same as apply
+  const staff = typeof isCommStaff === 'function' && isCommStaff();
   return '<div class="comm-reactions" data-react-host="' + mid + '">' + list.map(function (r) {
     const me = r.me ? ' me' : '';
-    return '<button type="button" class="comm-react-pill' + me + '" title="React" ' +
-      'onclick="event.stopPropagation();toggleCommReaction(\'' + mid + '\',\'' + slug + '\',\'' + escapeHtml(r.emoji) + '\')">' +
-      escapeHtml(r.emoji) + ' ' + (r.count || 1) + '</button>';
+    const tip = r.me
+      ? 'Remove your reaction'
+      : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction');
+    const em = escapeHtml(r.emoji);
+    const sl = escapeHtml(slug);
+    const meFlag = r.me ? 'true' : 'false';
+    return '<button type="button" class="comm-react-pill' + me + '" title="' + tip + '" ' +
+      'onclick="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')" ' +
+      'oncontextmenu="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')">' +
+      em + ' ' + (r.count || 1) + '</button>';
   }).join('') + '</div>';
 }
 
@@ -10070,15 +10081,18 @@ async function commMsgReact(emoji) {
   await toggleCommReaction(id, slug, emoji);
 }
 
-async function toggleCommReaction(msgId, slug, emoji) {
+async function toggleCommReaction(msgId, slug, emoji, opts) {
   if (!wallet) { showToast('Connect wallet to react'); return; }
   if (!msgId || !emoji) return;
   slug = slug || _activeCommSlug || 'general';
+  opts = opts || {};
   try {
+    const body = { wallet: wallet, emoji: emoji };
+    if (opts.clear) body.clear = true;
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '/' + encodeURIComponent(msgId) + '/reactions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet: wallet, emoji: emoji }),
+      body: JSON.stringify(body),
     });
     const j = await r.json().catch(function () { return {}; });
     if (!r.ok) { showToast(j.error || 'Could not react'); return; }
@@ -10088,16 +10102,40 @@ async function toggleCommReaction(msgId, slug, emoji) {
   }
 }
 
+function onReactPillPointer(ev, msgId, slug, emoji, isMe) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  // Mods/admins: Shift/Alt-click or long-press clears everyone's reaction of that emoji
+  const staffClear = isCommStaff() && (ev.shiftKey || ev.altKey || ev.type === 'contextmenu');
+  if (staffClear) {
+    if (confirm('Clear all ' + emoji + ' reactions on this message?')) {
+      toggleCommReaction(msgId, slug, emoji, { clear: true });
+    }
+    return;
+  }
+  // Everyone: tap toggles your own (add or remove)
+  toggleCommReaction(msgId, slug, emoji);
+}
+
 function applyCommReactions(msgId, reactions) {
   const host = document.querySelector('.comm-reactions[data-react-host="' + String(msgId).replace(/"/g, '') + '"]');
   if (!host) return;
   const slug = _activeCommSlug || 'general';
   if (!reactions || !reactions.length) { host.innerHTML = ''; return; }
+  const staff = isCommStaff();
   host.innerHTML = reactions.map(function (r) {
     const me = r.me ? ' me' : '';
-    return '<button type="button" class="comm-react-pill' + me + '" title="React" ' +
-      'onclick="event.stopPropagation();toggleCommReaction(\'' + escapeHtml(msgId) + '\',\'' + escapeHtml(slug) + '\',\'' + escapeHtml(r.emoji) + '\')">' +
-      escapeHtml(r.emoji) + ' ' + (r.count || 1) + '</button>';
+    const tip = r.me
+      ? 'Remove your reaction'
+      : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction');
+    const em = escapeHtml(r.emoji);
+    const mid = escapeHtml(msgId);
+    const sl = escapeHtml(slug);
+    const meFlag = r.me ? 'true' : 'false';
+    return '<button type="button" class="comm-react-pill' + me + '" title="' + tip + '" ' +
+      'onclick="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')" ' +
+      'oncontextmenu="onReactPillPointer(event,\'' + mid + '\',\'' + sl + '\',\'' + em + '\',' + meFlag + ')">' +
+      em + ' ' + (r.count || 1) + '</button>';
   }).join('');
 }
 

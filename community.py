@@ -2302,10 +2302,13 @@ def register_community_routes(app, socketio, get_db):
 
     @app.route("/api/community/messages/<slug>/<msg_id>/reactions", methods=["POST"])
     def api_message_reaction(slug, msg_id):
-        """Toggle a Discord-style emoji reaction on a message."""
+        """Toggle your emoji reaction, or staff clear-all for that emoji on the message.
+        Body: { wallet, emoji, clear?: bool }
+        """
         data = request.json or {}
         wallet = _norm(data.get("wallet", ""))
         emoji = (data.get("emoji") or "").strip()
+        clear_all = bool(data.get("clear") or data.get("clear_all"))
         msg_id = (msg_id or "").strip()
         if not wallet.startswith("0x"):
             return jsonify({"error": "wallet required"}), 400
@@ -2317,7 +2320,7 @@ def register_community_routes(app, socketio, get_db):
         try:
             if is_banned(conn, wallet):
                 return jsonify({"error": "banned", "code": "banned"}), 403
-            ensure_member(conn, wallet)
+            role = ensure_member(conn, wallet)
             messages_ensure_extras(conn)
             ch = conn.execute(
                 "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
@@ -2331,26 +2334,41 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()
             if not row:
                 return jsonify({"error": "message not found"}), 404
-            existing = conn.execute(
-                """SELECT 1 FROM community_message_reactions
-                   WHERE message_id=? AND wallet=? AND emoji=?""",
-                (msg_id, wallet, emoji),
-            ).fetchone()
-            now = int(time.time())
-            if existing:
+
+            added = False
+            cleared = False
+            if clear_all:
+                if not is_staff(role):
+                    return jsonify({"error": "only mods/admins can clear reactions", "code": "staff_only"}), 403
                 conn.execute(
                     """DELETE FROM community_message_reactions
-                       WHERE message_id=? AND wallet=? AND emoji=?""",
-                    (msg_id, wallet, emoji),
+                       WHERE message_id=? AND emoji=?""",
+                    (msg_id, emoji),
                 )
+                cleared = True
                 added = False
             else:
-                conn.execute(
-                    """INSERT INTO community_message_reactions
-                       (message_id, wallet, emoji, created_at) VALUES (?,?,?,?)""",
-                    (msg_id, wallet, emoji, now),
-                )
-                added = True
+                existing = conn.execute(
+                    """SELECT 1 FROM community_message_reactions
+                       WHERE message_id=? AND wallet=? AND emoji=?""",
+                    (msg_id, wallet, emoji),
+                ).fetchone()
+                now = int(time.time())
+                if existing:
+                    # Tap again → remove your own reaction
+                    conn.execute(
+                        """DELETE FROM community_message_reactions
+                           WHERE message_id=? AND wallet=? AND emoji=?""",
+                        (msg_id, wallet, emoji),
+                    )
+                    added = False
+                else:
+                    conn.execute(
+                        """INSERT INTO community_message_reactions
+                           (message_id, wallet, emoji, created_at) VALUES (?,?,?,?)""",
+                        (msg_id, wallet, emoji, now),
+                    )
+                    added = True
             conn.commit()
             reactions = message_reactions_summary(conn, msg_id, wallet)
             payload = {
@@ -2358,6 +2376,7 @@ def register_community_routes(app, socketio, get_db):
                 "slug": slug,
                 "emoji": emoji,
                 "added": added,
+                "cleared": cleared,
                 "wallet": wallet,
                 "reactions": reactions,
             }
