@@ -443,6 +443,33 @@
       return;
     }
 
+    if (env.kind === 'edit' && env.id && env.content != null) {
+      try {
+        const arr = this.loadLocal();
+        arr.forEach(function (m) {
+          if (m.id === env.id) {
+            m.content = env.content;
+            m.edited = true;
+            m.edited_at = Math.floor(Date.now() / 1000);
+          }
+        });
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
+      } catch (e) {}
+      if (typeof this.onEdit === 'function') this.onEdit(env.id, env.content, env.slug || 'general');
+      this._broadcastEnvelope(
+        {
+          v: 1,
+          kind: 'edit',
+          id: env.id,
+          content: env.content,
+          slug: env.slug || 'general',
+          by: env.by || fromWallet,
+        },
+        fromWallet
+      );
+      return;
+    }
+
     if (env.kind === 'chat' || env.kind === 'gossip') {
       this._ingestChat(env.msg || env, fromWallet, true);
     }
