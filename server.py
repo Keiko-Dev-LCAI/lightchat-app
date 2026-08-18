@@ -455,6 +455,21 @@ def api_auth_session():
     })
 
 
+@app.route('/api/auth/logout', methods=['POST'])
+def api_auth_logout():
+    """Revoke a session token (Log off)."""
+    data = request.json or {}
+    auth = request.headers.get('Authorization') or ''
+    token = (data.get('token') or '').strip()
+    if not token and auth.lower().startswith('bearer '):
+        token = auth[7:].strip()
+    if not token:
+        return jsonify({'ok': True, 'revoked': False})
+    with _auth_lock:
+        gone = _auth_sessions.pop(token, None) is not None
+    return jsonify({'ok': True, 'revoked': gone})
+
+
 @app.route('/health')
 def health():
     return jsonify({

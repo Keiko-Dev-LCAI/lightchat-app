@@ -1751,6 +1751,8 @@ body {
 
   <div class="sidebar-user">
     <button class="sidebar-connect-btn" id="sidebar-connect-btn" onclick="connectWallet()">🔗 Connect Wallet</button>
+    <button class="sidebar-connect-btn" id="sidebar-logoff-btn" onclick="logOff()" title="Log off"
+      style="display:none;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px">🚪 Log off</button>
     <div class="sidebar-handle-badge" id="sidebar-handle-badge" style="display:none"></div>
   </div>
 </div>
@@ -2001,6 +2003,9 @@ body {
           </div>
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
+          </div>
+          <div class="me-menu-item" id="me-logoff-btn" onclick="logOff()" style="display:none;color:#ff8a8a">
+            <div class="me-menu-icon">🚪</div><div>Log off</div><div class="me-menu-arrow">›</div>
           </div>
         </div>
         <div style="text-align:center;color:var(--text2);font-size:20px;padding:10px 0">
@@ -2962,6 +2967,24 @@ function hideConnectUI() {
   document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
   const cta = document.getElementById('empty-cta-btn');
   if (cta && wallet) cta.textContent = '👥 Add a Contact';
+  const logBtn = document.getElementById('me-logoff-btn');
+  if (logBtn) logBtn.style.display = '';
+  const sideLog = document.getElementById('sidebar-logoff-btn');
+  if (sideLog) sideLog.style.display = '';
+}
+
+function showConnectUI() {
+  document.getElementById('connect-btn') && (document.getElementById('connect-btn').style.display = '');
+  document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'none');
+  const sc = document.getElementById('sidebar-connect-btn');
+  if (sc) { sc.style.display = ''; sc.textContent = '🔗 Connect Wallet'; sc.onclick = function () { connectWallet(); }; }
+  document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'none');
+  const cta = document.getElementById('empty-cta-btn');
+  if (cta) cta.textContent = '🔗 Connect Wallet';
+  const logBtn = document.getElementById('me-logoff-btn');
+  if (logBtn) logBtn.style.display = 'none';
+  const sideLog = document.getElementById('sidebar-logoff-btn');
+  if (sideLog) sideLog.style.display = 'none';
 }
 
 function acceptTermsIfNeeded() {
@@ -3190,6 +3213,8 @@ async function connectWithInjected() {
 
 async function connectWallet() {
   try {
+    // Explicit connect clears "logged off" so auto-restore can work again after reconnect
+    try { localStorage.removeItem('lc_manual_logout'); } catch (e) {}
     if (window.ethereum) {
       const ok = await connectWithInjected();
       if (ok) return;
@@ -3293,7 +3318,76 @@ function updateUI() {
   }
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
-  if (cta) { cta.textContent = '👥 Add a Contact'; }
+  if (cta) { cta.textContent = wallet ? '👥 Add a Contact' : '🔗 Connect Wallet'; }
+  const logBtn = document.getElementById('me-logoff-btn');
+  if (logBtn) logBtn.style.display = wallet ? '' : 'none';
+  const sideLog = document.getElementById('sidebar-logoff-btn');
+  if (sideLog) sideLog.style.display = wallet ? '' : 'none';
+}
+
+/** Log off LightChat: revoke session, leave sockets/P2P, show Connect Wallet. Keeps local chat cache. */
+async function logOff() {
+  if (!wallet && !sessionToken) {
+    showToast('Already logged off');
+    return;
+  }
+  if (!confirm('Log off LightChat? You can reconnect anytime.')) return;
+
+  const token = sessionToken;
+  try { localStorage.setItem('lc_manual_logout', '1'); } catch (e) {}
+
+  // Best-effort revoke on server
+  try {
+    if (token) {
+      await fetch(BACKEND + '/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({ token: token }),
+      });
+    }
+  } catch (e) {}
+
+  try { if (window.genChatHolepunch) await genChatHolepunch.leave(); } catch (e) {}
+  try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
+  try { if (window.dmP2P && typeof dmP2P.leave === 'function') dmP2P.leave(); } catch (e) {}
+  try { if (socket) { socket.disconnect(); socket = null; } } catch (e) {}
+
+  try {
+    if (_wcProv && typeof _wcProv.disconnect === 'function') await _wcProv.disconnect();
+  } catch (e) {}
+
+  wallet = null;
+  myHandle = null;
+  sessionToken = null;
+  sessionMode = null;
+  currentChat = null;
+  currentGroupChat = null;
+  isGroupChat = false;
+  contacts = [];
+  communityRole = null;
+  window._commJoined = false;
+  window._commProfile = null;
+  _activeProvider = null;
+
+  try {
+    localStorage.removeItem('lc_wallet');
+    localStorage.removeItem('lc_session_token');
+    localStorage.removeItem('lc_session_mode');
+  } catch (e) {}
+
+  showConnectUI();
+  try { updateUI(); } catch (e) {}
+  try {
+    const box = document.getElementById('genchat-msgs');
+    if (box) {
+      box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div>';
+    }
+  } catch (e) {}
+  try { switchTab('me'); } catch (e) {}
+  showToast('Logged off');
 }
 
 function emptyCTAClick() {
@@ -7045,12 +7139,14 @@ window.addEventListener('load', async () => {
   initPicker();
   initMemoryContextMenu();
   refreshEmptyInviteUI();
-  // Auto-restore session on refresh (no button tap needed)
+  // Auto-restore session on refresh (skip if user explicitly logged off)
+  let manualLogout = false;
+  try { manualLogout = localStorage.getItem('lc_manual_logout') === '1'; } catch (e) {}
   const saved = localStorage.getItem('lc_wallet');
-  if (isValidWallet(saved)) {
+  if (isValidWallet(saved) && !manualLogout) {
     wallet = saved.toLowerCase();
     await finishConnect();
-  } else {
+  } else if (!manualLogout) {
     const prov = _activeProvider || window.ethereum;
     if (prov) {
       try {
@@ -7062,6 +7158,8 @@ window.addEventListener('load', async () => {
         }
       } catch(e) {}
     }
+  } else {
+    showConnectUI();
   }
   // e.g. push notification opens ?tab=contacts for pending requests
   applyDeepLinkTab();
@@ -7072,11 +7170,22 @@ if (window.ethereum) {
   window.ethereum.on?.('accountsChanged', async (accounts) => {
     if (_connectingInProgress) return;
     if (!accounts?.length) {
+      // Treat as log off without full reload
+      try { localStorage.setItem('lc_manual_logout', '1'); } catch (e) {}
       wallet = null;
-      localStorage.removeItem('lc_wallet');
-      location.reload();
+      sessionToken = null;
+      try {
+        localStorage.removeItem('lc_wallet');
+        localStorage.removeItem('lc_session_token');
+        localStorage.removeItem('lc_session_mode');
+      } catch (e) {}
+      try { if (socket) { socket.disconnect(); socket = null; } } catch (e) {}
+      showConnectUI();
+      try { updateUI(); } catch (e) {}
+      showToast('Wallet disconnected');
       return;
     }
+    try { localStorage.removeItem('lc_manual_logout'); } catch (e) {}
     const addr = accounts[0].toLowerCase();
     if (addr !== wallet) { wallet = addr; await onWalletConnected(); }
   });
