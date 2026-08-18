@@ -25,8 +25,9 @@ DEFAULT_CHANNELS = [
     ("nodes", "Nodes", "text", "Node operators, validators, RPC, sync, hardware — P2P live chat", 6, 0),
     ("ai", "AI", "text", "AI and AIVM discussion", 7, 0),
     ("proposals", "Proposals", "text", "DAO and ideas", 8, 0),
-    ("links", "Links", "info", "Official links and contracts", 9, 1),
-    ("report", "Report", "text", "Report issues", 10, 0),
+    ("mods", "Mods", "text", "Staff only — mod issues & coordination · P2P", 9, 0),
+    ("links", "Links", "info", "Official links and contracts", 10, 1),
+    ("report", "Report", "text", "Report issues", 11, 0),
 ]
 
 # Discord-style Start Here guide (shown in #start-here UI)
@@ -394,6 +395,112 @@ def init_community_db(get_db):
     except Exception:
         pass
 
+    # Ensure #Devs + #Nodes exist as open P2P chat channels
+    try:
+        conn.execute(
+            "UPDATE community_channels SET name=?, description=?, readonly_members=0, sort_order=? WHERE community_id=? AND slug='dev'",
+            (
+                "Devs",
+                "Builders, apps, contracts, tooling — P2P live chat",
+                5,
+                COMMUNITY_ID,
+            ),
+        )
+        row_n = conn.execute(
+            "SELECT id FROM community_channels WHERE community_id=? AND slug='nodes'",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if not row_n:
+            conn.execute(
+                """INSERT INTO community_channels
+                   (id, community_id, slug, name, kind, description, sort_order, readonly_members)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    f"{COMMUNITY_ID}:nodes",
+                    COMMUNITY_ID,
+                    "nodes",
+                    "Nodes",
+                    "text",
+                    "Node operators, validators, RPC, sync, hardware — P2P live chat",
+                    6,
+                    0,
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE community_channels SET name=?, description=?, readonly_members=0 WHERE community_id=? AND slug='nodes'",
+                (
+                    "Nodes",
+                    "Node operators, validators, RPC, sync, hardware — P2P live chat",
+                    COMMUNITY_ID,
+                ),
+            )
+        conn.commit()
+    except Exception as e:
+        print("  [community] devs/nodes channel seed:", e)
+
+    # Ensure #Mods staff-only P2P channel
+    try:
+        row_m = conn.execute(
+            "SELECT id FROM community_channels WHERE community_id=? AND slug='mods'",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if not row_m:
+            conn.execute(
+                """INSERT INTO community_channels
+                   (id, community_id, slug, name, kind, description, sort_order, readonly_members)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    f"{COMMUNITY_ID}:mods",
+                    COMMUNITY_ID,
+                    "mods",
+                    "Mods",
+                    "text",
+                    "Staff only — mod issues & coordination · P2P",
+                    9,
+                    0,
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE community_channels SET name=?, description=?, readonly_members=0 WHERE community_id=? AND slug='mods'",
+                ("Mods", "Staff only — mod issues & coordination · P2P", COMMUNITY_ID),
+            )
+        conn.commit()
+    except Exception as e:
+        print("  [community] mods channel seed:", e)
+
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_threads (
+            id TEXT PRIMARY KEY,
+            community_id TEXT NOT NULL,
+            channel_slug TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            created_by TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open'
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_thread_members (
+            thread_id TEXT NOT NULL,
+            wallet TEXT NOT NULL,
+            added_by TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (thread_id, wallet)
+        )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_thread_messages (
+            id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            sender_wallet TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )"""
+    )
+    conn.commit()
+
     # bootstrap owners from env (comma-separated, max 2)
     owners = [
         _norm(x)
@@ -606,6 +713,19 @@ def can_see_ticket(conn, ticket: dict, wallet: str) -> bool:
     return is_staff(role)
 
 
+def can_see_thread(conn, thread_id: str, wallet: str) -> bool:
+    """Tagged members + creator; owners/admins can see all threads."""
+    wallet = _norm(wallet)
+    role = get_role(conn, wallet)
+    if role in ("owner", "admin"):
+        return True
+    row = conn.execute(
+        "SELECT 1 FROM community_thread_members WHERE thread_id=? AND wallet=?",
+        (thread_id, wallet),
+    ).fetchone()
+    return bool(row)
+
+
 def can_moderate(actor_role: str, target_role: str, action: str = "") -> bool:
     """Who can timeout/kick/ban/untimeout/unban whom.
     - Admin/owner: anyone (mod or not), except cannot target another owner unless actor is owner
@@ -723,23 +843,39 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()["c"]
             # Modes from DB flag: flip readonly_members 0↔1 to open chat as we grow
             GUIDE_SLUGS = {"start-here"}
-            PRIMARY_SLUGS = {"general", "dev", "nodes", "start-here", "announcements", "media", "links"}
-            P2P_CHAT_SLUGS = {"general", "dev", "nodes"}
+            STAFF_ONLY_SLUGS = {"mods"}
+            PRIMARY_SLUGS = {
+                "general", "dev", "nodes", "mods",
+                "start-here", "announcements", "media", "links",
+            }
+            P2P_CHAT_SLUGS = {"general", "dev", "nodes", "mods"}
+            # wallet from query for staff-only channel filtering
+            viewer = _norm(request.args.get("wallet", ""))
+            viewer_role = get_role(conn, viewer) if viewer else None
             enriched = []
             for c in channels:
                 d = dict(c)
                 slug = d["slug"]
                 ro = int(d.get("readonly_members") or 0)
-                if slug in GUIDE_SLUGS:
+                if slug in STAFF_ONLY_SLUGS:
+                    if not is_staff(viewer_role):
+                        continue  # hide #mods from non-staff
+                    d["mode"] = "chat"
+                    d["staff_only"] = True
+                elif slug in GUIDE_SLUGS:
                     d["mode"] = "guide"
                 elif slug in P2P_CHAT_SLUGS or ro == 0:
-                    d["mode"] = "chat"  # Gen Chat, Devs, Nodes — open P2P chat
+                    d["mode"] = "chat"
+                    d["staff_only"] = False
                 else:
-                    d["mode"] = "post"  # mods post, members read
+                    d["mode"] = "post"
+                    d["staff_only"] = False
                 d["primary"] = slug in PRIMARY_SLUGS or d["mode"] == "chat"
                 if slug not in PRIMARY_SLUGS and d["mode"] != "chat":
                     d["mode"] = "hidden"
                     d["primary"] = False
+                if d["mode"] == "hidden":
+                    continue
                 enriched.append(d)
             return jsonify({
                 "id": COMMUNITY_ID,
@@ -1068,8 +1204,13 @@ def register_community_routes(app, socketio, get_db):
     @app.route("/api/community/messages/<slug>")
     def api_channel_messages(slug):
         limit = min(int(request.args.get("limit", 80)), 200)
+        viewer = _norm(request.args.get("wallet", ""))
         conn = get_db()
         try:
+            if slug == "mods":
+                role = get_role(conn, viewer) if viewer else None
+                if not is_staff(role):
+                    return jsonify({"error": "Mods channel is staff only", "code": "staff_only"}), 403
             ch = conn.execute(
                 "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
                 (COMMUNITY_ID, slug),
@@ -1160,6 +1301,9 @@ def register_community_routes(app, socketio, get_db):
             role = ensure_member(conn, wallet)
             if not role:
                 return jsonify({"error": "not a member — join first", "code": "kicked"}), 403
+            # Staff-only channels (e.g. #mods)
+            if slug == "mods" and not is_staff(role):
+                return jsonify({"error": "Mods channel is staff only", "code": "staff_only"}), 403
             now = int(time.time())
             until = get_timeout_until(conn, wallet)
             if until > now:
@@ -1786,6 +1930,274 @@ def register_community_routes(app, socketio, get_db):
             if not row or not can_see_ticket(conn, dict(row), wallet):
                 return
             join_room(f"ticket:{tid}")
+        finally:
+            conn.close()
+
+    @app.route("/api/community/threads", methods=["GET"])
+    def api_threads_list():
+        """List threads for a channel visible to this wallet."""
+        wallet = _norm(request.args.get("wallet", ""))
+        channel = (request.args.get("channel") or request.args.get("slug") or "").lower().strip()
+        if not wallet.startswith("0x") or not channel:
+            return jsonify({"error": "wallet and channel required"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "join first"}), 403
+            rows = conn.execute(
+                """SELECT * FROM community_threads
+                   WHERE community_id=? AND channel_slug=? AND status='open'
+                   ORDER BY created_at DESC LIMIT 80""",
+                (COMMUNITY_ID, channel),
+            ).fetchall()
+            out = []
+            for r in rows:
+                tid = r["id"]
+                if not can_see_thread(conn, tid, wallet):
+                    continue
+                members = conn.execute(
+                    "SELECT wallet FROM community_thread_members WHERE thread_id=?",
+                    (tid,),
+                ).fetchall()
+                out.append({
+                    "id": tid,
+                    "channel_slug": r["channel_slug"],
+                    "title": r["title"],
+                    "created_by": r["created_by"],
+                    "created_at": r["created_at"],
+                    "status": r["status"],
+                    "members": [m["wallet"] for m in members],
+                    "creator": profile_dict(conn, r["created_by"]),
+                })
+            return jsonify({"threads": out, "count": len(out)})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/threads", methods=["POST"])
+    def api_threads_create():
+        """Admin/owner creates an invite-only thread under a channel."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        channel = (data.get("channel") or data.get("slug") or "").lower().strip()
+        title = (data.get("title") or "Thread")[:120].strip() or "Thread"
+        invitees = data.get("members") or data.get("invite") or []
+        if isinstance(invitees, str):
+            invitees = [x.strip() for x in invitees.replace(";", ",").split(",") if x.strip()]
+        invitees = [_norm(x) for x in invitees if str(x).startswith("0x")]
+        if not wallet.startswith("0x") or not channel:
+            return jsonify({"error": "wallet and channel required"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if role not in ("owner", "admin"):
+                return jsonify({"error": "admins only can create threads"}), 403
+            ch = conn.execute(
+                "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+                (COMMUNITY_ID, channel),
+            ).fetchone()
+            if not ch:
+                return jsonify({"error": "channel not found"}), 404
+            tid = str(uuid.uuid4())
+            now = int(time.time())
+            conn.execute(
+                """INSERT INTO community_threads
+                   (id, community_id, channel_slug, title, created_by, created_at, status)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (tid, COMMUNITY_ID, channel, title, wallet, now, "open"),
+            )
+            # Creator always a member; plus tagged wallets
+            members = {wallet}
+            for w in invitees:
+                if w.startswith("0x") and len(w) == 42:
+                    members.add(w)
+            for w in members:
+                conn.execute(
+                    """INSERT OR IGNORE INTO community_thread_members
+                       (thread_id, wallet, added_by, created_at) VALUES (?,?,?,?)""",
+                    (tid, w, wallet, now),
+                )
+            conn.commit()
+            ticket = {
+                "id": tid,
+                "channel_slug": channel,
+                "title": title,
+                "created_by": wallet,
+                "created_at": now,
+                "status": "open",
+                "members": list(members),
+            }
+            try:
+                for w in members:
+                    socketio.emit("community_thread_created", ticket, room=w)
+            except Exception:
+                pass
+            return jsonify({"ok": True, "thread": ticket})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/threads/<tid>/members", methods=["POST"])
+    def api_thread_add_member(tid):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        target = _norm(data.get("target", ""))
+        tid = (tid or "").strip()
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if role not in ("owner", "admin"):
+                return jsonify({"error": "admins only"}), 403
+            row = conn.execute(
+                "SELECT * FROM community_threads WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            if not target.startswith("0x"):
+                return jsonify({"error": "target wallet required"}), 400
+            now = int(time.time())
+            conn.execute(
+                """INSERT OR IGNORE INTO community_thread_members
+                   (thread_id, wallet, added_by, created_at) VALUES (?,?,?,?)""",
+                (tid, target, wallet, now),
+            )
+            conn.commit()
+            try:
+                socketio.emit(
+                    "community_thread_invited",
+                    {"thread_id": tid, "title": row["title"], "channel_slug": row["channel_slug"]},
+                    room=target,
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": True, "thread_id": tid, "target": target})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/threads/<tid>", methods=["GET"])
+    def api_thread_get(tid):
+        wallet = _norm(request.args.get("wallet", ""))
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM community_threads WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            if not can_see_thread(conn, tid, wallet):
+                return jsonify({"error": "forbidden"}), 403
+            msgs = conn.execute(
+                """SELECT id, sender_wallet, content, created_at FROM community_thread_messages
+                   WHERE thread_id=? ORDER BY created_at ASC LIMIT 300""",
+                (tid,),
+            ).fetchall()
+            members = conn.execute(
+                "SELECT wallet FROM community_thread_members WHERE thread_id=?",
+                (tid,),
+            ).fetchall()
+            out_msgs = []
+            for m in msgs:
+                prof = profile_dict(conn, m["sender_wallet"])
+                out_msgs.append({
+                    "id": m["id"],
+                    "sender_wallet": m["sender_wallet"],
+                    "content": m["content"],
+                    "created_at": m["created_at"],
+                    "display_name": prof["display_name"],
+                    "role": prof["role"],
+                })
+            t = dict(row)
+            t["messages"] = out_msgs
+            t["members"] = [m["wallet"] for m in members]
+            t["creator"] = profile_dict(conn, row["created_by"])
+            return jsonify({"thread": t})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/threads/<tid>/messages", methods=["POST"])
+    def api_thread_message(tid):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        content = (data.get("content") or "").strip()
+        if not wallet.startswith("0x") or not content or len(content) > 4000:
+            return jsonify({"error": "wallet and content required"}), 400
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT * FROM community_threads WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            if row["status"] != "open":
+                return jsonify({"error": "thread closed"}), 400
+            if not can_see_thread(conn, tid, wallet):
+                return jsonify({"error": "forbidden"}), 403
+            role = ensure_member(conn, wallet)
+            if content_has_link(content) and not is_staff(role):
+                return jsonify({"error": "Only admins/mods can post links"}), 403
+            mid = str(uuid.uuid4())
+            now = int(time.time())
+            conn.execute(
+                """INSERT INTO community_thread_messages
+                   (id, thread_id, sender_wallet, content, created_at) VALUES (?,?,?,?,?)""",
+                (mid, tid, wallet, content, now),
+            )
+            conn.commit()
+            prof = profile_dict(conn, wallet)
+            msg = {
+                "id": mid,
+                "thread_id": tid,
+                "sender_wallet": wallet,
+                "content": content,
+                "created_at": now,
+                "display_name": prof["display_name"],
+                "role": prof["role"],
+            }
+            try:
+                members = conn.execute(
+                    "SELECT wallet FROM community_thread_members WHERE thread_id=?",
+                    (tid,),
+                ).fetchall()
+                socketio.emit("community_thread_message", msg, room=f"thread:{tid}")
+                for m in members:
+                    socketio.emit("community_thread_message", msg, room=m["wallet"])
+            except Exception:
+                pass
+            return jsonify({"ok": True, "message": msg})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/threads/<tid>/close", methods=["POST"])
+    def api_thread_close(tid):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if role not in ("owner", "admin"):
+                return jsonify({"error": "admins only"}), 403
+            conn.execute(
+                "UPDATE community_threads SET status='closed' WHERE id=? AND community_id=?",
+                (tid, COMMUNITY_ID),
+            )
+            conn.commit()
+            return jsonify({"ok": True, "id": tid, "status": "closed"})
+        finally:
+            conn.close()
+
+    @socketio.on("join_thread")
+    def on_join_thread(data):
+        data = data or {}
+        tid = (data.get("thread_id") or "").strip()
+        wallet = _norm(data.get("wallet", ""))
+        if not tid or not wallet.startswith("0x"):
+            return
+        conn = get_db()
+        try:
+            if can_see_thread(conn, tid, wallet):
+                join_room(f"thread:{tid}")
         finally:
             conn.close()
 
