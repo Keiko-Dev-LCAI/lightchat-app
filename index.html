@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=4"></script>
-<script src="dm-p2p.js?v=4"></script>
+<script src="genchat-p2p.js?v=5"></script>
+<script src="dm-p2p.js?v=5"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -8109,12 +8109,74 @@ async function sendCommunityMsg(slug) {
   await sendCommunityContent(slug, content);
 }
 
+function contentHasLink(content) {
+  const c = String(content || '').trim();
+  if (!c) return false;
+  if (c.startsWith('[[gif]]')) return true;
+  return /(https?:\/\/|www\.|discord\.gg\/|t\.me\/)|(\b[a-z0-9-]+\.(com|org|net|io|ai|xyz|app|gg|me|co|info|dev)(\/[^\s]*)?)/i.test(c);
+}
+
+function isCommStaff() {
+  const r = (communityRole || '').toLowerCase();
+  return r === 'owner' || r === 'admin' || r === 'mod';
+}
+
+function getLocalTimeoutUntil() {
+  try {
+    return parseInt(localStorage.getItem('lc_timeout_until') || '0', 10) || 0;
+  } catch (e) { return 0; }
+}
+
+function setLocalTimeoutUntil(until) {
+  try { localStorage.setItem('lc_timeout_until', String(until || 0)); } catch (e) {}
+}
+
+async function enforceLinkAndTimeout(content) {
+  const now = Math.floor(Date.now() / 1000);
+  let until = getLocalTimeoutUntil();
+  // Refresh from server when possible
+  try {
+    const r = await fetch(BACKEND + '/api/community/timeout/' + encodeURIComponent(wallet));
+    const j = await r.json();
+    if (j && j.until) {
+      until = j.until;
+      setLocalTimeoutUntil(until);
+    }
+  } catch (e) {}
+  if (until > now) {
+    const mins = Math.max(1, Math.ceil((until - now) / 60));
+    showToast('Timed out — ' + mins + ' min left');
+    return false;
+  }
+  if (contentHasLink(content) && !isCommStaff()) {
+    // Hit server so timeout sticks (also blocks the post)
+    try {
+      const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(_activeCommSlug || 'general'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, content }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (j.until) setLocalTimeoutUntil(j.until);
+      else setLocalTimeoutUntil(now + 3600);
+      showToast(j.error || 'Only admins/mods can post links. Timed out 1 hour.');
+    } catch (e) {
+      setLocalTimeoutUntil(now + 3600);
+      showToast('Only admins/mods can post links. Timed out 1 hour.');
+    }
+    return false;
+  }
+  return true;
+}
+
 async function sendCommunityContent(slug, content) {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   content = String(content || '').trim();
   if (!content) return;
   slug = slug || _activeCommSlug || 'general';
   await communityJoin();
+
+  if (!(await enforceLinkAndTimeout(content))) return;
 
   const prof = window._commProfile || {};
   const msg = {
@@ -8145,7 +8207,6 @@ async function sendCommunityContent(slug, content) {
 
   const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
   if (p2pOnly && slug === 'general') {
-    // Still keep local so it syncs when a peer appears
     try { if (window.genChatP2P) { genChatP2P._storeLocal(msg); genChatP2P._seenIds.add(msg.id); } } catch (e) {}
     appendCommunityMessage(msg);
     showToast('Saved locally — waiting for P2P peers (relay off)');
@@ -8158,7 +8219,11 @@ async function sendCommunityContent(slug, content) {
       body: JSON.stringify({wallet, content})
     });
     const j = await r.json();
-    if (!r.ok) { showToast(j.error || 'Send failed'); return; }
+    if (!r.ok) {
+      if (j.until) setLocalTimeoutUntil(j.until);
+      showToast(j.error || 'Send failed');
+      return;
+    }
     if (j.message) appendCommunityMessage(Object.assign({ transport: 'relay' }, j.message));
     else await loadCommunityChannel(slug);
     if (slug === 'general' && parseGifContent(content)) showToast('GIF sent');
@@ -8820,6 +8885,12 @@ async function saveCommunityProfile() { return saveEditProfile(); }
             localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
           }
         } catch (e) {}
+      });
+      socket.on('community_timeout', (data) => {
+        if (!data || !wallet) return;
+        if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
+        if (data.until) setLocalTimeoutUntil(data.until);
+        showToast(data.reason || 'You were timed out');
       });
       clearInterval(trySock);
     }
