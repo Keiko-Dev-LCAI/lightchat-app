@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-live-relay">
+<meta name="lc-build" content="2026-08-18-live-relay-2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12792,23 +12792,70 @@ function refreshMeAvatarFromProfile() {
 
 async function saveCommunityProfile() { return saveEditProfile(); }
 
+function onLiveCommunityMessage(msg) {
+  if (!msg) return;
+  const slug = msg.slug || 'general';
+  const active = _activeCommSlug || 'general';
+  if (slug !== active && !( !msg.slug && active === 'general')) return;
+  msg.transport = msg.transport || 'relay';
+  const tab = document.getElementById('tab-genchat');
+  if (tab && tab.classList.contains('active')) {
+    appendCommunityMessage(msg);
+  } else {
+    try {
+      const dot = document.getElementById('genchat-dot') || document.getElementById('channels-dot');
+      if (dot) dot.classList.add('show');
+    } catch (e) {}
+  }
+}
+
+/** Backup when socket rooms miss a post: pull recent messages while Gen Chat is open. */
+let _commPollTimer = null;
+let _commPollInFlight = false;
+function startCommunityLivePoll() {
+  if (_commPollTimer) return;
+  _commPollTimer = setInterval(function () {
+    softPollCommunityChannel();
+  }, 4000);
+}
+async function softPollCommunityChannel() {
+  if (_commPollInFlight) return;
+  if (document.visibilityState === 'hidden') return;
+  const tab = document.getElementById('tab-genchat');
+  if (!tab || !tab.classList.contains('active')) return;
+  const slug = _activeCommSlug || 'general';
+  if (slug === 'start-here' || slug === 'links' || slug === 'announcements') return;
+  const box = document.getElementById('genchat-msgs');
+  if (!box) return;
+  _commPollInFlight = true;
+  try {
+    const r = await fetch(
+      BACKEND + '/api/community/messages/' + encodeURIComponent(slug) +
+      '?limit=30' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : '')
+    );
+    if (!r.ok) return;
+    const j = await r.json();
+    const msgs = j.messages || [];
+    msgs.forEach(function (m) {
+      if (!m || !m.id) return;
+      if (box.querySelector('.comm-msg[data-msg-id="' + String(m.id).replace(/"/g, '') + '"]')) return;
+      m.slug = m.slug || slug;
+      m.transport = m.transport || 'relay';
+      appendCommunityMessage(m);
+    });
+  } catch (e) {
+  } finally {
+    _commPollInFlight = false;
+  }
+}
+try { startCommunityLivePoll(); } catch (e) {}
+
 /** Bind Gen Chat live events to THIS socket instance (must re-bind after reconnect). */
 function bindCommunitySocket(sock) {
   if (!sock || sock._lcCommunityBound) return;
   sock._lcCommunityBound = true;
   sock.on('community_message', (msg) => {
-    if (!msg) return;
-    if (msg.slug === _activeCommSlug || (!msg.slug && _activeCommSlug === 'general')) {
-      msg.transport = msg.transport || 'relay';
-      const tab = document.getElementById('tab-genchat');
-      if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
-      else {
-        try {
-          const dot = document.getElementById('genchat-dot') || document.getElementById('channels-dot');
-          if (dot) dot.classList.add('show');
-        } catch (e) {}
-      }
-    }
+    onLiveCommunityMessage(msg);
   });
   sock.on('community_reaction', (data) => {
     if (!data || !data.id) return;
