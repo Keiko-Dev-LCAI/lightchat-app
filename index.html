@@ -2653,13 +2653,12 @@ body {
   <div style="padding:0 18px 10px;font-size:13px;color:var(--text2);font-weight:600">Add media</div>
   <button type="button" onclick="pickCommunityMediaFile()" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:14px 18px;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit">
     <span style="width:40px;height:40px;border-radius:50%;background:rgba(91,75,255,0.25);display:flex;align-items:center;justify-content:center;font-size:20px">📄</span>
-    <span>Upload a File<br><span style="font-size:12px;font-weight:500;color:var(--text2)">Pic, GIF, or video (max ~20 MB)</span></span>
+    <span>Upload a File<br><span style="font-size:12px;font-weight:500;color:var(--text2)">Pic, GIF file, or short video (max ~20 MB)</span></span>
   </button>
-  <button type="button" onclick="closeCommunityMediaSheet();openGifSheet('genchat')" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:none;border:none;color:var(--text);padding:14px 18px;font-size:16px;font-weight:600;cursor:pointer;font-family:inherit">
-    <span style="width:40px;height:40px;border-radius:50%;background:rgba(91,75,255,0.25);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800">GIF</span>
-    <span>Create a GIF<br><span style="font-size:12px;font-weight:500;color:var(--text2)">Paste a Tenor / Giphy link</span></span>
-  </button>
-  <div style="padding:8px 18px 0;font-size:12px;color:var(--text2);line-height:1.45">Tip: paste a <b style="color:var(--text)">YouTube</b> or <b style="color:var(--text)">video URL</b> in the message box — it embeds and can autoplay (muted).</div>
+  <div style="padding:12px 18px 0;font-size:12px;color:var(--text2);line-height:1.45">
+    Use the <b style="color:var(--text)">GIF</b> button for Tenor/Giphy.<br>
+    Paste a <b style="color:var(--text)">YouTube</b> URL in the message box to embed (muted autoplay).
+  </div>
 </div>
 
 <div id="gif-sheet" role="dialog" aria-label="Send GIF">
@@ -9482,8 +9481,10 @@ async function uploadCommunityMedia(input) {
     return;
   }
   const slug = _activeCommSlug || 'general';
-  const isVid = (file.type || '').startsWith('video/');
-  const isImg = (file.type || '').startsWith('image/');
+  const name = (file.name || '').toLowerCase();
+  const type = (file.type || '').toLowerCase();
+  const isVid = type.startsWith('video/') || /\.(mp4|webm|mov)$/.test(name);
+  const isImg = type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/.test(name);
   if (!isVid && !isImg) {
     showToast('Upload a pic, GIF, or video file');
     input.value = '';
@@ -9491,13 +9492,17 @@ async function uploadCommunityMedia(input) {
   }
   const maxBytes = isVid ? 20 * 1024 * 1024 : 8 * 1024 * 1024;
   if (file.size > maxBytes) {
-    showToast(isVid ? 'Video too large — max ~20 MB' : 'Image too large — max ~8 MB');
+    showToast(isVid
+      ? 'Video too large — max ~20 MB. Paste a YouTube link instead.'
+      : 'Image too large — max ~8 MB');
     input.value = '';
     return;
   }
   showToast(isVid ? 'Uploading video…' : 'Uploading image…');
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, 120000) : null;
   try {
-    if (isImg) {
+    if (isImg && !isVid) {
       const compressed = (typeof compressImage === 'function')
         ? await compressImage(file)
         : await new Promise(function (resolve, reject) {
@@ -9509,7 +9514,7 @@ async function uploadCommunityMedia(input) {
             reader.onerror = reject;
             reader.readAsDataURL(file);
           });
-      const resp = await fetch(BACKEND + '/chat-image', {
+      const r = await fetch(BACKEND + '/chat-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -9517,38 +9522,53 @@ async function uploadCommunityMedia(input) {
           image_data: compressed.base64,
           image_type: compressed.type || file.type || 'image/jpeg',
         }),
-      }).then(function (r) { return r.json(); }).catch(function () { return { error: 'Upload failed' }; });
-      if (resp.error) { showToast(resp.error); input.value = ''; return; }
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      const resp = await r.json().catch(function () { return {}; });
+      if (!r.ok || resp.error) {
+        showToast(resp.error || ('Upload failed (' + r.status + ')'));
+        input.value = '';
+        return;
+      }
       const url = BACKEND + '/chat-image/' + resp.image_id;
       await sendCommunityContent(slug, encodeImgContent(url));
       showToast('Image posted');
     } else {
-      const dataUrl = await new Promise(function (resolve, reject) {
-        const reader = new FileReader();
-        reader.onload = function (e) { resolve(e.target.result); };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const base64 = String(dataUrl).split(',')[1];
-      const resp = await fetch(BACKEND + '/chat-file', {
+      // Multipart — avoids huge JSON base64 that timed out on short videos
+      const fd = new FormData();
+      fd.append('wallet', wallet);
+      fd.append('file', file, file.name || (isVid ? 'video.mp4' : 'image.jpg'));
+      fd.append('file_name', file.name || (isVid ? 'video.mp4' : 'image.jpg'));
+      fd.append('file_type', file.type || (isVid ? 'video/mp4' : 'image/jpeg'));
+      const r = await fetch(BACKEND + '/chat-file', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wallet,
-          file_name: file.name || 'video.mp4',
-          file_data: base64,
-          file_type: file.type || 'video/mp4',
-          file_size: file.size,
-        }),
-      }).then(function (r) { return r.json(); }).catch(function () { return { error: 'Upload failed' }; });
-      if (resp.error) { showToast(resp.error); input.value = ''; return; }
+        body: fd,
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      const resp = await r.json().catch(function () { return {}; });
+      if (!r.ok || resp.error) {
+        showToast(resp.error || ('Upload failed (' + r.status + '). Try a shorter clip or YouTube link.'));
+        input.value = '';
+        return;
+      }
       const url = BACKEND + '/chat-file/' + resp.file_id;
-      await sendCommunityContent(slug, encodeVideoContent(url));
-      showToast('Video posted');
+      const ft = (resp.file_type || file.type || '').toLowerCase();
+      if (ft.startsWith('image/') || /\.(gif|png|jpe?g|webp)$/.test(name)) {
+        await sendCommunityContent(slug, encodeImgContent(url));
+        showToast('Image posted');
+      } else {
+        await sendCommunityContent(slug, encodeVideoContent(url));
+        showToast('Video posted');
+      }
     }
   } catch (e) {
     console.warn(e);
-    showToast('Upload failed');
+    const aborted = e && (e.name === 'AbortError' || String(e).indexOf('abort') >= 0);
+    showToast(aborted
+      ? 'Upload timed out — try a shorter clip or paste a YouTube link'
+      : 'Upload failed — try a shorter clip or paste a YouTube link');
+  } finally {
+    if (timer) clearTimeout(timer);
   }
   input.value = '';
 }
