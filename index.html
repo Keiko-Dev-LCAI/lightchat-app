@@ -2434,9 +2434,9 @@ body {
   </div>
   <div style="padding:12px 14px;overflow-y:auto;flex:1;min-height:0">
     <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">
-      On Tenor/Giphy: <strong style="color:var(--text)">right‑click (or long‑press) the GIF → Copy image address</strong>, paste here, then Send. Page links often fail — use the direct <code style="font-size:12px">.gif</code> media URL. Stored as URL-only for P2P.
+      Paste a Tenor/Giphy <strong style="color:var(--text)">share/view link</strong> or direct <code style="font-size:12px">.gif</code> address, then Send. Example: <code style="font-size:11px">tenor.com/view/…</code> works now.
     </div>
-    <input class="gif-search-input" id="gif-sheet-url" type="url" placeholder="https://media1.tenor.com/m/….gif" autocomplete="off" style="margin-bottom:10px">
+    <input class="gif-search-input" id="gif-sheet-url" type="url" placeholder="https://tenor.com/view/… or media .gif" autocomplete="off" style="margin-bottom:10px">
     <button type="button" class="primary-btn" style="width:100%;margin-bottom:14px" onclick="sendGifFromPaste()">Send GIF</button>
     <div id="gif-sheet-grid" class="gif-grid" style="display:none" aria-hidden="true"></div>
   </div>
@@ -4328,7 +4328,7 @@ function normalizeGifUrl(raw) {
   if (m) url = m[0].replace(/[),.;]+$/, '');
   const low = url.toLowerCase();
   if (!low.startsWith('https://')) return '';
-  if (!(low.includes('tenor.com') || low.includes('tenor.co') || low.includes('giphy.com') || low.includes('giphy.gif'))) {
+  if (!(low.includes('tenor.com') || low.includes('tenor.co') || low.includes('giphy.com') || low.includes('giphy.gif') || low.includes('gph.is'))) {
     return '';
   }
   // Tenor often 404s on media.tenor.com/ID — try modern media1 /m/ form as primary
@@ -4339,12 +4339,34 @@ function normalizeGifUrl(raw) {
   return url;
 }
 
-function sendGifFromPaste() {
+function isGifPageLink(url) {
+  const low = String(url || '').toLowerCase();
+  return low.includes('tenor.com/view/') || low.includes('giphy.com/gifs/') || low.includes('gph.is/');
+}
+
+async function resolveGifUrl(raw) {
+  let url = normalizeGifUrl(raw);
+  if (!url) return '';
+  if (!isGifPageLink(url)) return url;
+  try {
+    showToast('Resolving GIF link…');
+    const r = await fetch(BACKEND + '/api/gif-resolve?url=' + encodeURIComponent(url));
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.url) return normalizeGifUrl(j.url) || j.url;
+    showToast(j.error || 'Could not resolve that Tenor/Giphy page link');
+    return '';
+  } catch (e) {
+    showToast('Could not resolve GIF link');
+    return '';
+  }
+}
+
+async function sendGifFromPaste() {
   const raw = (document.getElementById('gif-sheet-url')?.value || '').trim();
-  if (!raw) { showToast('Paste a Tenor/Giphy GIF URL first'); return; }
-  const url = normalizeGifUrl(raw);
+  if (!raw) { showToast('Paste a Tenor/Giphy link first'); return; }
+  const url = await resolveGifUrl(raw);
   if (!url) {
-    showToast('Need an https:// Tenor or Giphy media link (right‑click GIF → Copy image address)');
+    showToast('Need a Tenor/Giphy link (view page or direct .gif)');
     return;
   }
   const inp = document.getElementById('gif-sheet-url');
@@ -4383,13 +4405,13 @@ function parseGifContent(content) {
   return null;
 }
 
-function sendGif(url) {
-  url = normalizeGifUrl(url) || String(url || '').trim();
+async function sendGif(url) {
+  url = await resolveGifUrl(url);
   if (!url) return;
   if (_gifPickerTarget === 'genchat') {
     closeGifSheet();
     closePicker();
-    sendCommunityGif(url);
+    await sendCommunityGif(url);
     return;
   }
   if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
@@ -4403,7 +4425,8 @@ function sendGif(url) {
 async function sendCommunityGif(url) {
   if (!wallet) { showToast('Connect your wallet first'); return; }
   const slug = (document.getElementById('genchat-input')?.dataset.slug) || _activeCommSlug || 'general';
-  url = normalizeGifUrl(url) || url;
+  url = await resolveGifUrl(url);
+  if (!url) return;
   const content = encodeGifContent(url);
   await sendCommunityContent(slug, content);
   showToast('GIF sent');
@@ -7910,9 +7933,11 @@ async function sendCommunityMsg(slug) {
   let content = (inp && inp.value || '').trim();
   slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
   if (!content) return;
-  // If they paste a GIF media URL in the text box, send as GIF
-  const asGif = normalizeGifUrl(content);
-  if (asGif && content.length < 500) content = encodeGifContent(asGif);
+  // Paste Tenor/Giphy page or media URL → send as GIF
+  if (content.length < 800 && normalizeGifUrl(content)) {
+    const resolved = await resolveGifUrl(content);
+    if (resolved) content = encodeGifContent(resolved);
+  }
   if (inp) inp.value = '';
   await sendCommunityContent(slug, content);
 }
