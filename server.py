@@ -825,8 +825,78 @@ def proxy_gif():
         return jsonify({'error': str(e)}), 500
 
 
-# GIF search intentionally NOT on Railway — P2P-first. Clients send [[gif]]URL
-# (Tenor HTTPS). A future non-Railway worker can host Tenor/Giphy search.
+# GIF search stays off-server. Tiny resolve only: tenor.com/view/… → media .gif URL
+# so paste-from-browser “Copy link” works. Message body remains URL-only (P2P-friendly).
+
+@app.route('/api/gif-resolve')
+def api_gif_resolve():
+    """Resolve Tenor/Giphy page links to a direct media HTTPS URL."""
+    raw = (request.args.get('url') or '').strip()
+    if not raw or not raw.lower().startswith('https://'):
+        return jsonify({'error': 'https url required'}), 400
+    try:
+        host = (_urlparse(raw).hostname or '').lower()
+    except Exception:
+        return jsonify({'error': 'bad url'}), 400
+    allowed = (
+        host.endswith('tenor.com')
+        or host.endswith('tenor.co')
+        or host.endswith('giphy.com')
+        or host == 'gph.is'
+    )
+    if not allowed:
+        return jsonify({'error': 'only Tenor/Giphy links'}), 403
+
+    # Already a media URL
+    low = raw.lower()
+    if any(x in low for x in ('media.tenor.', 'media1.tenor.', 'c.tenor.', 'media.giphy.', 'i.giphy.', '.gif')):
+        if '/view/' not in low and 'giphy.com/gifs/' not in low:
+            return jsonify({'url': raw, 'resolved': False})
+
+    media_url = None
+    try:
+        req = _urllib_req.Request(
+            raw,
+            headers={'User-Agent': 'Mozilla/5.0 LightChat/1.0', 'Accept': 'text/html'},
+        )
+        with _urllib_req.urlopen(req, timeout=12) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+        import re as _re
+        # Prefer direct gif
+        patterns = [
+            r'og:image"\s+content="(https://media1\.tenor\.com/[^"]+\.gif)"',
+            r'og:image"\s+content="(https://media\.tenor\.com/[^"]+\.gif)"',
+            r'og:image:secure_url"\s+content="(https://[^"]+\.gif)"',
+            r'og:image"\s+content="(https://media[0-9]*\.giphy\.com/[^"]+)"',
+            r'og:image"\s+content="(https://i\.giphy\.com/[^"]+)"',
+            r'(https://media1\.tenor\.com/m/[^"\s]+\.gif)',
+            r'(https://media\.tenor\.com/[^"\s]+\.gif)',
+        ]
+        for pat in patterns:
+            m = _re.search(pat, html, _re.I)
+            if m:
+                media_url = m.group(1)
+                break
+        # Last resort: oembed thumbnail (may be png)
+        if not media_url:
+            oe = (
+                'https://tenor.com/oembed?url='
+                + _url_quote(raw)
+            )
+            req2 = _urllib_req.Request(oe, headers={'User-Agent': 'LightChat/1.0'})
+            with _urllib_req.urlopen(req2, timeout=10) as resp2:
+                data = json.loads(resp2.read().decode('utf-8', errors='ignore') or '{}')
+            thumb = data.get('thumbnail_url') or ''
+            if thumb:
+                # Prefer .gif sibling of thumbnail .png when possible
+                media_url = thumb.replace('.png', '.gif') if thumb.endswith('.png') else thumb
+    except Exception as e:
+        return jsonify({'error': str(e), 'url': None}), 502
+
+    if not media_url:
+        return jsonify({'error': 'could not find GIF media in that link', 'url': None}), 404
+    return jsonify({'url': media_url, 'resolved': True})
+
 
 @app.route('/chat-file', methods=['POST'])
 def post_chat_file():
