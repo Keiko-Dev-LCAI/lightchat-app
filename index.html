@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-discord-pack-sizes">
+<meta name="lc-build" content="2026-08-18-orcaart-link">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3014,11 +3014,16 @@ body {
   </div>
   <div id="es-pane-upload" style="display:none;padding:16px;overflow-y:auto;flex:1;min-height:0">
     <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">
-      Discord-compatible sizes so packs from sites like <strong style="color:var(--text)">emojisandstickers.xyz</strong> work:<br>
-      <strong style="color:var(--text)">Emoji</strong> · ~128×128 · max <strong style="color:var(--text)">256KB</strong><br>
-      <strong style="color:var(--text)">Sticker</strong> · ~320×320 · max <strong style="color:var(--text)">512KB</strong><br>
-      PNG/GIF/WebP — we’ll resize when needed. Everyone can use the pack in chat &amp; reactions.
+      Discord-compatible sizes:<br>
+      <strong style="color:var(--text)">Emoji</strong> · 128×128 · max <strong style="color:var(--text)">256KB</strong><br>
+      <strong style="color:var(--text)">Sticker</strong> · 320×320 · max <strong style="color:var(--text)">512KB</strong><br>
+      PNG/GIF/WebP — we’ll resize when needed. Use in chat &amp; reactions.
     </div>
+    <a href="https://emojisandstickers.xyz" target="_blank" rel="noopener noreferrer"
+       style="display:block;text-align:center;padding:12px 14px;margin-bottom:14px;border-radius:12px;border:1px solid var(--border);background:rgba(91,75,255,0.12);color:var(--text);text-decoration:none;font-weight:700;font-size:14px;line-height:1.4">
+      🎨 Make with OrcaArt · emojisandstickers.xyz
+      <div style="font-size:12px;font-weight:500;color:var(--text2);margin-top:4px">Search / AI create / Convert → download <b style="color:var(--text)">Emoji 128×128</b> or <b style="color:var(--text)">Sticker 320×320</b> → upload here</div>
+    </a>
     <label class="form-label">Name</label>
     <input class="form-input" id="es-upload-name" maxlength="32" placeholder="cool_orca" style="margin-bottom:12px">
     <label class="form-label">Type</label>
