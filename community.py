@@ -1723,30 +1723,48 @@ def register_community_routes(app, socketio, get_db):
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
             row = conn.execute(
-                "SELECT sender_wallet FROM community_messages WHERE id=? AND channel_id=?",
+                "SELECT sender_wallet, content FROM community_messages WHERE id=? AND channel_id=?",
                 (msg_id, ch["id"]),
             ).fetchone()
+            content_hint = (data.get("content") or "").strip()
             if not row:
                 # May already be gone or P2P-only — still OK for client local delete
-                return jsonify({"ok": True, "missing": True})
+                return jsonify({"ok": True, "missing": True, "deleted_ids": [msg_id]})
             is_mod = role in ("owner", "admin", "mod") or has_perm(role, "delete_messages")
             is_author = _norm(row["sender_wallet"]) == wallet
             if not is_mod and not is_author:
                 return jsonify({"error": "you can only delete your own messages"}), 403
+            sender = _norm(row["sender_wallet"])
+            content = row["content"] or content_hint
+            deleted_ids = [msg_id]
+            # Wipe exact content twins (same sender+body) so refresh doesn't resurrect dupes
+            if content:
+                twins = conn.execute(
+                    """SELECT id FROM community_messages
+                       WHERE channel_id=? AND lower(sender_wallet)=? AND content=? AND id!=?""",
+                    (ch["id"], sender, content, msg_id),
+                ).fetchall()
+                for t in twins:
+                    deleted_ids.append(t["id"])
+                    conn.execute(
+                        "DELETE FROM community_messages WHERE id=? AND channel_id=?",
+                        (t["id"], ch["id"]),
+                    )
             conn.execute(
                 "DELETE FROM community_messages WHERE id=? AND channel_id=?",
                 (msg_id, ch["id"]),
             )
             conn.commit()
             try:
-                socketio.emit(
-                    "community_message_deleted",
-                    {"id": msg_id, "slug": slug},
-                    room=f"community:{slug}",
-                )
+                for did in deleted_ids:
+                    socketio.emit(
+                        "community_message_deleted",
+                        {"id": did, "slug": slug, "content": content},
+                        room=f"community:{slug}",
+                    )
             except Exception:
                 pass
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "deleted_ids": deleted_ids})
         finally:
             conn.close()
 
