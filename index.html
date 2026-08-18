@@ -8141,6 +8141,20 @@ async function loadDirectory() {
     const r = await fetch(BACKEND + '/api/community/directory');
     const j = await r.json();
     _dirMembers = j.members || [];
+    // Merge live Gen Chat P2P peers as online (mesh presence)
+    try {
+      if (window.genChatP2P && genChatP2P.connectedWallets) {
+        const live = {};
+        genChatP2P.connectedWallets().forEach(function (w) { live[w] = true; });
+        if (wallet) live[wallet.toLowerCase()] = true;
+        _dirMembers.forEach(function (m) {
+          if (live[(m.wallet || '').toLowerCase()] && m.presence_mode !== 'invisible') {
+            m.online = true;
+            m.connected = true;
+          }
+        });
+      }
+    } catch (e) {}
     filterDirectory();
   } catch(e) { console.warn(e); }
 }

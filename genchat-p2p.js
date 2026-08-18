@@ -57,6 +57,14 @@
         wallets.push(w);
       }
     });
+    const prev = this._lastConnected || 0;
+    this._lastConnected = connected;
+    // When mesh comes online, flood recent local history so offline-composed msgs spread
+    if (prev === 0 && connected > 0) {
+      try {
+        this._floodRecent();
+      } catch (e) {}
+    }
     const status = {
       mode: connected > 0 ? 'p2p' : 'relay',
       peers: this.peers.size,
@@ -65,6 +73,14 @@
     };
     if (typeof this.onStatus === 'function') this.onStatus(status);
     return status;
+  };
+
+  GenChatP2P.prototype._floodRecent = function () {
+    const msgs = this.loadLocal().slice(-60);
+    const self = this;
+    msgs.forEach(function (msg) {
+      self._broadcastEnvelope({ v: 1, kind: 'gossip', msg: msg }, null);
+    });
   };
 
   GenChatP2P.prototype.connectedWallets = function () {
