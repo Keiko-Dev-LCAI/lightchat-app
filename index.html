@@ -26,7 +26,7 @@
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="genchat-p2p.js?v=10"></script>
 <script src="dm-p2p.js?v=10"></script>
-<script src="genchat-holepunch.js?v=1"></script>
+<script src="genchat-holepunch.js?v=2"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1974,10 +1974,10 @@ body {
             </label>
             <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.4;padding-left:28px">Hyperswarm topic via DHT WebSocket relay. WebRTC stays default. Needs a relay URL below.</div>
             <div style="margin-top:8px;padding-left:28px">
-              <input id="me-holepunch-relay" type="url" placeholder="ws://127.0.0.1:49443 or wss://…"
+              <input id="me-holepunch-relay" type="url" placeholder="wss://lightchat-holepunch-production.up.railway.app"
                 class="form-input" style="width:100%;max-width:360px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;font-family:inherit"
                 onchange="saveHolepunchRelay(this.value)" onblur="saveHolepunchRelay(this.value)">
-              <div id="me-holepunch-status" style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.4">Off</div>
+              <div id="me-holepunch-status" style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.4">Off · default relay ready</div>
             </div>
             <div style="margin-top:14px">
               <label class="form-label" style="margin-bottom:6px;display:block;font-size:13px">Status</label>
@@ -3286,7 +3286,10 @@ function updateUI() {
   if (hpCb) hpCb.checked = localStorage.getItem('lc_holepunch_on') === '1';
   const hpRel = document.getElementById('me-holepunch-relay');
   if (hpRel && !hpRel.matches(':focus')) {
-    try { hpRel.value = localStorage.getItem('lc_holepunch_relay') || ''; } catch (e) {}
+    try {
+      const saved = localStorage.getItem('lc_holepunch_relay') || '';
+      hpRel.value = saved || (window.genChatHolepunch && genChatHolepunch.defaultRelayUrl ? genChatHolepunch.defaultRelayUrl() : 'wss://lightchat-holepunch-production.up.railway.app');
+    } catch (e) {}
   }
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
@@ -9744,10 +9747,20 @@ async function toggleHolepunchSpike(on) {
     try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
     return;
   }
-  const url = (document.getElementById('me-holepunch-relay')?.value || '').trim();
-  saveHolepunchRelay(url);
+  let url = (document.getElementById('me-holepunch-relay')?.value || '').trim();
+  if (!url && window.genChatHolepunch && genChatHolepunch.defaultRelayUrl) {
+    url = genChatHolepunch.defaultRelayUrl();
+    const inp = document.getElementById('me-holepunch-relay');
+    if (inp) inp.value = url;
+  }
+  // Empty custom field = use built-in default (don't persist blank over default)
+  if (url && url === (window.genChatHolepunch && genChatHolepunch.defaultRelayUrl && genChatHolepunch.defaultRelayUrl())) {
+    try { localStorage.removeItem('lc_holepunch_relay'); } catch (e) {}
+  } else {
+    saveHolepunchRelay(url);
+  }
   if (!url) {
-    showToast('Add a DHT relay URL (run holepunch/relay.mjs)');
+    showToast('Add a DHT relay URL');
     const st = document.getElementById('me-holepunch-status');
     if (st) st.textContent = 'On — needs relay URL';
     return;

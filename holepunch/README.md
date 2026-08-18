@@ -18,17 +18,26 @@ npm run relay
 # listens on ws://0.0.0.0:49443
 ```
 
+## Public relay (experimental)
+
+- **HTTPS health:** https://lightchat-holepunch-production.up.railway.app/health  
+- **WSS (browser):** `wss://lightchat-holepunch-production.up.railway.app`  
+- Railway project: `lightchat-holepunch` (separate from Flask LightChat)
+
 ## Enable in the app
 
 1. Open LightChat → **Me**
 2. Turn on **Holepunch spike (experimental)**
-3. Set relay URL, e.g. `ws://127.0.0.1:49443` (or `wss://…` behind TLS)
-4. Open Gen Chat — status chip can show **HP · N** when peers connect on that topic
+3. Relay URL defaults to the public `wss://…` above (or set `ws://127.0.0.1:49443` for local)
+4. Open Gen Chat — status can show **HP · N** when Hyperswarm peers connect
 
 ## Topic
 
 `sha256("lightchat:genchat:" + channelSlug)` → 32-byte Hyperswarm topic.
 
-## Deploy note
+## Redeploy relay
 
-Do **not** put this on the main Flask Procfile yet (Python Railway image). Run as a **second service** when ready, then point clients at that `wss://` URL.
+```bash
+cd holepunch
+railway up -d --ci
+```
