@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+holepunch/node_modules
+LightChat.apk
+.env
+*.md
+!RUNBOOK.md
+!SMOKE.md

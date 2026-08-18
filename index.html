@@ -9586,7 +9586,7 @@ function encodeVideoContent(url) {
 function resolveMediaSrc(url) {
   let src = String(url || '').trim();
   if (!src) return '';
-  if (src.indexOf('/chat-image/') === 0 || src.indexOf('/chat-file/') === 0) return BACKEND + src;
+  if (src.indexOf('/chat-image/') === 0 || src.indexOf('/chat-file/') === 0 || src.indexOf('/media/') === 0) return BACKEND + src;
   if (/^\d+$/.test(src)) return BACKEND + '/chat-image/' + src;
   return src;
 }

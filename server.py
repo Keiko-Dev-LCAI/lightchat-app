@@ -230,30 +230,69 @@ threading.Thread(target=cleanup_messages, daemon=True).start()
 # all existing expires_at > now queries working correctly.
 NEVER_EXPIRES = 32503680000
 
-# ── Media storage stub (handoff: object storage, not SQLite forever) ──
-# See ~/Desktop/LightChat/MEDIA-STORAGE.md
-# MEDIA_BACKEND=local (default) | s3
-# When s3: MEDIA_S3_ENDPOINT, MEDIA_S3_BUCKET, MEDIA_S3_ACCESS_KEY, MEDIA_S3_SECRET_KEY, MEDIA_S3_PUBLIC_BASE
+# ── Media storage (handoff: prefer fs or s3 — not SQLite forever) ──
+# See MEDIA-STORAGE.md / RUNBOOK.md
+# MEDIA_BACKEND=local (SQLite legacy) | fs (DATA_DIR/media) | s3 (R2/S3)
+# s3 needs: MEDIA_S3_ENDPOINT?, MEDIA_S3_BUCKET, MEDIA_S3_ACCESS_KEY, MEDIA_S3_SECRET_KEY, MEDIA_S3_PUBLIC_BASE
 MEDIA_BACKEND = (os.environ.get('MEDIA_BACKEND') or 'local').strip().lower()
 MEDIA_MAX_IMAGE_MB = int(os.environ.get('MEDIA_MAX_IMAGE_MB') or '8')
 MEDIA_MAX_VIDEO_MB = int(os.environ.get('MEDIA_MAX_VIDEO_MB') or '20')
+MEDIA_FS_DIR = os.environ.get('MEDIA_FS_DIR') or os.path.join(_data_dir, 'media')
+
+
+def media_backend_status() -> dict:
+    """Health / runbook helper — what media mode is active."""
+    st = {
+        'backend': MEDIA_BACKEND,
+        'max_image_mb': MEDIA_MAX_IMAGE_MB,
+        'max_video_mb': MEDIA_MAX_VIDEO_MB,
+        'ready': True,
+        'detail': '',
+    }
+    if MEDIA_BACKEND == 's3':
+        need = ['MEDIA_S3_BUCKET', 'MEDIA_S3_ACCESS_KEY', 'MEDIA_S3_SECRET_KEY', 'MEDIA_S3_PUBLIC_BASE']
+        missing = [k for k in need if not (os.environ.get(k) or '').strip()]
+        try:
+            import boto3  # noqa: F401
+            has_boto = True
+        except ImportError:
+            has_boto = False
+        if missing or not has_boto:
+            st['ready'] = False
+            st['detail'] = ('missing ' + ','.join(missing)) if missing else 'boto3 not installed'
+        else:
+            st['detail'] = 'R2/S3 configured'
+    elif MEDIA_BACKEND == 'fs':
+        try:
+            os.makedirs(MEDIA_FS_DIR, exist_ok=True)
+            st['detail'] = MEDIA_FS_DIR
+            st['ready'] = os.path.isdir(MEDIA_FS_DIR) and os.access(MEDIA_FS_DIR, os.W_OK)
+        except Exception as e:
+            st['ready'] = False
+            st['detail'] = str(e)[:120]
+    else:
+        st['detail'] = 'SQLite chat_images/chat_files (legacy bridge)'
+    return st
 
 
 def media_store_put(wallet: str, raw: bytes, content_type: str, filename: str = 'file') -> dict:
     """
     Store media bytes; return {url, backend, id?}.
-    local → caller should persist via chat-image/chat-file (legacy SQLite).
-    s3   → upload to bucket and return public URL (preferred for lightchain.ai).
+    local → caller persists via chat-image/chat-file (legacy SQLite).
+    fs    → files under DATA_DIR/media; url=/media/...
+    s3    → R2/S3 public URL (preferred for lightchain.ai).
     """
     wallet = (wallet or '').lower().strip()
     content_type = content_type or 'application/octet-stream'
-    filename = (filename or 'file').replace('..', '_')
+    filename = (filename or 'file').replace('..', '_').replace('/', '_')
     if MEDIA_BACKEND == 's3':
         try:
             return _media_store_put_s3(wallet, raw, content_type, filename)
         except Exception as e:
             print(f'  [media] s3 put failed, caller may fall back: {e}')
             raise
+    if MEDIA_BACKEND == 'fs':
+        return _media_store_put_fs(wallet, raw, content_type, filename)
     return {
         'backend': 'local',
         'url': None,  # local path uses DB ids; see chat-image / chat-file routes
@@ -263,32 +302,61 @@ def media_store_put(wallet: str, raw: bytes, content_type: str, filename: str = 
     }
 
 
-def _media_store_put_s3(wallet: str, raw: bytes, content_type: str, filename: str) -> dict:
-    """Minimal S3/R2-compatible put via boto3 if installed + env configured."""
-    endpoint = os.environ.get('MEDIA_S3_ENDPOINT') or ''
-    bucket = os.environ.get('MEDIA_S3_BUCKET') or ''
-    key_id = os.environ.get('MEDIA_S3_ACCESS_KEY') or ''
-    secret = os.environ.get('MEDIA_S3_SECRET_KEY') or ''
-    public_base = (os.environ.get('MEDIA_S3_PUBLIC_BASE') or '').rstrip('/')
-    if not (bucket and key_id and secret and public_base):
-        raise RuntimeError('MEDIA_S3_* env incomplete')
-    try:
-        import boto3  # optional dependency for LC handoff
-    except ImportError as e:
-        raise RuntimeError('boto3 not installed — pip install boto3 for MEDIA_BACKEND=s3') from e
+def _media_key(wallet: str, filename: str) -> str:
     import uuid as _uuid
     ext = ''
     if '.' in filename:
-        ext = '.' + filename.rsplit('.', 1)[-1][:8]
-    key = f"lightchat/{wallet[:10]}/{int(time.time())}_{_uuid.uuid4().hex[:12]}{ext}"
+        ext = '.' + filename.rsplit('.', 1)[-1][:8].lower()
+    safe_w = re.sub(r'[^a-f0-9]', '', (wallet or 'anon')[:42])[:16] or 'anon'
+    return f"{safe_w}/{int(time.time())}_{_uuid.uuid4().hex[:12]}{ext}"
+
+
+def _media_store_put_fs(wallet: str, raw: bytes, content_type: str, filename: str) -> dict:
+    """Store on local disk under MEDIA_FS_DIR (good Railway volume / Compose default)."""
+    os.makedirs(MEDIA_FS_DIR, exist_ok=True)
+    key = _media_key(wallet, filename)
+    abs_path = os.path.join(MEDIA_FS_DIR, key)
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+    with open(abs_path, 'wb') as f:
+        f.write(raw or b'')
+    return {
+        'backend': 'fs',
+        'url': f'/media/{key}',
+        'key': key,
+        'bytes': len(raw or b''),
+        'content_type': content_type,
+        'filename': filename,
+    }
+
+
+def _media_store_put_s3(wallet: str, raw: bytes, content_type: str, filename: str) -> dict:
+    """S3/R2-compatible put via boto3."""
+    endpoint = (os.environ.get('MEDIA_S3_ENDPOINT') or '').strip()
+    bucket = (os.environ.get('MEDIA_S3_BUCKET') or '').strip()
+    key_id = (os.environ.get('MEDIA_S3_ACCESS_KEY') or '').strip()
+    secret = (os.environ.get('MEDIA_S3_SECRET_KEY') or '').strip()
+    public_base = (os.environ.get('MEDIA_S3_PUBLIC_BASE') or '').rstrip('/')
+    region = (os.environ.get('MEDIA_S3_REGION') or 'auto').strip() or 'auto'
+    if not (bucket and key_id and secret and public_base):
+        raise RuntimeError('MEDIA_S3_* env incomplete (need BUCKET, ACCESS_KEY, SECRET_KEY, PUBLIC_BASE)')
+    try:
+        import boto3
+        from botocore.config import Config as BotoConfig
+    except ImportError as e:
+        raise RuntimeError('boto3 not installed — pip install boto3 for MEDIA_BACKEND=s3') from e
+    key = f"lightchat/{_media_key(wallet, filename)}"
     client_kwargs = {
         'aws_access_key_id': key_id,
         'aws_secret_access_key': secret,
+        'region_name': region,
+        'config': BotoConfig(signature_version='s3v4'),
     }
     if endpoint:
         client_kwargs['endpoint_url'] = endpoint
     s3 = boto3.client('s3', **client_kwargs)
-    s3.put_object(Bucket=bucket, Key=key, Body=raw, ContentType=content_type)
+    extra = {'ContentType': content_type}
+    # R2 often ignores ACL; public access via PUBLIC_BASE / bucket settings
+    s3.put_object(Bucket=bucket, Key=key, Body=raw, **extra)
     url = f"{public_base}/{key}"
     return {
         'backend': 's3',
@@ -588,7 +656,28 @@ def health():
         'job_registry': _AIVM_JOB_REG,
         'auth': 'session-v1',
         'db': db_info,
+        'media': media_backend_status(),
     })
+
+
+@app.route('/media/<path:key>')
+def serve_media_fs(key):
+    """Serve MEDIA_BACKEND=fs objects from DATA_DIR/media."""
+    # Prevent path escape
+    key = (key or '').replace('..', '').lstrip('/')
+    if not key:
+        return jsonify({'error': 'not found'}), 404
+    abs_path = os.path.abspath(os.path.join(MEDIA_FS_DIR, key))
+    root = os.path.abspath(MEDIA_FS_DIR)
+    if not abs_path.startswith(root + os.sep) and abs_path != root:
+        return jsonify({'error': 'forbidden'}), 403
+    if not os.path.isfile(abs_path):
+        return jsonify({'error': 'not found'}), 404
+    # Guess type from extension
+    import mimetypes
+    ctype = mimetypes.guess_type(abs_path)[0] or 'application/octet-stream'
+    return send_from_directory(os.path.dirname(abs_path), os.path.basename(abs_path), mimetype=ctype)
+
 
 STICKERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stickers')
 
@@ -925,15 +1014,15 @@ def post_chat_image():
     image_type = data.get('image_type', 'image/jpeg')
     if not wallet or not image_data:
         return jsonify({'error': 'wallet and image_data required'}), 400
-    # Prefer object storage when configured (lightchain.ai handoff path)
-    if MEDIA_BACKEND == 's3':
+    # Prefer fs/s3 when configured (lightchain.ai handoff path)
+    if MEDIA_BACKEND in ('s3', 'fs'):
         try:
             raw = base64.b64decode(image_data)
             put = media_store_put(wallet, raw, image_type, 'image.jpg')
             if put.get('url'):
-                return jsonify({'url': put['url'], 'backend': 's3', 'image_id': None})
+                return jsonify({'url': put['url'], 'backend': put.get('backend') or MEDIA_BACKEND, 'image_id': None})
         except Exception as e:
-            print(f'  [chat-image] s3 failed, falling back to local: {e}')
+            print(f'  [chat-image] {MEDIA_BACKEND} failed, falling back to sqlite: {e}')
     now = int(time.time())
     conn = get_db()
     cursor = conn.execute(
@@ -1139,19 +1228,19 @@ def post_chat_file():
         return jsonify({'error': f'File too large (max {max_bytes // (1024 * 1024)} MB)'}), 400
 
     raw = base64.b64decode(file_data)
-    if MEDIA_BACKEND == 's3':
+    if MEDIA_BACKEND in ('s3', 'fs'):
         try:
             put = media_store_put(wallet, raw, file_type, file_name)
             if put.get('url'):
                 return jsonify({
                     'url': put['url'],
-                    'backend': 's3',
+                    'backend': put.get('backend') or MEDIA_BACKEND,
                     'file_type': file_type,
                     'file_name': file_name,
                     'file_id': None,
                 })
         except Exception as e:
-            print(f'  [chat-file] s3 failed, falling back to local: {e}')
+            print(f'  [chat-file] {MEDIA_BACKEND} failed, falling back to sqlite: {e}')
 
     now = int(time.time())
     try:

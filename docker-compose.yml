@@ -1,0 +1,43 @@
+# LightChat thin-host package for lightchain.ai handoff
+# Usage:
+#   cp env.example .env   # edit secrets
+#   docker compose up -d --build
+#
+# Static PWA (index.html) can stay on CDN / GH Pages / nginx separately.
+# Point BACKEND in the PWA to http://localhost:8080 (dev) or your public API URL.
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /app/data
+      MEDIA_BACKEND: ${MEDIA_BACKEND:-fs}
+      PORT: "8080"
+    volumes:
+      - lightchat-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional: serve the static PWA next to the API (dev / simple deploy)
+  web:
+    image: caddy:2-alpine
+    profiles: ["with-web"]
+    ports:
+      - "3000:80"
+    volumes:
+      - ./:/srv:ro
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  lightchat-data:
