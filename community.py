@@ -18,18 +18,18 @@ COMMUNITY_ID = "lightchain-official"
 
 DEFAULT_CHANNELS = [
     ("start-here", "Start Here", "welcome", "Welcome, rules, how to use LightChat", 0, 1),
-    ("announcements", "Announcements", "info", "Official updates (mods post)", 1, 1),
-    ("general", "Gen Chat", "text", "Main hangout — everyone talks here", 2, 0),
-    ("off-topic", "Off Topic", "text", "Non-Lightchain hangout — memes, life, random chat", 4, 0),
-    ("introduce-yourself", "Introduce Yourself", "text", "New members say hi", 3, 0),
-    ("help", "Help", "text", "Questions and support", 4, 0),
-    ("dev", "Devs", "text", "Builders, apps, contracts, tooling — P2P live chat", 5, 0),
-    ("nodes", "Nodes", "text", "Node operators, validators, RPC, sync, hardware — P2P live chat", 6, 0),
-    ("ai", "AI", "text", "AI and AIVM discussion", 7, 0),
-    ("proposals", "Proposals", "text", "DAO and ideas", 8, 0),
-    ("mods", "Mods", "text", "Staff only — mod issues & coordination · P2P", 9, 0),
-    ("links", "Links", "info", "Official links and contracts", 10, 1),
-    ("report", "Report", "text", "Report issues", 11, 0),
+    ("introduce-yourself", "Introduce Yourself", "text", "New members say hi", 1, 0),
+    ("help", "Help", "text", "Questions and support", 2, 0),
+    ("announcements", "Announcements", "info", "Official updates (mods post)", 3, 1),
+    ("general", "Gen Chat", "text", "Main hangout — everyone talks here", 4, 0),
+    ("off-topic", "Off Topic", "text", "Non-Lightchain hangout — memes, life, random chat", 5, 0),
+    ("dev", "Devs", "text", "Builders, apps, contracts, tooling — P2P live chat", 6, 0),
+    ("nodes", "Nodes", "text", "Node operators, validators, RPC, sync, hardware — P2P live chat", 7, 0),
+    ("ai", "AI", "text", "AI and AIVM discussion", 8, 0),
+    ("proposals", "Proposals", "text", "DAO and ideas", 9, 0),
+    ("mods", "Mods", "text", "Staff only — mod issues & coordination · P2P", 10, 0),
+    ("links", "Links", "info", "Official links and contracts", 11, 1),
+    ("report", "Report", "text", "Report issues", 12, 0),
 ]
 
 # Discord-style Start Here guide (shown in #start-here UI)
@@ -531,6 +531,33 @@ def init_community_db(get_db):
         conn.commit()
     except Exception:
         pass
+
+    # Rail order: Start Here → Introduce Yourself → Help → …
+    try:
+        for slug, order in (
+            ("start-here", 0),
+            ("introduce-yourself", 1),
+            ("help", 2),
+            ("announcements", 3),
+            ("general", 4),
+            ("off-topic", 5),
+            ("garden", 6),
+            ("media", 7),
+            ("dev", 8),
+            ("nodes", 9),
+            ("ai", 10),
+            ("proposals", 11),
+            ("mods", 12),
+            ("links", 13),
+            ("report", 14),
+        ):
+            conn.execute(
+                "UPDATE community_channels SET sort_order=? WHERE community_id=? AND slug=?",
+                (order, COMMUNITY_ID, slug),
+            )
+        conn.commit()
+    except Exception as e:
+        print("  [community] channel sort migrate:", e)
 
     # Ensure #Devs + #Nodes exist as open P2P chat channels
     try:
