@@ -1218,9 +1218,15 @@ def on_connect():
     pass
 
 
-# Gen Chat / DM P2P — signaling only (SDP/ICE). Message bodies travel on WebRTC datachannels.
-_genchat_p2p_peers = {}  # wallet -> sid
+# Channel / DM P2P — signaling only (SDP/ICE). Message bodies travel on WebRTC datachannels.
+_genchat_p2p_peers = {}  # wallet -> sid (legacy / last channel)
+_channel_p2p_peers = {}  # channel -> {wallet: sid}
 _dm_p2p_peers = {}  # wallet -> sid
+
+
+def _p2p_room(channel):
+    ch = (channel or 'general').lower().strip() or 'general'
+    return 'p2p:' + ch
 
 
 @socketio.on('disconnect')
@@ -1228,7 +1234,16 @@ def on_disconnect():
     w = _socket_wallets.pop(request.sid, None)
     if w and _genchat_p2p_peers.get(w) == request.sid:
         _genchat_p2p_peers.pop(w, None)
-        socketio.emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', skip_sid=request.sid)
+    if w:
+        for ch, peers in list(_channel_p2p_peers.items()):
+            if peers.get(w) == request.sid:
+                peers.pop(w, None)
+                socketio.emit(
+                    'genchat_p2p_peer_left',
+                    {'wallet': w, 'channel': ch},
+                    room=_p2p_room(ch),
+                    skip_sid=request.sid,
+                )
     if w and _dm_p2p_peers.get(w) == request.sid:
         _dm_p2p_peers.pop(w, None)
         socketio.emit('dm_p2p_peer_left', {'wallet': w}, skip_sid=request.sid)
@@ -1272,31 +1287,51 @@ def on_auth(data):
 
 @socketio.on('genchat_p2p_join')
 def on_genchat_p2p_join(data):
+    """Join a live-chat P2P signaling room (general, dev, …)."""
     data = data or {}
     wallet = (data.get('wallet') or '').lower()
+    channel = (data.get('channel') or data.get('slug') or 'general').lower().strip() or 'general'
     auth_w = _wallet_for_sid(request.sid)
     if not auth_w or auth_w != wallet:
         emit('error', {'message': 'Not authenticated'})
         return
-    join_room('genchat_p2p')
+    # Drop this wallet from other channel maps (one live channel mesh at a time)
+    for ch, peers in list(_channel_p2p_peers.items()):
+        if ch != channel and peers.get(wallet) == request.sid:
+            peers.pop(wallet, None)
+            leave_room(_p2p_room(ch))
+            emit('genchat_p2p_peer_left', {'wallet': wallet, 'channel': ch}, room=_p2p_room(ch), include_self=False)
+    room = _p2p_room(channel)
+    join_room(room)
+    # legacy room for older clients on general
+    if channel == 'general':
+        join_room('genchat_p2p')
+    peers_map = _channel_p2p_peers.setdefault(channel, {})
+    peers_map[wallet] = request.sid
     _genchat_p2p_peers[wallet] = request.sid
-    peers = [w for w in _genchat_p2p_peers.keys() if w != wallet]
-    emit('genchat_p2p_peers', {'peers': peers})
-    emit('genchat_p2p_peer_joined', {'wallet': wallet}, room='genchat_p2p', include_self=False)
+    peers = [w for w in peers_map.keys() if w != wallet]
+    emit('genchat_p2p_peers', {'peers': peers, 'channel': channel})
+    emit('genchat_p2p_peer_joined', {'wallet': wallet, 'channel': channel}, room=room, include_self=False)
 
 
 @socketio.on('genchat_p2p_leave')
 def on_genchat_p2p_leave(data):
     data = data or {}
     wallet = (data.get('wallet') or '').lower()
+    channel = (data.get('channel') or data.get('slug') or 'general').lower().strip() or 'general'
     auth_w = _wallet_for_sid(request.sid)
     if not auth_w or (wallet and auth_w != wallet):
         return
     w = wallet or auth_w
+    peers_map = _channel_p2p_peers.get(channel) or {}
+    if peers_map.get(w) == request.sid:
+        peers_map.pop(w, None)
     if _genchat_p2p_peers.get(w) == request.sid:
         _genchat_p2p_peers.pop(w, None)
-    leave_room('genchat_p2p')
-    emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', include_self=False)
+    leave_room(_p2p_room(channel))
+    if channel == 'general':
+        leave_room('genchat_p2p')
+    emit('genchat_p2p_peer_left', {'wallet': w, 'channel': channel}, room=_p2p_room(channel), include_self=False)
 
 
 @socketio.on('dm_p2p_hello')
@@ -1336,10 +1371,11 @@ def on_genchat_p2p_signal(data):
     data = data or {}
     frm = (data.get('from') or '').lower()
     to = (data.get('to') or '').lower()
+    channel = (data.get('channel') or data.get('slug') or 'general').lower().strip() or 'general'
     auth_w = _wallet_for_sid(request.sid)
     if not auth_w or auth_w != frm or not to:
         return
-    sid = _genchat_p2p_peers.get(to)
+    sid = (_channel_p2p_peers.get(channel) or {}).get(to) or _genchat_p2p_peers.get(to)
     if sid:
         emit('genchat_p2p_signal', data, room=sid)
     else:

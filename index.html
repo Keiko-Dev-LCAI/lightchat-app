@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=6"></script>
-<script src="dm-p2p.js?v=6"></script>
+<script src="genchat-p2p.js?v=7"></script>
+<script src="dm-p2p.js?v=7"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -7882,6 +7882,11 @@ function displayRoleLabel(role) {
 }
 let _dirMembers = [];
 let _activeCommSlug = 'general';
+/** Live channels that use WebRTC P2P mesh (same as Gen Chat). */
+const P2P_CHAT_CHANNELS = { general: true, dev: true };
+function isP2PChatChannel(slug) {
+  return !!P2P_CHAT_CHANNELS[(slug || '').toLowerCase()];
+}
 
 async function communityJoin() {
   if (!wallet) return false;
@@ -8107,10 +8112,10 @@ async function loadChannelsList() {
     communityChannels = j.channels || [];
     const el = document.getElementById('channels-list');
     if (!el) return;
-    const visible = communityChannels.filter(c => c.mode !== 'hidden' && (c.primary || c.slug === 'general' || c.slug === 'start-here' || c.slug === 'announcements' || c.slug === 'media' || c.slug === 'links'));
+    const visible = communityChannels.filter(c => c.mode !== 'hidden' && (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'start-here' || c.slug === 'announcements' || c.slug === 'media' || c.slug === 'links'));
     el.innerHTML = visible.map(c => {
-      const mode = c.mode || (c.slug === 'general' ? 'chat' : 'post');
-      const tag = mode === 'chat' ? 'Live chat' : (mode === 'guide' ? 'Guide' : 'Posts');
+      const mode = c.mode || (c.slug === 'general' || c.slug === 'dev' ? 'chat' : 'post');
+      const tag = mode === 'chat' ? (isP2PChatChannel(c.slug) ? 'P2P chat' : 'Live chat') : (mode === 'guide' ? 'Guide' : 'Posts');
       return `<div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
         <div class="hash">#</div>
         <div class="meta">
@@ -8184,10 +8189,12 @@ async function loadCommunityChannel(slug) {
     }
     const j = await r.json();
     let msgs = j.messages || [];
-    if (slug === 'general' && window.genChatP2P) {
+    if (isP2PChatChannel(slug) && window.genChatP2P) {
       try {
         ensureGenChatP2P();
-        const local = genChatP2P.loadLocal() || [];
+        const local = (genChatP2P.loadLocal() || []).filter(function (m) {
+          return !m.slug || m.slug === slug;
+        });
         const byId = {};
         msgs.concat(local).forEach(function(m) {
           const id = m.id || (m.sender_wallet + ':' + m.created_at + ':' + (m.content||'').slice(0,32));
@@ -8208,7 +8215,7 @@ async function loadCommunityChannel(slug) {
   } catch(e) {
     console.warn('loadCommunityChannel', e);
     // Still show local P2P history if relay fails
-    if (slug === 'general' && window.genChatP2P) {
+    if (isP2PChatChannel(slug) && window.genChatP2P) {
       try {
         ensureGenChatP2P();
         renderCommunityMessages(genChatP2P.loadLocal() || []);
@@ -8836,7 +8843,7 @@ async function sendCommunityContent(slug, content) {
   };
 
   let p2pCount = 0;
-  if (slug === 'general' && window.genChatP2P) {
+  if (isP2PChatChannel(slug) && window.genChatP2P) {
     try {
       ensureGenChatP2P();
       p2pCount = genChatP2P.send(msg) || 0;
@@ -8850,7 +8857,7 @@ async function sendCommunityContent(slug, content) {
   }
 
   const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
-  if (p2pOnly && slug === 'general') {
+  if (p2pOnly && isP2PChatChannel(slug)) {
     try { if (window.genChatP2P) { genChatP2P._storeLocal(msg); genChatP2P._seenIds.add(msg.id); } } catch (e) {}
     appendCommunityMessage(msg);
     showToast('Saved locally — waiting for P2P peers (relay off)');
@@ -8870,8 +8877,8 @@ async function sendCommunityContent(slug, content) {
     }
     if (j.message) appendCommunityMessage(Object.assign({ transport: 'relay' }, j.message));
     else await loadCommunityChannel(slug);
-    if (slug === 'general' && parseGifContent(content)) showToast('GIF sent');
-    else if (slug === 'general') showToast('Sent via relay (no P2P peers online)');
+    if (isP2PChatChannel(slug) && parseGifContent(content)) showToast('GIF sent');
+    else if (isP2PChatChannel(slug)) showToast('Sent via relay (no P2P peers online)');
   } catch(e) { showToast('Send failed'); }
 }
 
