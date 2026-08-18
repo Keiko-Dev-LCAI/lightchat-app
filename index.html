@@ -1907,6 +1907,30 @@ body {
         .garden-btn-refresh { background:#4e5058; color:#fff; }
         .garden-btn-refresh:hover { background:#6d6f78; }
         .garden-meta { font-size:11px; color:#949ba4; margin-top:8px; }
+        .garden-contrib {
+          margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);
+        }
+        .garden-contrib-title {
+          font-size:11px; font-weight:700; color:#b5bac1; text-transform:uppercase;
+          letter-spacing:0.04em; margin-bottom:6px;
+        }
+        .garden-contrib-list { list-style:none; margin:0; padding:0; }
+        .garden-contrib-list li {
+          display:flex; align-items:center; gap:8px; font-size:13px; color:#dbdee1;
+          padding:3px 0; line-height:1.35;
+        }
+        .garden-contrib-list .gc-rank {
+          width:22px; flex-shrink:0; font-weight:800; color:#949ba4; font-variant-numeric:tabular-nums;
+        }
+        .garden-contrib-list li.gc-top1 .gc-rank { color:#fee75c; }
+        .garden-contrib-list li.gc-top2 .gc-rank { color:#b5bac1; }
+        .garden-contrib-list li.gc-top3 .gc-rank { color:#c48a5a; }
+        .garden-contrib-list .gc-name {
+          flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;
+        }
+        .garden-contrib-list li.gc-me .gc-name { color:#57F287; }
+        .garden-contrib-list .gc-count { color:#b5bac1; font-variant-numeric:tabular-nums; flex-shrink:0; }
+        .garden-contrib-you { font-size:11px; color:#949ba4; margin-top:6px; }
         .garden-apple {
           display:none; margin-top:10px; padding:10px; border-radius:4px;
           background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08);
@@ -1981,6 +2005,11 @@ body {
                   <button type="button" class="garden-basket" data-lane="1" onclick="catchGardenApple(1)" aria-label="Middle basket">🧺</button>
                   <button type="button" class="garden-basket" data-lane="2" onclick="catchGardenApple(2)" aria-label="Right basket">🧺</button>
                 </div>
+              </div>
+              <div class="garden-contrib" id="garden-contrib" style="display:none">
+                <div class="garden-contrib-title">Top contributors</div>
+                <ul class="garden-contrib-list" id="garden-contrib-list"></ul>
+                <div class="garden-contrib-you" id="garden-contrib-you"></div>
               </div>
               <div class="garden-meta" id="garden-stats">Same person can't water twice in a row · taller = longer grow time · catch apples for the community</div>
             </div>
@@ -3623,6 +3652,46 @@ function renderGardenPanel(st) {
     else parts.push('max stage!');
     parts.push('grow wait ' + (_gardenState.cooldown_sec || 5) + 's');
     stats.textContent = parts.join(' · ');
+  }
+  const contribBox = document.getElementById('garden-contrib');
+  const contribList = document.getElementById('garden-contrib-list');
+  const contribYou = document.getElementById('garden-contrib-you');
+  const contribs = Array.isArray(_gardenState.contributors) ? _gardenState.contributors : [];
+  if (contribBox && contribList) {
+    if (!contribs.length) {
+      contribBox.style.display = 'none';
+      contribList.innerHTML = '';
+      if (contribYou) contribYou.textContent = '';
+    } else {
+      contribBox.style.display = '';
+      const me = (wallet || '').toLowerCase();
+      const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+      contribList.innerHTML = contribs.slice(0, 10).map(function (c) {
+        const rank = c.rank || 0;
+        const isMe = me && (c.wallet || '').toLowerCase() === me;
+        const cls = (rank === 1 ? 'gc-top1' : rank === 2 ? 'gc-top2' : rank === 3 ? 'gc-top3' : '')
+          + (isMe ? ' gc-me' : '');
+        const rankLabel = medals[rank] || ('#' + rank);
+        const appleBit = c.apples ? (' · ' + c.apples + '🍎') : '';
+        return '<li class="' + cls.trim() + '">'
+          + '<span class="gc-rank">' + rankLabel + '</span>'
+          + '<span class="gc-name">' + (c.name || 'Gardener') + (isMe ? ' (you)' : '') + '</span>'
+          + '<span class="gc-count">' + (c.waters || 0) + '×' + appleBit + '</span>'
+          + '</li>';
+      }).join('');
+      if (contribYou) {
+        if (_gardenState.my_rank && _gardenState.my_waters) {
+          contribYou.textContent = 'Your rank: #' + _gardenState.my_rank
+            + ' · ' + _gardenState.my_waters + ' water'
+            + (_gardenState.my_waters === 1 ? '' : 's')
+            + (_gardenState.my_apples ? (' · ' + _gardenState.my_apples + '🍎') : '');
+        } else if (wallet) {
+          contribYou.textContent = 'Water the tree to join the leaderboard';
+        } else {
+          contribYou.textContent = '';
+        }
+      }
+    }
   }
   if (btn) {
     if (!_gardenState.can_water) {
