@@ -77,20 +77,40 @@
     );
   };
 
-  /** Normalize media posts so the same image/video asset matches across ids/hosts. */
+  /** Normalize media posts so the same image/video/GIF asset matches across ids/hosts/CDN variants. */
   GenChatP2P.prototype._mediaFingerprint = function (content) {
     const c = String(content || '').trim();
     if (!c) return '';
     let m = c.match(/\[\[(img|gif|video)\]\]\s*(.+)$/i);
     if (!m) return '';
     let url = (m[2] || '').trim();
-    // strip host → path so BACKEND URL vs /chat-image/id match
+    const kind = m[1].toLowerCase();
+    // Tenor: media.tenor.com/ID/… · media1.tenor.com/m/ID/… · c.tenor.com/ID/… → same asset
+    const tenor = url.match(/tenor\.com\/(?:m\/)?([^/?#\s]+)(?:\/|\?|#|$)/i);
+    if (kind === 'gif' && tenor && tenor[1]) {
+      return 'gif:tenor:' + String(tenor[1]).toLowerCase();
+    }
+    const giphy = url.match(/giphy\.com\/(?:media\/|embed\/|gifs\/)?([a-zA-Z0-9]+)/i);
+    if (kind === 'gif' && giphy && giphy[1]) {
+      return 'gif:giphy:' + String(giphy[1]).toLowerCase();
+    }
+    // strip host + query so BACKEND URL vs /chat-image/id and CDN params match
     url = url.replace(/^https?:\/\/[^/]+/i, '');
+    url = url.replace(/[?#].*$/, '');
     const idImg = url.match(/\/chat-image\/(\d+)/i);
     if (idImg) return 'img:' + idImg[1];
     const idFile = url.match(/\/chat-file\/(\d+)/i);
     if (idFile) return 'file:' + idFile[1];
-    return (m[1].toLowerCase() + ':' + url).slice(0, 180);
+    const idMedia = url.match(/\/media\/(.+)$/i);
+    if (idMedia) return 'media:' + idMedia[1].slice(0, 120);
+    return (kind + ':' + url).slice(0, 180);
+  };
+
+  /** Stable key for exact body deletes (text or full [[gif]]… string). */
+  GenChatP2P.prototype._contentKey = function (content) {
+    const c = String(content || '').trim();
+    if (!c) return '';
+    return 'c:' + c.slice(0, 240);
   };
 
   /** Same sender + identical content OR same media asset within 1 hour (covers slow relay + reconnect). */
@@ -119,9 +139,10 @@
       return {
         ids: o.ids || [],
         media: o.media || [],
+        contents: o.contents || [],
       };
     } catch (e) {
-      return { ids: [], media: [] };
+      return { ids: [], media: [], contents: [] };
     }
   };
 
@@ -129,20 +150,26 @@
     try {
       const ids = (ts.ids || []).slice(-400);
       const media = (ts.media || []).slice(-400);
-      localStorage.setItem(this._tombstoneKey(), JSON.stringify({ ids: ids, media: media }));
+      const contents = (ts.contents || []).slice(-400);
+      localStorage.setItem(
+        this._tombstoneKey(),
+        JSON.stringify({ ids: ids, media: media, contents: contents })
+      );
     } catch (e) {}
   };
 
   GenChatP2P.prototype._addTombstone = function (id, content, senderWallet) {
     const ts = this._loadTombstones();
     if (id && ts.ids.indexOf(id) < 0) ts.ids.push(id);
+    const ck = this._contentKey(content);
+    if (ck && ts.contents.indexOf(ck) < 0) ts.contents.push(ck);
     const fp = this._mediaFingerprint(content);
     const sender = String(senderWallet || '').toLowerCase();
-    // Scope media tombstones by sender so deleting one image doesn't hide others' same asset
-    const mediaKey = fp ? (sender ? (sender + '|' + fp) : fp) : '';
+    // Always store bare media fp so refresh can't resurrect CDN URL variants
+    if (fp && ts.media.indexOf(fp) < 0) ts.media.push(fp);
+    // Also store sender-scoped key (extra signal; bare fp already blocks asset)
+    const mediaKey = fp && sender ? sender + '|' + fp : '';
     if (mediaKey && ts.media.indexOf(mediaKey) < 0) ts.media.push(mediaKey);
-    // Keep legacy bare fp for old tombstones compatibility only when no sender
-    if (fp && !sender && ts.media.indexOf(fp) < 0) ts.media.push(fp);
     this._saveTombstones(ts);
   };
 
@@ -151,16 +178,18 @@
     const ts = this._loadTombstones();
     const id = this._msgId(msg);
     if (id && ts.ids.indexOf(id) >= 0) return true;
+    const ck = this._contentKey(msg.content);
+    if (ck && ts.contents && ts.contents.indexOf(ck) >= 0) return true;
     const fp = this._mediaFingerprint(msg.content);
     if (!fp) return false;
+    if (ts.media.indexOf(fp) >= 0) return true;
     const sender = String(msg.sender_wallet || '').toLowerCase();
-    const scoped = sender ? (sender + '|' + fp) : '';
+    const scoped = sender ? sender + '|' + fp : '';
     if (scoped && ts.media.indexOf(scoped) >= 0) return true;
-    // Legacy: only apply bare media fp if no scoped entries exist for this fp
-    if (ts.media.indexOf(fp) >= 0) {
-      const hasScoped = ts.media.some(function (k) { return String(k).indexOf('|' + fp) > 0; });
-      if (!hasScoped) return true;
-    }
+    // Match any scoped entry that ends with this fp
+    if (ts.media.some(function (k) {
+      return String(k) === fp || String(k).slice(-(fp.length + 1)) === '|' + fp;
+    })) return true;
     return false;
   };
 
@@ -234,23 +263,62 @@
     }
   };
 
-  GenChatP2P.prototype.removeLocal = function (id, contentHint) {
+  GenChatP2P.prototype.removeLocal = function (id, contentHint, senderWallet) {
     if (!id && !contentHint) return;
     try {
       const arr = this.loadLocal();
       const self = this;
+      const hintSender = String(senderWallet || '').toLowerCase();
       let target = arr.find(function (m) {
         return m && m.id === id;
       });
+      // Also find by media/content when relay UUID ≠ local p2p-* id
       if (!target && contentHint) {
-        target = { id: id, content: contentHint, sender_wallet: '' };
+        const hint = { content: contentHint, sender_wallet: hintSender, created_at: Math.floor(Date.now() / 1000) };
+        target = arr.find(function (m) {
+          if (!m) return false;
+          if (hintSender && String(m.sender_wallet || '').toLowerCase() !== hintSender) {
+            // still allow media-fp match across missing sender
+            const fa = self._mediaFingerprint(m.content);
+            const fb = self._mediaFingerprint(contentHint);
+            return !!(fa && fb && fa === fb);
+          }
+          if (String(m.content || '') === String(contentHint)) return true;
+          return self._isContentDupe(m, hint) || (
+            self._mediaFingerprint(m.content) &&
+            self._mediaFingerprint(m.content) === self._mediaFingerprint(contentHint)
+          );
+        });
       }
-      if (target) this._addTombstone(id || target.id, target.content || contentHint, target.sender_wallet);
-      else if (id) this._addTombstone(id, contentHint || '', '');
+      if (!target && contentHint) {
+        target = {
+          id: id,
+          content: contentHint,
+          sender_wallet: hintSender,
+          created_at: Math.floor(Date.now() / 1000),
+        };
+      }
+      const tombSender = (target && target.sender_wallet) || hintSender || '';
+      if (target) this._addTombstone(id || target.id, target.content || contentHint, tombSender);
+      else if (id) this._addTombstone(id, contentHint || '', tombSender);
+      // Always tombstone the hint body/media even if id-only path
+      if (contentHint) this._addTombstone(id || '', contentHint, tombSender);
 
+      const fpHint = contentHint ? this._mediaFingerprint(contentHint) : '';
       const next = arr.filter(function (m) {
         if (!m) return false;
         if (id && m.id === id) return false;
+        if (contentHint && String(m.content || '') === String(contentHint)) {
+          self._addTombstone(m.id, m.content, m.sender_wallet);
+          return false;
+        }
+        if (fpHint) {
+          const fpm = self._mediaFingerprint(m.content);
+          if (fpm && fpm === fpHint) {
+            self._addTombstone(m.id, m.content, m.sender_wallet);
+            return false;
+          }
+        }
         if (target && self._isContentDupe(m, target)) {
           self._addTombstone(m.id, m.content, m.sender_wallet);
           return false;
@@ -782,7 +850,9 @@
       try {
         this.removeLocal(env.id, env.content || '');
       } catch (e) {}
-      if (typeof this.onDelete === 'function') this.onDelete(env.id, env.slug || 'general');
+      if (typeof this.onDelete === 'function') {
+        this.onDelete(env.id, env.slug || 'general', env.content || '', env.by || fromWallet || '');
+      }
       // Gossip delete so the whole mesh drops it (include content for media twins)
       this._broadcastEnvelope(
         {

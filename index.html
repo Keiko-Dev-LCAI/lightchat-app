@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-chat-chrome">
+<meta name="lc-build" content="2026-08-18-gif-tombstone">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=15"></script>
+<script src="genchat-p2p.js?v=16"></script>
 <script src="dm-p2p.js?v=12"></script>
 <script src="genchat-holepunch.js?v=3"></script>
 <script>
@@ -9759,7 +9759,7 @@ async function loadCommunityChannel(slug) {
         ).filter(function (m) {
           return !m.slug || m.slug === slug;
         });
-        // Drop server rows that were tombstoned locally (deleted, peer tried to sync back)
+        // Drop server/local rows that were tombstoned (deleted GIFs must stay gone on refresh)
         msgs = (msgs || []).filter(function (m) {
           try {
             return !(genChatP2P._isTombstoned && genChatP2P._isTombstoned(m));
@@ -9768,6 +9768,13 @@ async function loadCommunityChannel(slug) {
           }
         });
         msgs = mergeCommunityMessages(msgs, local);
+        msgs = (msgs || []).filter(function (m) {
+          try {
+            return !(genChatP2P._isTombstoned && genChatP2P._isTombstoned(m));
+          } catch (e) {
+            return true;
+          }
+        });
       } catch(e) { console.warn(e); }
     }
     if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
@@ -10710,15 +10717,15 @@ async function commMsgEdit() {
   }
 }
 
-function removeCommMsgLocal(id, contentHint) {
+function removeCommMsgLocal(id, contentHint, senderHint) {
   if (!id && !contentHint) return;
   let twinContent = contentHint || '';
-  let twinSender = '';
+  let twinSender = String(senderHint || '').toLowerCase();
   try {
     const row = document.querySelector('.comm-msg[data-msg-id="' + String(id || '').replace(/"/g, '') + '"]');
     const bubble = row && row.querySelector('.comm-bubble');
     if (bubble) {
-      twinSender = (bubble.getAttribute('data-sender') || '').toLowerCase();
+      if (!twinSender) twinSender = (bubble.getAttribute('data-sender') || '').toLowerCase();
       if (!twinContent) {
         try { twinContent = decodeURIComponent(bubble.getAttribute('data-content') || ''); } catch (e) { twinContent = ''; }
       }
@@ -10726,10 +10733,10 @@ function removeCommMsgLocal(id, contentHint) {
   } catch (e) {}
   try {
     if (window.genChatP2P && typeof genChatP2P.removeLocal === 'function') {
-      genChatP2P.removeLocal(id, twinContent);
+      genChatP2P.removeLocal(id, twinContent, twinSender);
     }
   } catch (e) {}
-  // Drop on-screen twins (same media asset or exact content)
+  // Drop on-screen twins (same media asset or exact content) — GIFs ignore CDN host differences
   try {
     const fp = window.genChatP2P && twinContent ? genChatP2P._mediaFingerprint(twinContent) : '';
     document.querySelectorAll('#genchat-msgs .comm-msg').forEach(function (node) {
@@ -10737,7 +10744,6 @@ function removeCommMsgLocal(id, contentHint) {
       if (id && nid === String(id)) { node.remove(); return; }
       const b = node.querySelector('.comm-bubble');
       if (!b) return;
-      if (twinSender && (b.getAttribute('data-sender') || '').toLowerCase() !== twinSender) return;
       let c = '';
       try { c = decodeURIComponent(b.getAttribute('data-content') || ''); } catch (e2) { return; }
       if (twinContent && c === twinContent) { node.remove(); return; }
@@ -10754,7 +10760,8 @@ async function commMsgDelete() {
   if (!ctx.id) { showToast('Cannot delete this message'); return; }
   if (!confirm('Delete this message?')) return;
   const content = ctx.content || '';
-  removeCommMsgLocal(ctx.id, content);
+  const sender = (ctx.sender_wallet || ctx.sender || '').toLowerCase();
+  removeCommMsgLocal(ctx.id, content, sender);
   // Tell peers so P2P mesh drops it + media twins (won't resurrect on sync)
   try {
     if (window.genChatP2P && genChatP2P.connectedCount && genChatP2P.connectedCount() > 0) {
@@ -11701,8 +11708,8 @@ function ensureGenChatP2P() {
       }
     }
   };
-  genChatP2P.onDelete = function(id) {
-    removeCommMsgLocal(id);
+  genChatP2P.onDelete = function(id, slug, content, sender) {
+    removeCommMsgLocal(id, content || '', sender || '');
   };
   genChatP2P.onEdit = function(id, content) {
     applyCommMsgEditLocal(id, content);
@@ -12601,8 +12608,8 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       });
       socket.on('community_message_deleted', (data) => {
         const id = data && data.id;
-        if (!id) return;
-        removeCommMsgLocal(id);
+        if (!id && !(data && data.content)) return;
+        removeCommMsgLocal(id, (data && data.content) || '', (data && data.sender_wallet) || '');
       });
       socket.on('community_timeout', (data) => {
         if (!data || !wallet) return;
