@@ -2130,14 +2130,8 @@ def on_group_peer_signal(data):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# PREMIUM TIER — LCAI price, call access, subscriptions, gift confirm
+# LCAI price helper (calls/media free — no premium / fee wallet)
 # ══════════════════════════════════════════════════════════════════════
-
-OWNER_WALLET = '0x6518fd07b3da01b17bd37d7c40f9a5e3c87a09ba'
-FREE_CALLS_LIMIT = 5
-
-# Handles that always get premium access (testing / internal accounts)
-PREMIUM_WHITELIST = {'@keiko326', '@bin1977'}
 
 _lcai_price_cache = {'price': 0.004, 'ts': 0}
 
