@@ -3251,15 +3251,18 @@ function acceptTermsIfNeeded() {
 /** Wallet / user rejected connect or sign (MetaMask 4001, Trust "not authorized by the user", …). */
 function isWalletAuthDenied(e) {
   if (!e) return false;
-  if (e.code === 4001 || e.code === 'ACTION_REJECTED' || e.code === 'needs_sign') return true;
-  const msg = String(e.message || e || '').toLowerCase();
+  if (e.code === 4001 || e.code === 'ACTION_REJECTED' || e.code === 'needs_sign' || e.code === -32603) return true;
+  const msg = String(e.message || e.reason || e || '').toLowerCase();
   return (
     msg.indexOf('not authorized') !== -1 ||
+    msg.indexOf('unauthorized') !== -1 ||
     msg.indexOf('user rejected') !== -1 ||
     msg.indexOf('user denied') !== -1 ||
     msg.indexOf('user cancelled') !== -1 ||
     msg.indexOf('user canceled') !== -1 ||
-    msg.indexOf('request rejected') !== -1
+    msg.indexOf('request rejected') !== -1 ||
+    msg.indexOf('rejected the request') !== -1 ||
+    msg.indexOf('access_denied') !== -1
   );
 }
 
@@ -3345,10 +3348,12 @@ async function finishConnect(opts) {
       return;
     }
     if (e && e.code === 'lc_network_required') {
-      showToast(e.message || 'Lightchain network required');
+      showToast('Lightchain network required (chain 9200)');
       return;
     }
-    showToast(e.message || 'Login session failed — try again');
+    // Never toast raw provider strings (e.g. "account not authorized by the user")
+    if (isWalletAuthDenied(e)) return;
+    showToast('Login session failed — tap Connect Wallet');
     console.error(e);
     return;
   }
@@ -3520,7 +3525,11 @@ async function connectWallet() {
     openPasteAddressModal();
   } catch (e) {
     console.error('connectWallet:', e);
-    showToast(e.message || 'Connect a Lightchain wallet to sign in');
+    if (isWalletAuthDenied(e)) {
+      showToast('Connect cancelled — tap Connect Wallet to try again');
+    } else {
+      showToast('Connect a Lightchain wallet to sign in');
+    }
     openPasteAddressModal();
   }
 }
@@ -3954,9 +3963,13 @@ function connectSocket() {
   try { bindPresenceSocket(socket); } catch (e) {}
   socket.on('connect', () => {
     if (!sessionToken) {
-      ensureSession().then(() => {
+      // Silent only — never personal_sign from a socket reconnect (causes "not authorized" toasts)
+      ensureSession({ silent: true }).then(() => {
         if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken });
-      }).catch(() => showToast('Session expired — reconnect wallet'));
+      }).catch(function (e) {
+        console.warn('socket connect session', e && (e.code || e.message));
+        try { showConnectUI(); } catch (err) {}
+      });
       return;
     }
     socket.emit('auth', { wallet, token: sessionToken });
@@ -3984,10 +3997,13 @@ function connectSocket() {
   socket.on('auth_error', (d) => {
     console.warn('auth_error', d);
     sessionToken = null;
-    localStorage.removeItem('lc_session_token');
-    ensureSession().then(() => {
+    try { localStorage.removeItem('lc_session_token'); } catch (e) {}
+    // Do NOT auto personal_sign here — wallet blocks it without a user tap
+    ensureSession({ silent: true }).then(() => {
       if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken });
-    }).catch(() => showToast('Please reconnect your wallet'));
+    }).catch(function () {
+      try { showConnectUI(); } catch (e) {}
+    });
   });
   socket.on('new_message', (msg) => {
     // Already shown optimistically — skip self-echoes
@@ -5194,7 +5210,19 @@ function getRoom(w1, w2) { return [w1.toLowerCase(), w2.toLowerCase()].sort().jo
 function shortenWallet(w) { if (!w) return ''; return w.substring(0,6) + '...' + w.substring(w.length-4); }
 function avatarLetter(h) { if (!h) return '🐬'; return h.replace('@','').charAt(0).toUpperCase(); }
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function showToast(msg, ms) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), ms || 2800); }
+function showToast(msg, ms) {
+  const text = String(msg == null ? '' : msg);
+  // Never surface raw wallet-provider spam (Trust/MetaMask "not authorized by the user", etc.)
+  if (isWalletAuthDenied({ message: text })) {
+    console.warn('suppressed wallet auth toast:', text);
+    return;
+  }
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = text;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), ms || 2800);
+}
 
 // ════════════════════════════════
 // EMOJI / STICKER / GIF PICKER
