@@ -3735,10 +3735,15 @@ def register_community_routes(app, socketio, get_db):
 
     @app.route("/api/community/stickers", methods=["POST"])
     def api_stickers_upload():
-        """Any member can upload a sticker/emoji (max ~500KB)."""
+        """Upload sticker/emoji with Discord-compatible size caps.
+        Emoji: ≤256KB (Discord). Sticker: ≤512KB (Discord).
+        Client should resize to ~128×128 (emoji) or ~320×320 (sticker).
+        """
         data = request.json or {}
         wallet = _norm(data.get("wallet", ""))
         name = (data.get("name") or "sticker")[:40].strip() or "sticker"
+        # Discord-ish names: letters, numbers, underscore
+        name = re.sub(r"[^a-zA-Z0-9_]+", "_", name).strip("_")[:32] or "sticker"
         kind = (data.get("kind") or "sticker").lower().strip()
         if kind not in ("sticker", "emoji"):
             kind = "sticker"
@@ -3746,10 +3751,27 @@ def register_community_routes(app, socketio, get_db):
         itype = (data.get("image_type") or "image/png")[:40]
         if not wallet.startswith("0x"):
             return jsonify({"error": "wallet required"}), 400
-        if not raw or len(raw) > 700_000:
-            return jsonify({"error": "image missing or too large (max ~500KB)"}), 400
+        if not raw:
+            return jsonify({"error": "image missing"}), 400
         if "," in raw[:80]:
             raw = raw.split(",", 1)[1]
+        try:
+            blob = base64.b64decode(raw, validate=False)
+        except Exception:
+            return jsonify({"error": "invalid image data"}), 400
+        # Discord limits: emoji 256KB, stickers 512KB
+        max_bytes = 256 * 1024 if kind == "emoji" else 512 * 1024
+        if len(blob) > max_bytes:
+            label = "256KB (Discord emoji)" if kind == "emoji" else "512KB (Discord sticker)"
+            return jsonify({
+                "error": f"image too large after encode — max {label}",
+                "code": "too_large",
+                "max_bytes": max_bytes,
+                "got_bytes": len(blob),
+            }), 400
+        allowed_types = ("image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif")
+        if itype.lower() not in allowed_types and not itype.lower().startswith("image/"):
+            itype = "image/png"
         conn = get_db()
         try:
             if is_banned(conn, wallet):
