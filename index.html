@@ -26,6 +26,7 @@
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="genchat-p2p.js?v=10"></script>
 <script src="dm-p2p.js?v=10"></script>
+<script src="genchat-holepunch.js?v=1"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1967,6 +1968,17 @@ body {
               Gen Chat: P2P only (skip relay)
             </label>
             <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.4;padding-left:28px">When on, Gen Chat won’t post through the server if no peers are connected — stays local until P2P syncs.</div>
+            <label style="display:flex;align-items:center;gap:10px;margin-top:14px;font-size:14px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="me-holepunch" onchange="toggleHolepunchSpike(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
+              Holepunch spike (experimental)
+            </label>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.4;padding-left:28px">Hyperswarm topic via DHT WebSocket relay. WebRTC stays default. Needs a relay URL below.</div>
+            <div style="margin-top:8px;padding-left:28px">
+              <input id="me-holepunch-relay" type="url" placeholder="ws://127.0.0.1:49443 or wss://…"
+                class="form-input" style="width:100%;max-width:360px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:13px;font-family:inherit"
+                onchange="saveHolepunchRelay(this.value)" onblur="saveHolepunchRelay(this.value)">
+              <div id="me-holepunch-status" style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.4">Off</div>
+            </div>
             <div style="margin-top:14px">
               <label class="form-label" style="margin-bottom:6px;display:block;font-size:13px">Status</label>
               <select id="me-presence-mode" onchange="setMyPresence(this.value)" class="form-input" style="width:100%;max-width:280px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:15px;font-family:inherit">
@@ -3270,6 +3282,12 @@ function updateUI() {
   }
   const p2pCb = document.getElementById('me-p2p-only');
   if (p2pCb) p2pCb.checked = localStorage.getItem('lc_p2p_only') === '1';
+  const hpCb = document.getElementById('me-holepunch');
+  if (hpCb) hpCb.checked = localStorage.getItem('lc_holepunch_on') === '1';
+  const hpRel = document.getElementById('me-holepunch-relay');
+  if (hpRel && !hpRel.matches(':focus')) {
+    try { hpRel.value = localStorage.getItem('lc_holepunch_relay') || ''; } catch (e) {}
+  }
   // Update empty state CTA
   const cta = document.getElementById('empty-cta-btn');
   if (cta) { cta.textContent = '👥 Add a Contact'; }
@@ -9478,9 +9496,21 @@ async function sendCommunityContent(slug, content) {
     } catch (e) { console.warn('p2p send', e); }
   }
 
-  if (p2pCount > 0) {
+  // Optional Holepunch / Hyperswarm path (experimental) — does not replace WebRTC
+  let hpCount = 0;
+  if (isP2PChatChannel(slug) && window.genChatHolepunch && genChatHolepunch.isEnabled()) {
+    try {
+      await ensureGenChatHolepunch();
+      hpCount = genChatHolepunch.send(msg) || 0;
+    } catch (e) { console.warn('holepunch send', e); }
+  }
+
+  if (p2pCount > 0 || hpCount > 0) {
     appendCommunityMessage(msg);
-    showToast('Sent via P2P · ' + p2pCount + ' peer(s)');
+    const bits = [];
+    if (p2pCount > 0) bits.push('P2P · ' + p2pCount);
+    if (hpCount > 0) bits.push('HP · ' + hpCount);
+    showToast('Sent via ' + bits.join(' + '));
     return;
   }
 
@@ -9595,6 +9625,7 @@ function ensureGenChatP2P() {
   const slug = _activeCommSlug || 'general';
   if (!isP2PChatChannel(slug)) return;
   genChatP2P.attachSocket(socket);
+  try { ensureGenChatHolepunch(); } catch (e) {}
   genChatP2P.onMessage = function(msg) {
     const msgSlug = msg.slug || slug;
     if (_activeCommSlug === msgSlug || (!msg.slug && _activeCommSlug === slug)) {
@@ -9690,6 +9721,72 @@ function toggleP2POnly(on) {
   try { localStorage.setItem('lc_p2p_only', on ? '1' : '0'); } catch (e) {}
   showToast(on ? 'Gen Chat: P2P only (no relay)' : 'Gen Chat: P2P + relay fallback');
   try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
+}
+
+function saveHolepunchRelay(url) {
+  try {
+    if (window.genChatHolepunch) genChatHolepunch.setRelayUrl(url);
+    else localStorage.setItem('lc_holepunch_relay', String(url || '').trim());
+  } catch (e) {}
+  if (localStorage.getItem('lc_holepunch_on') === '1') ensureGenChatHolepunch(true);
+}
+
+async function toggleHolepunchSpike(on) {
+  try {
+    if (window.genChatHolepunch) genChatHolepunch.setEnabled(!!on);
+    else localStorage.setItem('lc_holepunch_on', on ? '1' : '0');
+  } catch (e) {}
+  if (!on) {
+    try { if (window.genChatHolepunch) await genChatHolepunch.leave(); } catch (e) {}
+    const st = document.getElementById('me-holepunch-status');
+    if (st) st.textContent = 'Off';
+    showToast('Holepunch spike off — WebRTC Gen Chat unchanged');
+    try { if (window.genChatP2P) genChatP2P._emitStatus(); } catch (e) {}
+    return;
+  }
+  const url = (document.getElementById('me-holepunch-relay')?.value || '').trim();
+  saveHolepunchRelay(url);
+  if (!url) {
+    showToast('Add a DHT relay URL (run holepunch/relay.mjs)');
+    const st = document.getElementById('me-holepunch-status');
+    if (st) st.textContent = 'On — needs relay URL';
+    return;
+  }
+  showToast('Holepunch spike on — joining topic…');
+  await ensureGenChatHolepunch(true);
+}
+
+async function ensureGenChatHolepunch(force) {
+  if (!window.genChatHolepunch || !wallet) return false;
+  if (!genChatHolepunch.isEnabled() && !force) return false;
+  if (!genChatHolepunch.isEnabled()) return false;
+  const slug = _activeCommSlug || 'general';
+  if (!isP2PChatChannel(slug)) return false;
+  genChatHolepunch.onMessage = function (msg) {
+    const msgSlug = msg.slug || slug;
+    if (_activeCommSlug === msgSlug || (!msg.slug && _activeCommSlug === slug)) {
+      const tab = document.getElementById('tab-genchat');
+      if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
+      else loadCommunityChannel(msgSlug);
+    }
+  };
+  genChatHolepunch.onStatus = function (st) {
+    const meSt = document.getElementById('me-holepunch-status');
+    if (meSt) {
+      if (st.error) meSt.textContent = 'Error: ' + st.error;
+      else if (st.connected > 0) meSt.textContent = 'Connected · ' + st.connected + ' Hyperswarm peer(s)';
+      else if (st.mode === 'holepunch') meSt.textContent = 'Joined topic — waiting for peers · ' + (st.relay || '');
+      else meSt.textContent = 'Off';
+    }
+    const el = document.getElementById('genchat-p2p-status');
+    if (el && st.connected > 0) {
+      el.textContent = 'HP · ' + st.connected;
+      el.classList.add('p2p-on');
+      el.title = 'Holepunch / Hyperswarm peers';
+    }
+  };
+  const ok = await genChatHolepunch.join(wallet, slug, genChatHolepunch.getRelayUrl());
+  return ok;
 }
 
 function showScamWarnIfNeeded() {
