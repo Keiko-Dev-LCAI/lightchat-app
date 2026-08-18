@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-all-reacts">
+<meta name="lc-build" content="2026-08-18-discord-pack-sizes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -3013,13 +3013,18 @@ body {
     <div class="sticker-grid" id="es-sticker-custom"></div>
   </div>
   <div id="es-pane-upload" style="display:none;padding:16px;overflow-y:auto;flex:1;min-height:0">
-    <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">Upload a sticker or custom emoji (PNG/GIF/WebP, max ~500KB). Everyone in Gen Chat can use it.</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">
+      Discord-compatible sizes so packs from sites like <strong style="color:var(--text)">emojisandstickers.xyz</strong> work:<br>
+      <strong style="color:var(--text)">Emoji</strong> · ~128×128 · max <strong style="color:var(--text)">256KB</strong><br>
+      <strong style="color:var(--text)">Sticker</strong> · ~320×320 · max <strong style="color:var(--text)">512KB</strong><br>
+      PNG/GIF/WebP — we’ll resize when needed. Everyone can use the pack in chat &amp; reactions.
+    </div>
     <label class="form-label">Name</label>
-    <input class="form-input" id="es-upload-name" maxlength="40" placeholder="cool-orca" style="margin-bottom:12px">
+    <input class="form-input" id="es-upload-name" maxlength="32" placeholder="cool_orca" style="margin-bottom:12px">
     <label class="form-label">Type</label>
     <select id="es-upload-kind" class="form-input" style="margin-bottom:12px">
-      <option value="sticker">Sticker</option>
-      <option value="emoji">Custom emoji</option>
+      <option value="emoji">Custom emoji (128×128 · 256KB)</option>
+      <option value="sticker">Sticker (320×320 · 512KB)</option>
     </select>
     <input type="file" id="es-upload-file" accept="image/png,image/jpeg,image/webp,image/gif" style="margin-bottom:12px">
     <button type="button" class="primary-btn" style="width:100%" onclick="uploadCommunitySticker()">Upload to server pack</button>
@@ -11037,35 +11042,101 @@ async function sendGenChatSticker(idOrBuiltin) {
   await sendCommunityContent(_activeCommSlug || 'general', content);
 }
 
-async function uploadCommunitySticker() {
-  if (!wallet) { showToast('Connect wallet'); return; }
-  const file = document.getElementById('es-upload-file')?.files?.[0];
-  const name = (document.getElementById('es-upload-name')?.value || '').trim() || 'sticker';
-  const kind = document.getElementById('es-upload-kind')?.value || 'sticker';
-  if (!file) { showToast('Choose an image'); return; }
-  if (file.size > 500000) { showToast('Max ~500KB'); return; }
+/** Discord-compatible pack prep: emoji 128² / 256KB, sticker 320² / 512KB. */
+async function prepareDiscordPackImage(file, kind) {
+  const isEmoji = kind === 'emoji';
+  const maxSide = isEmoji ? 128 : 320;
+  const maxBytes = isEmoji ? 256 * 1024 : 512 * 1024;
+  const type = (file.type || 'image/png').toLowerCase();
+
+  // Animated GIF: keep as-is if already under Discord size; otherwise ask for PNG
+  if (type === 'image/gif') {
+    if (file.size <= maxBytes) {
+      const dataUrl = await new Promise(function (res, rej) {
+        const fr = new FileReader();
+        fr.onload = function () { res(fr.result); };
+        fr.onerror = rej;
+        fr.readAsDataURL(file);
+      });
+      return { dataUrl: dataUrl, imageType: 'image/gif' };
+    }
+    throw new Error('Animated GIF too large — use a PNG/WebP under ' + (isEmoji ? '256KB' : '512KB') + ' (or export from emojisandstickers.xyz)');
+  }
+
+  const bmp = await createImageBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = maxSide;
+  canvas.height = maxSide;
+  const ctx = canvas.getContext('2d');
+  // Contain fit into square (Discord-style canvas)
+  const scale = Math.min(maxSide / bmp.width, maxSide / bmp.height);
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const x = Math.floor((maxSide - w) / 2);
+  const y = Math.floor((maxSide - h) / 2);
+  ctx.clearRect(0, 0, maxSide, maxSide);
+  ctx.drawImage(bmp, x, y, w, h);
+  try { bmp.close(); } catch (e) {}
+
+  let quality = 0.92;
+  let blob = await new Promise(function (res) { canvas.toBlob(res, 'image/png'); });
+  // Prefer PNG; if still huge try webp then jpeg
+  if (blob && blob.size > maxBytes) {
+    for (quality = 0.9; quality >= 0.5; quality -= 0.1) {
+      blob = await new Promise(function (res) { canvas.toBlob(res, 'image/webp', quality); });
+      if (blob && blob.size <= maxBytes) break;
+    }
+  }
+  if (!blob || blob.size > maxBytes) {
+    blob = await new Promise(function (res) { canvas.toBlob(res, 'image/jpeg', 0.7); });
+  }
+  if (!blob || blob.size > maxBytes) {
+    throw new Error('Could not fit under Discord ' + (isEmoji ? '256KB emoji' : '512KB sticker') + ' limit — try a simpler image');
+  }
   const dataUrl = await new Promise(function (res, rej) {
     const fr = new FileReader();
     fr.onload = function () { res(fr.result); };
     fr.onerror = rej;
-    fr.readAsDataURL(file);
+    fr.readAsDataURL(blob);
   });
+  return { dataUrl: dataUrl, imageType: blob.type || 'image/png' };
+}
+
+async function uploadCommunitySticker() {
+  if (!wallet) { showToast('Connect wallet'); return; }
+  const file = document.getElementById('es-upload-file')?.files?.[0];
+  let name = (document.getElementById('es-upload-name')?.value || '').trim() || 'sticker';
+  const kind = document.getElementById('es-upload-kind')?.value || 'emoji';
+  if (!file) { showToast('Choose an image'); return; }
+  // Allow larger source files — we resize to Discord caps client-side
+  if (file.size > 8 * 1024 * 1024) { showToast('Source image max 8MB'); return; }
+  name = name.replace(/[^a-zA-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'sticker';
+  showToast(kind === 'emoji' ? 'Preparing emoji (128×128)…' : 'Preparing sticker (320×320)…');
+  let prepared;
+  try {
+    prepared = await prepareDiscordPackImage(file, kind);
+  } catch (e) {
+    showToast((e && e.message) || 'Could not prepare image');
+    return;
+  }
   try {
     const r = await fetch(BACKEND + '/api/community/stickers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        wallet,
-        name,
-        kind,
-        image_data: dataUrl,
-        image_type: file.type || 'image/png',
+        wallet: wallet,
+        name: name,
+        kind: kind,
+        image_data: prepared.dataUrl,
+        image_type: prepared.imageType,
       }),
     });
-    const j = await r.json().catch(() => ({}));
+    const j = await r.json().catch(function () { return {}; });
     if (!r.ok) { showToast(j.error || 'Upload failed'); return; }
-    showToast('Uploaded to server pack');
+    showToast('Uploaded · Discord-size ' + kind);
     document.getElementById('es-upload-file').value = '';
+    const nameEl = document.getElementById('es-upload-name');
+    if (nameEl) nameEl.value = '';
     switchEsTab('sticker');
     loadCustomStickers();
   } catch (e) {
