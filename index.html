@@ -3248,13 +3248,30 @@ function acceptTermsIfNeeded() {
   });
 }
 
-async function ensureSession() {
-  /** Lightchain network wallet only — signed personal_sign after chain check. */
+/** Wallet / user rejected connect or sign (MetaMask 4001, Trust "not authorized by the user", …). */
+function isWalletAuthDenied(e) {
+  if (!e) return false;
+  if (e.code === 4001 || e.code === 'ACTION_REJECTED' || e.code === 'needs_sign') return true;
+  const msg = String(e.message || e || '').toLowerCase();
+  return (
+    msg.indexOf('not authorized') !== -1 ||
+    msg.indexOf('user rejected') !== -1 ||
+    msg.indexOf('user denied') !== -1 ||
+    msg.indexOf('user cancelled') !== -1 ||
+    msg.indexOf('user canceled') !== -1 ||
+    msg.indexOf('request rejected') !== -1
+  );
+}
+
+async function ensureSession(opts) {
+  /** Lightchain network wallet only — signed personal_sign after chain check.
+   *  opts.silent: page-refresh restore — reuse token only, never prompt sign / toast. */
+  const silent = !!(opts && opts.silent);
   if (!isValidWallet(wallet)) throw new Error('invalid wallet');
   wallet = wallet.toLowerCase();
   const prov = _activeProvider || window.ethereum;
 
-  await requireLightchainNetwork(prov);
+  await requireLightchainNetwork(prov, { silent: silent });
   bindLightchainChainGuard(prov);
 
   // Reuse valid stored token for this wallet (still must be on LC above)
@@ -3271,6 +3288,13 @@ async function ensureSession() {
     } catch (e) {}
     sessionToken = null;
     localStorage.removeItem('lc_session_token');
+  }
+
+  // Silent restore: never popup personal_sign on page load (causes "not authorized" toasts)
+  if (silent) {
+    const err = new Error('Session expired — tap Connect Wallet');
+    err.code = 'needs_sign';
+    throw err;
   }
 
   // Hard auth: personal_sign on Lightchain
@@ -3299,17 +3323,24 @@ async function ensureSession() {
   return sessionToken;
 }
 
-async function finishConnect() {
+async function finishConnect(opts) {
+  const silent = !!(opts && opts.silent);
   if (!isValidWallet(wallet)) {
-    showToast('Invalid wallet address');
+    if (!silent) showToast('Invalid wallet address');
     return;
   }
   wallet = wallet.toLowerCase();
   await acceptTermsIfNeeded();
   try {
-    await ensureSession();
+    await ensureSession({ silent: silent });
   } catch (e) {
-    if (e && e.code === 4001) {
+    if (silent && (isWalletAuthDenied(e) || (e && e.code === 'needs_sign') || (e && e.code === 'lc_network_required'))) {
+      // Quiet restore failure — show Connect, no scary toast on refresh
+      console.warn('silent restore', e && (e.code || e.message));
+      try { showConnectUI(); } catch (err) {}
+      return;
+    }
+    if (isWalletAuthDenied(e) || (e && e.code === 4001)) {
       showToast('Signature required to login — cancelled');
       return;
     }
@@ -3369,22 +3400,31 @@ async function switchToLightchain(prov) {
 }
 
 /** Login only allowed when the connected wallet is on Lightchain (9200). */
-async function requireLightchainNetwork(prov) {
+async function requireLightchainNetwork(prov, opts) {
+  const silent = !!(opts && opts.silent);
   if (!prov || typeof prov.request !== 'function') {
     const err = new Error('Connect a wallet on Lightchain network');
     err.code = 'lc_network_required';
     throw err;
   }
-  showToast('Checking Lightchain network…');
+  if (!silent) showToast('Checking Lightchain network…');
   try {
     await switchToLightchain(prov);
   } catch (e) {
-    if (e && e.code === 4001) throw e;
+    if (isWalletAuthDenied(e) || (e && e.code === 4001)) throw e;
     const err = new Error('Switch your wallet to Lightchain (chain 9200) to sign in');
     err.code = 'lc_network_required';
     throw err;
   }
-  const chainHex = await prov.request({ method: 'eth_chainId' });
+  let chainHex;
+  try {
+    chainHex = await prov.request({ method: 'eth_chainId' });
+  } catch (e) {
+    if (isWalletAuthDenied(e)) throw e;
+    const err = new Error('Connect a wallet on Lightchain network');
+    err.code = 'lc_network_required';
+    throw err;
+  }
   const chainId = parseInt(chainHex, 16);
   if (chainId !== LC_CHAIN_ID) {
     const err = new Error('Wrong network — Lightchain only (chain ID 9200)');
@@ -7658,13 +7698,14 @@ window.addEventListener('load', async () => {
   initPicker();
   initMemoryContextMenu();
   refreshEmptyInviteUI();
-  // Auto-restore session on refresh (skip if user explicitly logged off)
+  // Auto-restore session on refresh (skip if user explicitly logged off).
+  // Silent: never toast "not authorized" / force personal_sign on load.
   let manualLogout = false;
   try { manualLogout = localStorage.getItem('lc_manual_logout') === '1'; } catch (e) {}
   const saved = localStorage.getItem('lc_wallet');
   if (isValidWallet(saved) && !manualLogout) {
     wallet = saved.toLowerCase();
-    await finishConnect();
+    await finishConnect({ silent: true });
   } else if (!manualLogout) {
     const prov = _activeProvider || window.ethereum;
     if (prov) {
@@ -7673,9 +7714,12 @@ window.addEventListener('load', async () => {
         if (accounts.length > 0) {
           wallet = accounts[0].toLowerCase();
           _activeProvider = prov;
-          await finishConnect();
+          await finishConnect({ silent: true });
         }
-      } catch(e) {}
+      } catch (e) {
+        // eth_accounts can throw "not authorized by the user" — stay quiet on load
+        console.warn('eth_accounts on load', e && (e.message || e));
+      }
     }
   } else {
     showConnectUI();
