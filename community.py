@@ -279,6 +279,19 @@ def init_community_db(get_db):
     except Exception:
         pass
 
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_timeouts (
+            community_id TEXT NOT NULL,
+            wallet TEXT NOT NULL,
+            until_ts INTEGER NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            by_wallet TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (community_id, wallet)
+        )"""
+    )
+    conn.commit()
+
 
     # ensure media post-only channel exists
     try:
@@ -383,6 +396,68 @@ def has_perm(role: str, perm: str) -> bool:
 
 def rank(role: str) -> int:
     return ROLE_RANK.get(role or "", 0)
+
+
+def is_staff(role: str) -> bool:
+    """Admins (owner/admin) and mods may post links."""
+    return (role or "") in ("owner", "admin", "mod")
+
+
+_LINK_RE = re.compile(
+    r"(https?://|www\.|"
+    r"(?:^|[\s(])(?:discord\.gg|t\.me|telegram\.me)/|"
+    r"\b[a-z0-9-]+\.(?:com|org|net|io|ai|xyz|app|gg|me|co|info|dev)(?:/[^\s]*)?)",
+    re.I,
+)
+
+
+def content_has_link(content: str) -> bool:
+    """True if message contains a URL / invite-style link (incl. [[gif]] media)."""
+    c = (content or "").strip()
+    if not c:
+        return False
+    if c.startswith("[[gif]]"):
+        return True
+    return bool(_LINK_RE.search(c))
+
+
+def get_timeout_until(conn, wallet: str) -> int:
+    wallet = _norm(wallet)
+    row = conn.execute(
+        "SELECT until_ts FROM community_timeouts WHERE community_id=? AND wallet=?",
+        (COMMUNITY_ID, wallet),
+    ).fetchone()
+    if not row:
+        return 0
+    until = int(row["until_ts"] or 0)
+    now = int(time.time())
+    if until <= now:
+        conn.execute(
+            "DELETE FROM community_timeouts WHERE community_id=? AND wallet=?",
+            (COMMUNITY_ID, wallet),
+        )
+        conn.commit()
+        return 0
+    return until
+
+
+def set_timeout(conn, wallet: str, seconds: int, reason: str, by_wallet: str = "") -> int:
+    wallet = _norm(wallet)
+    now = int(time.time())
+    until = now + max(60, int(seconds))
+    conn.execute(
+        """INSERT INTO community_timeouts
+           (community_id, wallet, until_ts, reason, by_wallet, created_at)
+           VALUES (?,?,?,?,?,?)
+           ON CONFLICT(community_id, wallet) DO UPDATE SET
+             until_ts=excluded.until_ts,
+             reason=excluded.reason,
+             by_wallet=excluded.by_wallet,
+             created_at=excluded.created_at""",
+        (COMMUNITY_ID, wallet, until, (reason or "")[:200], _norm(by_wallet), now),
+    )
+    conn.commit()
+    return until
 
 
 def profile_dict(conn, wallet: str) -> dict:
@@ -747,6 +822,22 @@ def register_community_routes(app, socketio, get_db):
         finally:
             conn.close()
 
+    @app.route("/api/community/timeout/<wallet>")
+    def api_timeout_status(wallet):
+        wallet = _norm(wallet)
+        conn = get_db()
+        try:
+            until = get_timeout_until(conn, wallet)
+            now = int(time.time())
+            return jsonify({
+                "wallet": wallet,
+                "timed_out": until > now,
+                "until": until,
+                "remaining": max(0, until - now),
+            })
+        finally:
+            conn.close()
+
     @app.route("/api/community/messages/<slug>", methods=["POST"])
     def api_channel_send(slug):
         data = request.json or {}
@@ -774,6 +865,45 @@ def register_community_routes(app, socketio, get_db):
         conn = get_db()
         try:
             role = ensure_member(conn, wallet)
+            now = int(time.time())
+            until = get_timeout_until(conn, wallet)
+            if until > now:
+                mins = max(1, (until - now + 59) // 60)
+                return jsonify({
+                    "error": f"You are timed out for {mins} more minute(s)",
+                    "code": "timed_out",
+                    "until": until,
+                    "remaining": until - now,
+                }), 403
+
+            # Links / GIFs: admins + mods only. Others → 1 hour timeout.
+            if content_has_link(content) and not is_staff(role):
+                until = set_timeout(
+                    conn,
+                    wallet,
+                    3600,
+                    "Posted a link (admins/mods only)",
+                    "system",
+                )
+                try:
+                    socketio.emit(
+                        "community_timeout",
+                        {
+                            "wallet": wallet,
+                            "until": until,
+                            "reason": "Posted a link (admins/mods only)",
+                            "remaining": 3600,
+                        },
+                    )
+                except Exception:
+                    pass
+                return jsonify({
+                    "error": "Only admins and mods can post links. Timed out for 1 hour.",
+                    "code": "link_timeout",
+                    "until": until,
+                    "remaining": 3600,
+                }), 403
+
             ch = conn.execute(
                 "SELECT * FROM community_channels WHERE community_id=? AND slug=?",
                 (COMMUNITY_ID, slug),
@@ -788,7 +918,6 @@ def register_community_routes(app, socketio, get_db):
             if ro and not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
                 return jsonify({"error": "this channel is read-only — only mods can post"}), 403
             mid = str(uuid.uuid4())
-            now = int(time.time())
             conn.execute(
                 """INSERT INTO community_messages
                    (id, community_id, channel_id, sender_wallet, content, created_at)
