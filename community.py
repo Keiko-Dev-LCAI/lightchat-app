@@ -55,7 +55,7 @@ START_HERE_SECTIONS = [
         "links": [
             {"label": "# Gen Chat", "href": "#channel:general", "kind": "channel"},
             {"label": "# Introduce Yourself", "href": "#channel:introduce-yourself", "kind": "channel"},
-            {"label": "Directory", "href": "#action:directory", "kind": "action"},
+            {"label": "Members", "href": "#action:directory", "kind": "action"},
             {"label": "# Help", "href": "#channel:help", "kind": "channel"},
         ],
     },
@@ -99,8 +99,64 @@ START_HERE_SECTIONS = [
     },
 ]
 
-# role rank: higher = more power
+# role rank: higher = more power (Discord-style member list order)
 ROLE_RANK = {"owner": 100, "admin": 80, "mod": 50, "helper": 30, "member": 10}
+
+# Live presence: wallet -> {"mode": "online"|"invisible", "sid": socket id}
+# Invisible = connected but appear offline to others (Discord-style).
+PRESENCE = {}
+
+
+def presence_get_mode(conn, wallet: str) -> str:
+    wallet = _norm(wallet)
+    try:
+        row = conn.execute(
+            "SELECT presence_mode FROM community_profiles WHERE wallet=?", (wallet,)
+        ).fetchone()
+        if row and row["presence_mode"] in ("online", "invisible"):
+            return row["presence_mode"]
+    except Exception:
+        pass
+    return "online"
+
+
+def presence_set(wallet: str, mode: str, sid: str | None = None) -> dict:
+    wallet = _norm(wallet)
+    mode = mode if mode in ("online", "invisible") else "online"
+    prev = PRESENCE.get(wallet) or {}
+    entry = {"mode": mode, "sid": sid if sid is not None else prev.get("sid")}
+    PRESENCE[wallet] = entry
+    return entry
+
+
+def presence_clear(wallet: str, sid: str | None = None) -> bool:
+    """Remove presence. If sid given, only clear when it matches (multi-tab safe-ish)."""
+    wallet = _norm(wallet)
+    cur = PRESENCE.get(wallet)
+    if not cur:
+        return False
+    if sid is not None and cur.get("sid") and cur.get("sid") != sid:
+        return False
+    PRESENCE.pop(wallet, None)
+    return True
+
+
+def presence_is_visible_online(wallet: str) -> bool:
+    """True only if connected AND not Invisible."""
+    cur = PRESENCE.get(_norm(wallet))
+    return bool(cur) and cur.get("mode") != "invisible"
+
+
+def presence_public_snapshot() -> dict:
+    """Wallets others should see as online."""
+    return {w: True for w, p in PRESENCE.items() if p.get("mode") != "invisible"}
+
+
+def _role_sort_key(member: dict) -> tuple:
+    """Owners/mods first, then helpers, then members; name A→Z within band."""
+    role = (member.get("role") or "member").lower()
+    name = (member.get("display_name") or member.get("handle") or member.get("wallet") or "").lower()
+    return (-ROLE_RANK.get(role, 0), name)
 
 # simple permission sets
 ROLE_PERMS = {
@@ -211,6 +267,14 @@ def init_community_db(get_db):
 
     try:
         conn.execute('ALTER TABLE community_profiles ADD COLUMN hide_wallet INTEGER NOT NULL DEFAULT 0')
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        conn.execute(
+            "ALTER TABLE community_profiles ADD COLUMN presence_mode TEXT NOT NULL DEFAULT 'online'"
+        )
         conn.commit()
     except Exception:
         pass
@@ -345,14 +409,37 @@ def profile_dict(conn, wallet: str) -> dict:
     if not display:
         display = handle or (wallet[:6] + "…" + wallet[-4:] if len(wallet) > 10 else wallet)
     hide = False
+    presence_mode = "online"
     try:
         row_h = conn.execute(
-            "SELECT hide_wallet FROM community_profiles WHERE wallet=?", (wallet,)
+            "SELECT hide_wallet, presence_mode FROM community_profiles WHERE wallet=?",
+            (wallet,),
         ).fetchone()
-        if row_h and row_h["hide_wallet"]:
-            hide = True
+        if row_h:
+            if row_h["hide_wallet"]:
+                hide = True
+            pm = row_h["presence_mode"] if "presence_mode" in row_h.keys() else None
+            if pm in ("online", "invisible"):
+                presence_mode = pm
     except Exception:
-        pass
+        try:
+            row_h = conn.execute(
+                "SELECT hide_wallet FROM community_profiles WHERE wallet=?", (wallet,)
+            ).fetchone()
+            if row_h and row_h["hide_wallet"]:
+                hide = True
+        except Exception:
+            pass
+    live = PRESENCE.get(wallet)
+    connected = bool(live)
+    # Public online = connected and not Invisible. Self still gets presence_mode.
+    online = connected and presence_mode != "invisible" and (
+        not live or live.get("mode") != "invisible"
+    )
+    # Prefer live mode if connected (may have changed before DB save)
+    if live and live.get("mode") in ("online", "invisible"):
+        presence_mode = live["mode"]
+        online = connected and presence_mode != "invisible"
     return {
         "wallet": wallet,
         "display_name": display,
@@ -362,6 +449,9 @@ def profile_dict(conn, wallet: str) -> dict:
         "has_avatar": has_avatar,
         "avatar_url": f"/api/community/avatar/{wallet}" if has_avatar else None,
         "hide_wallet": hide,
+        "presence_mode": presence_mode,
+        "online": online,
+        "connected": connected,
     }
 
 
@@ -465,7 +555,7 @@ def register_community_routes(app, socketio, get_db):
         try:
             rows = conn.execute(
                 """SELECT wallet, role, joined_at FROM community_members
-                   WHERE community_id=? ORDER BY joined_at DESC LIMIT 200""",
+                   WHERE community_id=? LIMIT 200""",
                 (COMMUNITY_ID,),
             ).fetchall()
             out = []
@@ -477,9 +567,24 @@ def register_community_routes(app, socketio, get_db):
                     if q not in blob:
                         continue
                 out.append(prof)
-            return jsonify({"members": out, "count": len(out)})
+            # Discord-style: role rank (owners/mods first), then name
+            out.sort(key=_role_sort_key)
+            online = [m for m in out if m.get("online")]
+            offline = [m for m in out if not m.get("online")]
+            return jsonify({
+                "members": out,
+                "online": online,
+                "offline": offline,
+                "count": len(out),
+                "online_count": len(online),
+            })
         finally:
             conn.close()
+
+    @app.route("/api/community/presence")
+    def api_presence():
+        """Public online wallets (Invisible excluded)."""
+        return jsonify({"online": list(presence_public_snapshot().keys())})
 
     @app.route("/api/community/profile", methods=["POST"])
     def api_profile_update():
@@ -492,6 +597,12 @@ def register_community_routes(app, socketio, get_db):
         hide_wallet = 1 if data.get("hide_wallet") in (True, 1, "1", "true", "True") else 0
         if "hide_wallet" not in data:
             hide_wallet = None  # don't overwrite if omitted
+        presence_mode = None
+        if "presence_mode" in data:
+            pm = (data.get("presence_mode") or "").lower().strip()
+            if pm not in ("online", "invisible"):
+                return jsonify({"error": "presence_mode must be online or invisible"}), 400
+            presence_mode = pm
         now = int(time.time())
         conn = get_db()
         try:
@@ -500,23 +611,48 @@ def register_community_routes(app, socketio, get_db):
                 "SELECT wallet FROM community_profiles WHERE wallet=?", (wallet,)
             ).fetchone()
             if existing:
-                if hide_wallet is None:
-                    conn.execute(
-                        "UPDATE community_profiles SET display_name=?, bio=?, updated_at=? WHERE wallet=?",
-                        (display, bio, now, wallet),
-                    )
-                else:
-                    conn.execute(
-                        "UPDATE community_profiles SET display_name=?, bio=?, hide_wallet=?, updated_at=? WHERE wallet=?",
-                        (display, bio, hide_wallet, now, wallet),
-                    )
+                # Build update dynamically for optional fields
+                sets = ["display_name=?", "bio=?", "updated_at=?"]
+                vals = [display, bio, now]
+                if hide_wallet is not None:
+                    sets.append("hide_wallet=?")
+                    vals.append(hide_wallet)
+                if presence_mode is not None:
+                    sets.append("presence_mode=?")
+                    vals.append(presence_mode)
+                vals.append(wallet)
+                conn.execute(
+                    f"UPDATE community_profiles SET {', '.join(sets)} WHERE wallet=?",
+                    vals,
+                )
             else:
                 conn.execute(
-                    """INSERT INTO community_profiles (wallet, display_name, bio, hide_wallet, updated_at)
-                       VALUES (?,?,?,?,?)""",
-                    (wallet, display, bio, hide_wallet or 0, now),
+                    """INSERT INTO community_profiles
+                       (wallet, display_name, bio, hide_wallet, presence_mode, updated_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (
+                        wallet,
+                        display,
+                        bio,
+                        hide_wallet or 0,
+                        presence_mode or "online",
+                        now,
+                    ),
                 )
             conn.commit()
+            if presence_mode is not None and wallet in PRESENCE:
+                presence_set(wallet, presence_mode, PRESENCE[wallet].get("sid"))
+                try:
+                    socketio.emit(
+                        "presence_update",
+                        {
+                            "wallet": wallet,
+                            "online": presence_is_visible_online(wallet),
+                            "mode": presence_mode,
+                        },
+                    )
+                except Exception:
+                    pass
             return jsonify({"ok": True, "profile": profile_dict(conn, wallet)})
         finally:
             conn.close()
@@ -876,4 +1012,93 @@ def register_community_routes(app, socketio, get_db):
         slug = (data or {}).get("slug") or "general"
         join_room(f"community:{slug}")
 
+    @socketio.on("set_presence")
+    def on_set_presence(data):
+        """Discord-style: online | invisible. Persists preference + live status."""
+        from flask import request as flask_request
+        from flask_socketio import emit as sio_emit
+
+        data = data or {}
+        wallet = _norm(data.get("wallet", ""))
+        mode = (data.get("mode") or "online").lower().strip()
+        if mode not in ("online", "invisible"):
+            sio_emit("error", {"message": "mode must be online or invisible"})
+            return
+        if not wallet.startswith("0x"):
+            return
+        # Prefer authenticated socket wallet if available
+        try:
+            # sid mapped in server._socket_wallets — optional trust wallet from client if matches
+            pass
+        except Exception:
+            pass
+        presence_set(wallet, mode, flask_request.sid)
+        conn = get_db()
+        try:
+            ensure_member(conn, wallet)
+            row = conn.execute(
+                "SELECT wallet FROM community_profiles WHERE wallet=?", (wallet,)
+            ).fetchone()
+            now = int(time.time())
+            if row:
+                conn.execute(
+                    "UPDATE community_profiles SET presence_mode=?, updated_at=? WHERE wallet=?",
+                    (mode, now, wallet),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO community_profiles
+                       (wallet, display_name, bio, hide_wallet, presence_mode, updated_at)
+                       VALUES (?,?,?,?,?,?)""",
+                    (wallet, "", "", 0, mode, now),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        visible = presence_is_visible_online(wallet)
+        sio_emit("presence_ok", {"wallet": wallet, "mode": mode, "online": visible})
+        socketio.emit(
+            "presence_update",
+            {"wallet": wallet, "online": visible, "mode": mode},
+            skip_sid=None,
+        )
+
     print("  [community] routes registered — official Lightchain server ready")
+
+
+def presence_on_auth(wallet: str, sid: str, get_db, socketio) -> None:
+    """Call from server auth — mark wallet present using saved Invisible preference."""
+    wallet = _norm(wallet)
+    if not wallet.startswith("0x"):
+        return
+    conn = get_db()
+    try:
+        mode = presence_get_mode(conn, wallet)
+        ensure_member(conn, wallet)
+    finally:
+        conn.close()
+    presence_set(wallet, mode, sid)
+    try:
+        socketio.emit(
+            "presence_update",
+            {
+                "wallet": wallet,
+                "online": presence_is_visible_online(wallet),
+                "mode": mode,
+            },
+        )
+    except Exception:
+        pass
+
+
+def presence_on_disconnect(wallet: str, sid: str, socketio) -> None:
+    wallet = _norm(wallet)
+    if not presence_clear(wallet, sid):
+        return
+    try:
+        socketio.emit(
+            "presence_update",
+            {"wallet": wallet, "online": False, "mode": "offline"},
+        )
+    except Exception:
+        pass

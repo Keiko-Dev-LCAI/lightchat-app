@@ -1201,6 +1201,13 @@ body {
 .chan-item .meta .d { font-size:12px; color:var(--text2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dir-search { margin:12px 14px; }
 .dir-search input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
+.dir-section-label { font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text2); padding:14px 12px 6px; }
+.dir-item { position:relative; }
+.dir-av-wrap { position:relative; flex-shrink:0; }
+.dir-online-dot { position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border-radius:50%; background:#23a559; border:2px solid var(--bg); box-sizing:border-box; }
+.dir-role-tag { font-size:12px; color:var(--text2); font-weight:600; }
+.dir-role-tag.owner, .dir-role-tag.admin { color:#f0b232; }
+.dir-role-tag.mod { color:#5B4BFF; }
 .profile-edit { padding:16px; display:flex; flex-direction:column; gap:12px; }
 .profile-edit label { font-size:13px; color:var(--text2); }
 .profile-edit input, .profile-edit textarea { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:15px; font-family:inherit; width:100%; }
@@ -1378,6 +1385,13 @@ body {
 .chan-item .meta .d { font-size:12px; color:var(--text2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dir-search { margin:12px 14px; }
 .dir-search input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
+.dir-section-label { font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text2); padding:14px 12px 6px; }
+.dir-item { position:relative; }
+.dir-av-wrap { position:relative; flex-shrink:0; }
+.dir-online-dot { position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border-radius:50%; background:#23a559; border:2px solid var(--bg); box-sizing:border-box; }
+.dir-role-tag { font-size:12px; color:var(--text2); font-weight:600; }
+.dir-role-tag.owner, .dir-role-tag.admin { color:#f0b232; }
+.dir-role-tag.mod { color:#5B4BFF; }
 .profile-edit { padding:16px; display:flex; flex-direction:column; gap:12px; }
 .profile-edit label { font-size:13px; color:var(--text2); }
 .profile-edit input, .profile-edit textarea { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text); font-size:15px; font-family:inherit; width:100%; }
@@ -1550,7 +1564,7 @@ body {
       <span class="sidebar-notif" id="scontacts-dot"></span>
     </button>
     <button class="sidebar-tab" id="snav-directory" onclick="switchTab('directory')">
-      <span class="sidebar-tab-icon">📘</span> Directory
+      <span class="sidebar-tab-icon">👥</span> Members
     </button>
     <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
       <span class="sidebar-tab-icon">📅</span> Events
@@ -1612,10 +1626,10 @@ body {
       </div>
     </div>
 
-    <!-- Directory -->
+    <!-- Members (Discord-style online / offline + role rank) -->
     <div class="tab" id="tab-directory">
       <div class="comm-wrap">
-        <div class="comm-header"><div><h2>Directory</h2><div class="comm-sub">Community members</div></div></div>
+        <div class="comm-header"><div><h2>Members</h2><div class="comm-sub">Online · Invisible · role order</div></div></div>
         <div class="dir-search"><input id="dir-search" placeholder="Search members…" oninput="filterDirectory()"></div>
         <div class="dir-list" id="directory-list"></div>
       </div>
@@ -1707,6 +1721,14 @@ body {
               <input type="checkbox" id="me-hide-wallet" onchange="toggleHideWalletPrivacy(this.checked)" style="width:18px;height:18px;accent-color:var(--lc-primary,#5B4BFF)">
               Hide my wallet from other members
             </label>
+            <div style="margin-top:14px">
+              <label class="form-label" style="margin-bottom:6px;display:block;font-size:13px">Status</label>
+              <select id="me-presence-mode" onchange="setMyPresence(this.value)" class="form-input" style="width:100%;max-width:280px;padding:10px 12px;border-radius:12px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:15px;font-family:inherit">
+                <option value="online">🟢 Online</option>
+                <option value="invisible">👻 Invisible (appear offline)</option>
+              </select>
+              <div style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.4">Invisible keeps you connected but shows you Offline to others — like Discord.</div>
+            </div>
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;margin-bottom:22px">
@@ -2894,6 +2916,7 @@ function emptyCTAClick() {
 function connectSocket() {
   if (socket) socket.disconnect();
   socket = io(BACKEND, {transports: ['websocket','polling']});
+  try { bindPresenceSocket(socket); } catch (e) {}
   socket.on('connect', () => {
     if (!sessionToken) {
       ensureSession().then(() => {
@@ -2914,6 +2937,13 @@ function connectSocket() {
         if (_activeCommSlug === 'general') ensureGenChatP2P();
       }
     } catch(e) {}
+    try {
+      const mode = window._myPresenceMode
+        || (window._commProfile && window._commProfile.presence_mode)
+        || localStorage.getItem('lc_presence_mode')
+        || 'online';
+      if (wallet) socket.emit('set_presence', { wallet, mode: mode === 'invisible' ? 'invisible' : 'online' });
+    } catch (e) {}
   });
   socket.on('auth_error', (d) => {
     console.warn('auth_error', d);
@@ -7360,6 +7390,7 @@ async function communityJoin() {
     const j = await r.json();
     if (j.role) communityRole = j.role;
     if (j.profile) window._commProfile = j.profile;
+    try { syncPresencePickerFromProfile(); } catch(e) {}
     try { if (typeof updateUI === 'function') updateUI(); } catch(e) {}
     try { refreshOwnerMenuVisibility(); } catch(e) {}
   } catch(e) { console.warn('community join', e); }
@@ -7719,25 +7750,151 @@ async function loadDirectory() {
   } catch(e) { console.warn(e); }
 }
 
+const _ROLE_RANK_UI = { owner: 100, admin: 80, mod: 50, helper: 30, member: 10 };
+
+function _dirRoleSort(a, b) {
+  const ra = _ROLE_RANK_UI[(a.role || 'member').toLowerCase()] || 0;
+  const rb = _ROLE_RANK_UI[(b.role || 'member').toLowerCase()] || 0;
+  if (rb !== ra) return rb - ra;
+  const na = (a.display_name || a.handle || a.wallet || '').toLowerCase();
+  const nb = (b.display_name || b.handle || b.wallet || '').toLowerCase();
+  return na < nb ? -1 : na > nb ? 1 : 0;
+}
+
+function _dirMemberRow(m) {
+  const letter = (m.display_name||'?').charAt(0).toUpperCase();
+  const av = m.has_avatar
+    ? `<img src="${BACKEND}/api/community/avatar/${m.wallet}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="">`
+    : letter;
+  const role = (m.role || 'member').toLowerCase();
+  const roleHtml = role !== 'member'
+    ? ` <span class="dir-role-tag ${escapeHtml(role)}">· ${escapeHtml(role)}</span>`
+    : '';
+  const online = !!m.online;
+  const selfInv = wallet && m.wallet === wallet && (m.presence_mode === 'invisible' || window._myPresenceMode === 'invisible');
+  const dot = online
+    ? '<span class="dir-online-dot" title="Online"></span>'
+    : (selfInv ? '<span class="dir-online-dot" title="Invisible" style="background:#747f8d"></span>' : '');
+  const statusHint = selfInv && !online ? '<div class="d">Invisible — others see you offline</div>' : '';
+  return `<div class="dir-item" onclick="if(wallet){ openChat && openChat('${m.wallet}', '${escapeHtml(m.display_name)}') }">
+    <div class="dir-av-wrap"><div class="comm-av">${av}</div>${dot}</div>
+    <div class="meta" style="flex:1;min-width:0">
+      <div class="n">${escapeHtml(m.display_name)}${roleHtml}</div>
+      <div class="d">${m.hide_wallet ? '' : escapeHtml(shortenWallet(m.wallet))}</div>
+      ${statusHint}
+    </div>
+  </div>`;
+}
+
 function filterDirectory() {
   const q = (document.getElementById('dir-search')?.value || '').toLowerCase();
   const el = document.getElementById('directory-list');
   if (!el) return;
-  const list = !_dirMembers.length ? [] : _dirMembers.filter(m => {
+  let list = !_dirMembers.length ? [] : _dirMembers.filter(m => {
     if (!q) return true;
     return (m.display_name + m.handle + m.wallet + (m.role||'')).toLowerCase().includes(q);
   });
-  el.innerHTML = list.map(m => {
-    const letter = (m.display_name||'?').charAt(0).toUpperCase();
-    const av = m.has_avatar ? `<img src="${BACKEND}/api/community/avatar/${m.wallet}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">` : letter;
-    return `<div class="dir-item" onclick="if(wallet){ openChat && openChat('${m.wallet}', '${escapeHtml(m.display_name)}') }">
-      <div class="comm-av">${av}</div>
-      <div class="meta" style="flex:1">
-        <div class="n">${escapeHtml(m.display_name)} ${m.role && m.role!=='member' ? '· '+escapeHtml(m.role) : ''}</div>
-        <div class="d">${m.hide_wallet ? '' : escapeHtml(shortenWallet(m.wallet))}</div>
-      </div>
-    </div>`;
-  }).join('') || '<div class="empty-text" style="padding:24px;text-align:center">No members yet — connect and join</div>';
+  // Self: if Invisible, still show under Offline for others — for self, keep offline but gray dot
+  list = list.slice().sort(_dirRoleSort);
+  const online = list.filter(m => m.online).sort(_dirRoleSort);
+  const offline = list.filter(m => !m.online).sort(_dirRoleSort);
+  let html = '';
+  html += `<div class="dir-section-label">Online — ${online.length}</div>`;
+  html += online.length
+    ? online.map(_dirMemberRow).join('')
+    : '<div class="empty-text" style="padding:8px 12px 4px;font-size:13px">No one online</div>';
+  html += `<div class="dir-section-label">Offline — ${offline.length}</div>`;
+  html += offline.length
+    ? offline.map(_dirMemberRow).join('')
+    : '<div class="empty-text" style="padding:8px 12px;font-size:13px">Nobody offline</div>';
+  if (!list.length) {
+    html = '<div class="empty-text" style="padding:24px;text-align:center">No members yet — connect and join</div>';
+  }
+  el.innerHTML = html;
+}
+
+function setMyPresence(mode) {
+  mode = (mode === 'invisible') ? 'invisible' : 'online';
+  window._myPresenceMode = mode;
+  try { localStorage.setItem('lc_presence_mode', mode); } catch (e) {}
+  const sel = document.getElementById('me-presence-mode');
+  if (sel && sel.value !== mode) sel.value = mode;
+  if (socket && socket.connected && wallet) {
+    socket.emit('set_presence', { wallet, mode });
+  }
+  // Optimistic local directory update
+  if (_dirMembers && wallet) {
+    _dirMembers.forEach(m => {
+      if (m.wallet === wallet) {
+        m.presence_mode = mode;
+        m.connected = true;
+        m.online = mode !== 'invisible';
+      }
+    });
+    filterDirectory();
+  }
+  // Persist on profile too
+  if (wallet) {
+    fetch(BACKEND + '/api/community/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet,
+        display_name: (window._commProfile && window._commProfile.display_name) || '',
+        bio: (window._commProfile && window._commProfile.bio) || '',
+        presence_mode: mode,
+        hide_wallet: !!(document.getElementById('me-hide-wallet')?.checked || window._hideWalletPublic)
+      })
+    }).then(r => r.json()).then(j => {
+      if (j.profile) window._commProfile = j.profile;
+    }).catch(() => {});
+  }
+  showToast(mode === 'invisible' ? 'Invisible — you appear offline' : 'Status: Online');
+}
+
+function syncPresencePickerFromProfile() {
+  const mode = (window._commProfile && window._commProfile.presence_mode)
+    || localStorage.getItem('lc_presence_mode')
+    || 'online';
+  window._myPresenceMode = mode === 'invisible' ? 'invisible' : 'online';
+  const sel = document.getElementById('me-presence-mode');
+  if (sel) sel.value = window._myPresenceMode;
+}
+
+function bindPresenceSocket(sock) {
+  if (!sock || sock._lcPresenceBound) return;
+  sock._lcPresenceBound = true;
+  sock.on('presence_update', function (data) {
+    data = data || {};
+    const w = (data.wallet || '').toLowerCase();
+    if (!w || !_dirMembers) return;
+    let found = false;
+    _dirMembers.forEach(m => {
+      if (m.wallet === w) {
+        found = true;
+        m.online = !!data.online;
+        if (data.mode === 'online' || data.mode === 'invisible') m.presence_mode = data.mode;
+        if (data.mode === 'offline') m.connected = false;
+        else m.connected = true;
+      }
+    });
+    if (found) filterDirectory();
+    else loadDirectory();
+  });
+  sock.on('auth_ok', function () {
+    const mode = window._myPresenceMode
+      || (window._commProfile && window._commProfile.presence_mode)
+      || localStorage.getItem('lc_presence_mode')
+      || 'online';
+    if (wallet) sock.emit('set_presence', { wallet, mode: mode === 'invisible' ? 'invisible' : 'online' });
+  });
+  sock.on('presence_ok', function (data) {
+    if (data && data.mode) {
+      window._myPresenceMode = data.mode;
+      const sel = document.getElementById('me-presence-mode');
+      if (sel) sel.value = data.mode;
+    }
+  });
 }
 
 async function loadCommunityEvents() {
@@ -7838,11 +7995,15 @@ async function saveEditProfile() {
   if (!wallet) { showToast('Connect wallet first'); return; }
   const display_name = (document.getElementById('edit-prof-display')?.value || '').trim();
   const bio = (document.getElementById('edit-prof-bio')?.value || '').trim();
+  const presence_mode = (document.getElementById('me-presence-mode')?.value === 'invisible')
+    ? 'invisible'
+    : (window._myPresenceMode === 'invisible' ? 'invisible' : 'online');
   try {
     const r = await fetch(BACKEND + '/api/community/profile', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         wallet, display_name, bio,
+        presence_mode,
         hide_wallet: !!(document.getElementById('me-hide-wallet')?.checked || window._hideWalletPublic)
       })
     });
