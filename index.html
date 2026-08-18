@@ -2065,9 +2065,6 @@ body {
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
           </div>
-          <div class="me-menu-item" onclick="clearCommDeleteTombstones()">
-            <div class="me-menu-icon">♻️</div><div>Restore hidden chat history</div><div class="me-menu-arrow">›</div>
-          </div>
           <div class="me-menu-item" id="me-logoff-btn" onclick="logOff()" style="display:none;color:#ff8a8a">
             <div class="me-menu-icon">🚪</div><div>Log off</div><div class="me-menu-arrow">›</div>
           </div>
@@ -2478,6 +2475,16 @@ body {
         On-chain memories use the blockchain and are permanent.
         Sign in with a wallet on <strong style="color:var(--text)">Lightchain</strong> (chain 9200) only. Other networks are not allowed.
       </div>
+    </div>
+
+    <div style="margin-top:22px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px 20px">
+      <div style="font-size:18px;font-weight:700;margin-bottom:8px">♻️ Chat history</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.55;margin-bottom:12px">
+        If deleted posts stay hidden after a refresh, you can clear local delete memory. This does not undelete server posts.
+      </div>
+      <button type="button" onclick="clearCommDeleteTombstones()" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:rgba(91,75,255,0.15);color:var(--text);font-weight:700;font-size:15px;cursor:pointer;font-family:inherit">
+        Restore hidden local history…
+      </button>
     </div>
 
     <!-- X contact removed -->
