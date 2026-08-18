@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-quiet-send">
+<meta name="lc-build" content="2026-08-18-msg-menu-react">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2019,12 +2019,14 @@ body {
         <div id="genchat-compose">
           <div id="mention-ac" class="mention-ac" role="listbox" aria-label="Mention members"></div>
           <style>
-          .comm-msg-react-row { display:flex; flex-wrap:wrap; gap:4px; padding:6px 8px 4px; border-bottom:1px solid var(--border); }
-          .comm-msg-react-row button {
-            background:transparent!important; border:none!important; font-size:18px!important;
-            padding:4px 6px!important; cursor:pointer; line-height:1; border-radius:8px!important;
+          .comm-msg-react-row { display:flex; flex-wrap:wrap; gap:2px; padding:4px 6px 8px; border-bottom:1px solid var(--border); }
+          #comm-msg-menu .comm-msg-react-row button {
+            background:transparent!important; border:none!important; font-size:20px!important;
+            padding:6px 8px!important; cursor:pointer; line-height:1; border-radius:8px!important;
+            font-weight:400!important; text-align:center!important; min-width:0!important;
           }
-          .comm-msg-react-row button:hover { background:var(--purple-glow)!important; }
+          #comm-msg-menu .comm-msg-react-row button:hover { background:var(--purple-glow)!important; }
+          #comm-msg-menu { max-height:min(70vh,420px); overflow-y:auto; }
           .comm-reply-quote {
             border-left:3px solid var(--lc-primary,#5B4BFF); padding:4px 8px 4px 10px; margin:0 0 6px;
             background:rgba(91,75,255,0.08); border-radius:0 8px 8px 0; font-size:12px; color:var(--text2);
@@ -10106,8 +10108,14 @@ function openCommMsgMenu(ev, btn) {
   const editBtn = document.getElementById('comm-msg-edit-btn');
   if (editBtn) editBtn.style.display = isCommMsgAuthor(_commMsgMenuCtx) ? '' : 'none';
   menu.classList.add('open');
-  const x = Math.min(ev.clientX || 16, window.innerWidth - 180);
-  const y = Math.min(ev.clientY || 16, window.innerHeight - 200);
+  // Measure after open so Reply + emoji row stay on-screen (menu used to grow off the bottom)
+  const mw = Math.max(menu.offsetWidth || 180, 180);
+  const mh = Math.max(menu.offsetHeight || 240, 120);
+  let x = (ev.clientX || 16);
+  let y = (ev.clientY || 16);
+  x = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+  if (y + mh > window.innerHeight - 8) y = Math.max(8, window.innerHeight - mh - 8);
+  else y = Math.max(8, y);
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
 }
