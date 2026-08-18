@@ -3267,16 +3267,47 @@ function isWalletAuthDenied(e) {
 
 async function ensureSession(opts) {
   /** Lightchain network wallet only — signed personal_sign after chain check.
-   *  opts.silent: page-refresh restore — reuse token only, never prompt sign / toast. */
+   *  opts.silent: page-refresh / resume — reuse token only, never prompt sign / switch. */
   const silent = !!(opts && opts.silent);
   if (!isValidWallet(wallet)) throw new Error('invalid wallet');
   wallet = wallet.toLowerCase();
   const prov = _activeProvider || window.ethereum;
 
-  await requireLightchainNetwork(prov, { silent: silent });
+  // Reuse valid token FIRST on silent resume (before any wallet RPC that can pop MetaMask)
+  if (silent && sessionToken) {
+    try {
+      const chk = await fetch(BACKEND + '/api/auth/session', {
+        headers: { 'Authorization': 'Bearer ' + sessionToken }
+      }).then(r => r.json());
+      if (chk.valid && chk.wallet === wallet && (chk.mode === 'signed' || sessionMode === 'signed')) {
+        sessionMode = chk.mode || sessionMode;
+        localStorage.setItem('lc_session_mode', sessionMode || '');
+        try { bindLightchainChainGuard(prov); } catch (e) {}
+        return sessionToken;
+      }
+    } catch (e) {}
+  }
+
+  try {
+    await requireLightchainNetwork(prov, { silent: silent });
+  } catch (e) {
+    // Silent resume with a still-valid token: ignore transient chain/RPC blips
+    if (silent && sessionToken) {
+      try {
+        const chk = await fetch(BACKEND + '/api/auth/session', {
+          headers: { 'Authorization': 'Bearer ' + sessionToken }
+        }).then(r => r.json());
+        if (chk.valid && chk.wallet === wallet) {
+          try { bindLightchainChainGuard(prov); } catch (err) {}
+          return sessionToken;
+        }
+      } catch (err) {}
+    }
+    throw e;
+  }
   bindLightchainChainGuard(prov);
 
-  // Reuse valid stored token for this wallet (still must be on LC above)
+  // Reuse valid stored token for this wallet
   if (sessionToken) {
     try {
       const chk = await fetch(BACKEND + '/api/auth/session', {
@@ -3292,7 +3323,7 @@ async function ensureSession(opts) {
     localStorage.removeItem('lc_session_token');
   }
 
-  // Silent restore: never popup personal_sign on page load (causes "not authorized" toasts)
+  // Silent restore: never popup personal_sign on page load / resume
   if (silent) {
     const err = new Error('Session expired — tap Connect Wallet');
     err.code = 'needs_sign';
@@ -3403,7 +3434,9 @@ async function switchToLightchain(prov) {
   }
 }
 
-/** Login only allowed when the connected wallet is on Lightchain (9200). */
+/** Login only allowed when the connected wallet is on Lightchain (9200).
+ *  silent=true (page resume / socket restore): ONLY read eth_chainId — never
+ *  wallet_switchEthereumChain / personal_sign (those pop MetaMask on every minimize). */
 async function requireLightchainNetwork(prov, opts) {
   const silent = !!(opts && opts.silent);
   if (!prov || typeof prov.request !== 'function') {
@@ -3411,20 +3444,24 @@ async function requireLightchainNetwork(prov, opts) {
     err.code = 'lc_network_required';
     throw err;
   }
-  if (!silent) showToast('Checking Lightchain network…');
-  try {
-    await switchToLightchain(prov);
-  } catch (e) {
-    if (isWalletAuthDenied(e) || (e && e.code === 4001)) throw e;
-    const err = new Error('Switch your wallet to Lightchain (chain 9200) to sign in');
-    err.code = 'lc_network_required';
-    throw err;
+  if (!silent) {
+    showToast('Checking Lightchain network…');
+    try {
+      await switchToLightchain(prov);
+    } catch (e) {
+      if (isWalletAuthDenied(e) || (e && e.code === 4001)) throw e;
+      const err = new Error('Switch your wallet to Lightchain (chain 9200) to sign in');
+      err.code = 'lc_network_required';
+      throw err;
+    }
   }
   let chainHex;
   try {
     chainHex = await prov.request({ method: 'eth_chainId' });
   } catch (e) {
     if (isWalletAuthDenied(e)) throw e;
+    // Silent resume: provider busy (MetaMask minimized) — don't fail the session
+    if (silent) return;
     const err = new Error('Connect a wallet on Lightchain network');
     err.code = 'lc_network_required';
     throw err;
@@ -3437,22 +3474,44 @@ async function requireLightchainNetwork(prov, opts) {
   }
 }
 
+let _chainBlipTimer = null;
 function bindLightchainChainGuard(prov) {
   if (!prov || prov._lcChainGuard) return;
   prov._lcChainGuard = true;
   const onChain = function (hex) {
     try {
       const id = parseInt(hex, 16);
-      if (id !== LC_CHAIN_ID && wallet) {
-        showToast('Switched off Lightchain — reconnect on chain 9200 to use LightChat');
-        // Soft-lock: clear session so they must re-auth on LC
-        sessionToken = null;
-        sessionMode = null;
-        try {
-          localStorage.removeItem('lc_session_token');
-          localStorage.removeItem('lc_session_mode');
-        } catch (e) {}
+      if (id === LC_CHAIN_ID) {
+        // Back on LC — cancel any pending soft-lock
+        if (_chainBlipTimer) { clearTimeout(_chainBlipTimer); _chainBlipTimer = null; }
+        return;
       }
+      if (!wallet) return;
+      // Debounce: MetaMask often blips off 9200 when minimized/opened — don't wipe session
+      if (_chainBlipTimer) clearTimeout(_chainBlipTimer);
+      _chainBlipTimer = setTimeout(function () {
+        _chainBlipTimer = null;
+        try {
+          const still = parseInt(hex, 16);
+          // Re-check live chain if possible
+          const p = _activeProvider || window.ethereum;
+          if (p && p.request) {
+            p.request({ method: 'eth_chainId' }).then(function (h) {
+              const live = parseInt(h, 16);
+              if (live === LC_CHAIN_ID) return;
+              showToast('Switched off Lightchain — tap Connect on chain 9200');
+              // Soft UI lock only — keep token so resume can reuse it after they switch back
+              try { showConnectUI(); } catch (e) {}
+            }).catch(function () {
+              showToast('Switched off Lightchain — tap Connect on chain 9200');
+              try { showConnectUI(); } catch (e) {}
+            });
+            return;
+          }
+        } catch (e) {}
+        showToast('Switched off Lightchain — tap Connect on chain 9200');
+        try { showConnectUI(); } catch (e) {}
+      }, 2500);
     } catch (e) {}
   };
   if (typeof prov.on === 'function') prov.on('chainChanged', onChain);
@@ -7760,27 +7819,44 @@ window.addEventListener('load', async () => {
   try { applyAddFriendDeepLink(); } catch (e) {}
 });
 
+let _accountsEmptyTimer = null;
 if (window.ethereum) {
   window.ethereum.on?.('accountsChanged', async (accounts) => {
     if (_connectingInProgress) return;
     if (!accounts?.length) {
-      // Treat as log off without full reload
-      try { localStorage.setItem('lc_manual_logout', '1'); } catch (e) {}
-      wallet = null;
-      sessionToken = null;
-      try {
-        localStorage.removeItem('lc_wallet');
-        localStorage.removeItem('lc_session_token');
-        localStorage.removeItem('lc_session_mode');
-      } catch (e) {}
-      try { if (socket) { socket.disconnect(); socket = null; } } catch (e) {}
-      showConnectUI();
-      try { updateUI(); } catch (e) {}
-      showToast('Wallet disconnected');
+      // MetaMask mobile often fires [] when minimized — debounce before real logout
+      if (_accountsEmptyTimer) clearTimeout(_accountsEmptyTimer);
+      _accountsEmptyTimer = setTimeout(async function () {
+        _accountsEmptyTimer = null;
+        try {
+          const p = _activeProvider || window.ethereum;
+          const again = p && p.request ? await p.request({ method: 'eth_accounts' }) : [];
+          if (again && again.length) return; // blip — stay logged in
+        } catch (e) {}
+        try { localStorage.setItem('lc_manual_logout', '1'); } catch (e) {}
+        wallet = null;
+        sessionToken = null;
+        try {
+          localStorage.removeItem('lc_wallet');
+          localStorage.removeItem('lc_session_token');
+          localStorage.removeItem('lc_session_mode');
+        } catch (e) {}
+        try { if (socket) { socket.disconnect(); socket = null; } } catch (e) {}
+        showConnectUI();
+        try { updateUI(); } catch (e) {}
+        showToast('Wallet disconnected');
+      }, 3000);
       return;
     }
+    if (_accountsEmptyTimer) { clearTimeout(_accountsEmptyTimer); _accountsEmptyTimer = null; }
     try { localStorage.removeItem('lc_manual_logout'); } catch (e) {}
     const addr = accounts[0].toLowerCase();
+    // Same wallet coming back after minimize — do NOT re-run finishConnect (no MetaMask popup)
+    if (wallet && addr === wallet.toLowerCase()) {
+      try { hideConnectUI(); } catch (e) {}
+      try { if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken }); } catch (e) {}
+      return;
+    }
     if (addr !== wallet) { wallet = addr; await onWalletConnected(); }
   });
 }
