@@ -8742,7 +8742,7 @@ function displayRoleLabel(role) {
 let _dirMembers = [];
 let _activeCommSlug = 'general';
 /** Live channels that use WebRTC P2P mesh (same as Gen Chat). */
-const P2P_CHAT_CHANNELS = { general: true, dev: true, nodes: true, mods: true };
+const P2P_CHAT_CHANNELS = { general: true, 'off-topic': true, dev: true, nodes: true, mods: true };
 function isP2PChatChannel(slug) {
   return !!P2P_CHAT_CHANNELS[(slug || '').toLowerCase()];
 }
@@ -9157,7 +9157,7 @@ async function closeActiveThread() {
 function _visibleCommunityChannels() {
   return (communityChannels || []).filter(c =>
     c.mode !== 'hidden' &&
-    (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'nodes' ||
+    (c.primary || c.slug === 'general' || c.slug === 'off-topic' || c.slug === 'dev' || c.slug === 'nodes' ||
      c.slug === 'mods' || c.slug === 'start-here' || c.slug === 'announcements' ||
      c.slug === 'media' || c.slug === 'links' || c.slug === 'garden')
   );
@@ -9231,6 +9231,7 @@ function setCommunityChannelHeader(slug) {
   }
   if (s) {
     if (slug === 'general') s.textContent = 'Everyone · Lightchain community';
+    else if (slug === 'off-topic') s.textContent = 'Non-Lightchain · memes, life, random chat';
     else if (slug === 'dev') s.textContent = '#Devs · builders & tooling';
     else if (slug === 'nodes') s.textContent = '#Nodes · operators & validators';
     else if (slug === 'mods') s.textContent = '#Mods · staff only';
