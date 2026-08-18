@@ -1,0 +1,21 @@
+{
+  "name": "lightchat-holepunch-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Experimental Hyperswarm DHT WebSocket relay for LightChat browser spike",
+  "scripts": {
+    "relay": "node relay.mjs",
+    "start": "node relay.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@hyperswarm/dht-relay": "^0.4.3",
+    "b4a": "^1.6.7",
+    "hyperdht": "^6.20.1",
+    "hyperswarm": "^4.11.7",
+    "ws": "^8.18.0"
+  }
+}
