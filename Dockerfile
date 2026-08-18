@@ -17,6 +17,6 @@ ENV MEDIA_BACKEND=fs
 ENV PORT=8080
 EXPOSE 8080
 
-VOLUME ["/app/data"]
+# Persist /app/data via Railway Volume in the dashboard (Dockerfile VOLUME is not supported on Railway)
 
 CMD ["python", "server.py"]
