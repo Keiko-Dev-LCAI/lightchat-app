@@ -2,7 +2,7 @@ import eventlet
 eventlet.monkey_patch()
 
 from flask import Flask, request, jsonify, make_response, send_from_directory
-from flask_socketio import SocketIO, join_room, emit
+from flask_socketio import SocketIO, join_room, leave_room, emit
 from flask_cors import CORS
 import sqlite3
 import os
@@ -1120,9 +1120,16 @@ def on_connect():
     pass
 
 
+# Gen Chat P2P — signaling only (SDP/ICE). Message bodies travel on WebRTC datachannels.
+_genchat_p2p_peers = {}  # wallet -> sid
+
+
 @socketio.on('disconnect')
 def on_disconnect():
-    _socket_wallets.pop(request.sid, None)
+    w = _socket_wallets.pop(request.sid, None)
+    if w and _genchat_p2p_peers.get(w) == request.sid:
+        _genchat_p2p_peers.pop(w, None)
+        socketio.emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', skip_sid=request.sid)
 
 
 @socketio.on('auth')
@@ -1148,6 +1155,52 @@ def on_auth(data):
             'handle': pending['handle'],
             'offer': pending['offer']
         })
+
+
+@socketio.on('genchat_p2p_join')
+def on_genchat_p2p_join(data):
+    data = data or {}
+    wallet = (data.get('wallet') or '').lower()
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != wallet:
+        emit('error', {'message': 'Not authenticated'})
+        return
+    join_room('genchat_p2p')
+    _genchat_p2p_peers[wallet] = request.sid
+    peers = [w for w in _genchat_p2p_peers.keys() if w != wallet]
+    emit('genchat_p2p_peers', {'peers': peers})
+    emit('genchat_p2p_peer_joined', {'wallet': wallet}, room='genchat_p2p', include_self=False)
+
+
+@socketio.on('genchat_p2p_leave')
+def on_genchat_p2p_leave(data):
+    data = data or {}
+    wallet = (data.get('wallet') or '').lower()
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or (wallet and auth_w != wallet):
+        return
+    w = wallet or auth_w
+    if _genchat_p2p_peers.get(w) == request.sid:
+        _genchat_p2p_peers.pop(w, None)
+    leave_room('genchat_p2p')
+    emit('genchat_p2p_peer_left', {'wallet': w}, room='genchat_p2p', include_self=False)
+
+
+@socketio.on('genchat_p2p_signal')
+def on_genchat_p2p_signal(data):
+    """Forward WebRTC signaling to target wallet. No message bodies here."""
+    data = data or {}
+    frm = (data.get('from') or '').lower()
+    to = (data.get('to') or '').lower()
+    auth_w = _wallet_for_sid(request.sid)
+    if not auth_w or auth_w != frm or not to:
+        return
+    sid = _genchat_p2p_peers.get(to)
+    if sid:
+        emit('genchat_p2p_signal', data, room=sid)
+    else:
+        # fallback: wallet personal room (if they're connected elsewhere)
+        emit('genchat_p2p_signal', data, room=to)
 
 
 @socketio.on('join_chat')
