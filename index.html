@@ -1187,9 +1187,30 @@ body {
 .comm-bubble { background:var(--bubble-in); border:1px solid var(--border); border-radius:12px; padding:10px 12px; max-width:min(560px,85%); }
 .comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
 .comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble { position:relative; }
 .comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
 .comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
 .comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
+.comm-msg-more {
+  position:absolute; top:6px; right:6px;
+  background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text2);
+  border-radius:8px; width:28px; height:28px; line-height:1; font-size:16px; font-weight:700;
+  cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;
+  opacity:0.7;
+}
+.comm-msg-more:hover, .comm-msg-more:active { opacity:1; background:rgba(91,75,255,0.25); color:var(--text); }
+#comm-msg-menu {
+  display:none; position:fixed; z-index:960; min-width:160px;
+  background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 10px 36px rgba(0,0,0,0.55); padding:6px; flex-direction:column; gap:2px;
+}
+#comm-msg-menu.open { display:flex; }
+#comm-msg-menu button {
+  background:none; border:none; color:var(--text); text-align:left; padding:12px 14px;
+  font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; font-family:inherit;
+}
+#comm-msg-menu button:hover { background:var(--purple-glow); }
+#comm-msg-menu button.danger { color:#ff6b6b; }
 .comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); align-items:center; }
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
@@ -1388,9 +1409,30 @@ body {
 .comm-bubble { background:var(--bubble-in); border:1px solid var(--border); border-radius:12px; padding:10px 12px; max-width:min(560px,85%); }
 .comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
 .comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble { position:relative; }
 .comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
 .comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
 .comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
+.comm-msg-more {
+  position:absolute; top:6px; right:6px;
+  background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text2);
+  border-radius:8px; width:28px; height:28px; line-height:1; font-size:16px; font-weight:700;
+  cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;
+  opacity:0.7;
+}
+.comm-msg-more:hover, .comm-msg-more:active { opacity:1; background:rgba(91,75,255,0.25); color:var(--text); }
+#comm-msg-menu {
+  display:none; position:fixed; z-index:960; min-width:160px;
+  background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 10px 36px rgba(0,0,0,0.55); padding:6px; flex-direction:column; gap:2px;
+}
+#comm-msg-menu.open { display:flex; }
+#comm-msg-menu button {
+  background:none; border:none; color:var(--text); text-align:left; padding:12px 14px;
+  font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; font-family:inherit;
+}
+#comm-msg-menu button:hover { background:var(--purple-glow); }
+#comm-msg-menu button.danger { color:#ff6b6b; }
 .comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); align-items:center; }
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
@@ -2441,6 +2483,14 @@ body {
     <div id="gif-sheet-grid" class="gif-grid" style="display:none" aria-hidden="true"></div>
   </div>
   <div class="gif-sheet-attr" id="gif-sheet-attr">URL-only · no Railway GIF search</div>
+</div>
+
+<!-- Gen Chat message actions -->
+<div id="comm-msg-menu" role="menu" aria-label="Message actions">
+  <button type="button" onclick="commMsgCopy()">📋 Copy</button>
+  <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
+  <button type="button" class="danger" id="comm-msg-del-btn" onclick="commMsgDelete()">🗑 Delete</button>
+  <button type="button" onclick="closeCommMsgMenu()">✕ Close</button>
 </div>
 
 <!-- ── VIDEO CALL OVERLAYS ── -->
@@ -7863,17 +7913,28 @@ window._gifImgError = function (img) {
   }
 };
 
+function _commMsgAttr(m) {
+  const id = escapeHtml(m.id || '');
+  const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
+  const sender = escapeHtml((m.sender_wallet || '').toLowerCase());
+  const content = encodeURIComponent(m.content || '');
+  return 'data-msg-id="' + id + '" data-slug="' + slug + '" data-sender="' + sender + '" data-content="' + content + '"';
+}
+
+function _commMsgMenuBtn(m) {
+  return '<button type="button" class="comm-msg-more" title="Message actions" ' +
+    'onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="Message menu">⋯</button>';
+}
+
 function appendCommunityMessage(m) {
   const box = document.getElementById('genchat-msgs');
   if (!box || !m) return;
-  // Drop empty-state placeholder
   const empty = box.querySelector('.empty-text');
   if (empty && box.children.length === 1) box.innerHTML = '';
   if (m.id) {
     const sid = String(m.id).replace(/"/g, '');
     if (box.querySelector('[data-msg-id="' + sid + '"]')) return;
   }
-  const canMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
   const letter = (m.display_name || '?').replace('@', '').charAt(0).toUpperCase();
   const av = m.has_avatar
     ? '<img src="' + BACKEND + '/api/community/avatar/' + m.sender_wallet + '" alt="">'
@@ -7882,16 +7943,14 @@ function appendCommunityMessage(m) {
   const roleLbl = displayRoleLabel(m.role);
   const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
   const via = m.transport === 'p2p' ? ' · P2P' : '';
-  const del = (canMod && m.id && !(String(m.id).startsWith('p2p-') || String(m.id).startsWith('dm-')))
-    ? ' <button type="button" onclick="event.stopPropagation();modDeleteMsg(\'' + escapeHtml(m.slug || 'general') + '\',\'' + escapeHtml(m.id) + '\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;margin-left:6px">Delete</button>'
-    : '';
   const el = document.createElement('div');
   el.className = 'comm-msg';
-  if (m.id) el.setAttribute('data-msg-id', m.id);
-  el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble">' +
+  el.setAttribute('data-msg-id', m.id || '');
+  el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
+    _commMsgMenuBtn(m) +
     '<div class="who">' + escapeHtml(m.display_name || shortenWallet(m.sender_wallet)) + role + '</div>' +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
-    '<div class="when">' + escapeHtml(when) + via + del + '</div></div>';
+    '<div class="when">' + escapeHtml(when) + via + '</div></div>';
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -7903,7 +7962,6 @@ function renderCommunityMessages(msgs) {
     box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Gen Chat is live — say hello. When two wallets are here, messages can go P2P.</div>';
     return;
   }
-  const canMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
   box.innerHTML = msgs.map(m => {
     const letter = (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
     const av = m.has_avatar
@@ -7913,20 +7971,105 @@ function renderCommunityMessages(msgs) {
     const roleLbl = displayRoleLabel(m.role);
     const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
     const via = m.transport === 'p2p' ? ' · P2P' : '';
-    const del = (canMod && m.id && !(String(m.id).startsWith('p2p-')))
-      ? ` <button type="button" onclick="event.stopPropagation();modDeleteMsg('${escapeHtml(m.slug||_activeCommSlug||'general')}','${escapeHtml(m.id)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;margin-left:6px">Delete</button>`
-      : '';
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
-      <div class="comm-bubble">
+      <div class="comm-bubble" ${_commMsgAttr(m)}>
+        ${_commMsgMenuBtn(m)}
         <div class="who">${escapeHtml(m.display_name||shortenWallet(m.sender_wallet))}${role}</div>
         <div class="body">${renderCommBodyHtml(m.content)}</div>
-        <div class="when">${escapeHtml(when)}${via}${del}</div>
+        <div class="when">${escapeHtml(when)}${via}</div>
       </div>
     </div>`;
   }).join('');
   box.scrollTop = box.scrollHeight;
 }
+
+let _commMsgMenuCtx = null;
+
+function openCommMsgMenu(ev, btn) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
+  if (!bubble) return;
+  let content = '';
+  try { content = decodeURIComponent(bubble.getAttribute('data-content') || ''); } catch (e) {
+    content = bubble.getAttribute('data-content') || '';
+  }
+  _commMsgMenuCtx = {
+    id: bubble.getAttribute('data-msg-id') || '',
+    slug: bubble.getAttribute('data-slug') || _activeCommSlug || 'general',
+    sender: (bubble.getAttribute('data-sender') || '').toLowerCase(),
+    content: content,
+  };
+  const menu = document.getElementById('comm-msg-menu');
+  if (!menu) return;
+  const gif = parseGifContent(content);
+  const saveBtn = document.getElementById('comm-msg-save-btn');
+  if (saveBtn) saveBtn.style.display = gif ? '' : 'none';
+  const canDel = !!wallet && (
+    _commMsgMenuCtx.sender === (wallet || '').toLowerCase() ||
+    communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod'
+  );
+  const delBtn = document.getElementById('comm-msg-del-btn');
+  if (delBtn) delBtn.style.display = canDel ? '' : 'none';
+  menu.classList.add('open');
+  const x = Math.min(ev.clientX || 16, window.innerWidth - 180);
+  const y = Math.min(ev.clientY || 16, window.innerHeight - 200);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+
+function closeCommMsgMenu() {
+  document.getElementById('comm-msg-menu')?.classList.remove('open');
+  _commMsgMenuCtx = null;
+}
+
+function commMsgCopy() {
+  const ctx = _commMsgMenuCtx;
+  closeCommMsgMenu();
+  if (!ctx) return;
+  const gif = parseGifContent(ctx.content);
+  const text = gif || ctx.content || '';
+  navigator.clipboard.writeText(text).then(() => showToast(gif ? 'GIF link copied' : 'Copied')).catch(() => showToast('Could not copy'));
+}
+
+function commMsgSave() {
+  const ctx = _commMsgMenuCtx;
+  closeCommMsgMenu();
+  if (!ctx) return;
+  const gif = parseGifContent(ctx.content);
+  if (!gif) { showToast('Nothing to save'); return; }
+  downloadFromUrl(gif, 'lightchat-gif.gif');
+}
+
+async function commMsgDelete() {
+  const ctx = _commMsgMenuCtx;
+  closeCommMsgMenu();
+  if (!ctx || !ctx.id) { showToast('Cannot delete this message'); return; }
+  if (!confirm('Delete this message?')) return;
+  // Always remove locally (P2P log + DOM)
+  try {
+    if (window.genChatP2P) {
+      const arr = (genChatP2P.loadLocal() || []).filter(function (m) { return m.id !== ctx.id; });
+      localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
+      if (genChatP2P._seenIds) genChatP2P._seenIds.delete(ctx.id);
+    }
+  } catch (e) {}
+  const el = document.querySelector('.comm-msg[data-msg-id="' + String(ctx.id).replace(/"/g, '') + '"]');
+  if (el) el.remove();
+  // Server delete when not a pure ephemeral id — authors + mods allowed
+  try {
+    await modDeleteMsg(ctx.slug || 'general', ctx.id, true);
+  } catch (e) {}
+  showToast('Deleted');
+}
+
+document.addEventListener('click', function (e) {
+  const menu = document.getElementById('comm-msg-menu');
+  if (!menu || !menu.classList.contains('open')) return;
+  if (menu.contains(e.target) || (e.target && e.target.classList && e.target.classList.contains('comm-msg-more'))) return;
+  closeCommMsgMenu();
+});
 
 async function sendCommunityMsg(slug) {
   const inp = document.getElementById('genchat-input');
@@ -8057,17 +8200,26 @@ async function ownerSetChanMode(mode) {
 }
 
 
-async function modDeleteMsg(slug, id) {
+async function modDeleteMsg(slug, id, skipConfirm) {
   if (!wallet || !id) return;
-  if (!confirm('Delete this message?')) return;
+  if (!skipConfirm && !confirm('Delete this message?')) return;
   const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '/' + encodeURIComponent(id), {
     method:'DELETE', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({wallet})
   });
   const j = await r.json().catch(()=>({}));
-  if (!r.ok) { showToast(j.error||'Delete failed'); return; }
-  showToast('Deleted');
-  loadCommunityChannel(slug);
+  if (!r.ok) {
+    // P2P-only msgs may 403/missing on server — local already removed by caller
+    if (!skipConfirm) showToast(j.error||'Delete failed');
+    return;
+  }
+  if (!skipConfirm) {
+    showToast('Deleted');
+    loadCommunityChannel(slug);
+  } else {
+    const el = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+    if (el) el.remove();
+  }
 }
 
 function ensureGenChatP2P() {
