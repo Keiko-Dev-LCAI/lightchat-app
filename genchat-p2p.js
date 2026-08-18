@@ -35,13 +35,28 @@
       if (this.channel === 'general') {
         try {
           const legacy = localStorage.getItem(LOCAL_KEY_LEGACY);
-          if (legacy && !localStorage.getItem(localKey('general'))) {
-            localStorage.setItem(localKey('general'), legacy);
+          const curKey = localKey('general');
+          const cur = localStorage.getItem(curKey);
+          if (legacy) {
+            if (!cur) {
+              localStorage.setItem(curKey, legacy);
+            } else {
+              // Merge legacy into current then drop legacy (fixes split history / ghost dupes)
+              try {
+                const a = JSON.parse(cur || '[]');
+                const b = JSON.parse(legacy || '[]');
+                const merged = this._dedupeList(a.concat(b));
+                localStorage.setItem(curKey, JSON.stringify(merged));
+              } catch (e2) {}
+            }
+            try { localStorage.removeItem(LOCAL_KEY_LEGACY); } catch (e3) {}
           }
         } catch (e) {}
       }
+      this.dedupeLocal();
       const arr = this.loadLocal();
       const self = this;
+      this._seenIds = new Set();
       arr.forEach(function (m) {
         const id = self._msgId(m);
         if (id) self._seenIds.add(id);
@@ -59,6 +74,128 @@
         ':' +
         String(msg.content || '').slice(0, 24)
     );
+  };
+
+  /** Same sender + identical content within 2 minutes → treat as one message. */
+  GenChatP2P.prototype._isContentDupe = function (a, b) {
+    if (!a || !b) return false;
+    const sa = String(a.sender_wallet || '').toLowerCase();
+    const sb = String(b.sender_wallet || '').toLowerCase();
+    if (!sa || sa !== sb) return false;
+    if (String(a.content || '') !== String(b.content || '')) return false;
+    if (!a.content) return false;
+    const ta = a.created_at || 0;
+    const tb = b.created_at || 0;
+    return Math.abs(ta - tb) <= 120;
+  };
+
+  GenChatP2P.prototype._preferMsg = function (a, b) {
+    // Prefer relay/server UUIDs over ephemeral p2p- ids
+    const aid = String((a && a.id) || '');
+    const bid = String((b && b.id) || '');
+    const aP2p = aid.indexOf('p2p-') === 0;
+    const bP2p = bid.indexOf('p2p-') === 0;
+    if (aP2p && !bP2p) return b;
+    if (!aP2p && bP2p) return a;
+    return (a.created_at || 0) <= (b.created_at || 0) ? a : b;
+  };
+
+  GenChatP2P.prototype._dedupeList = function (list) {
+    const out = [];
+    const byId = {};
+    const self = this;
+    (list || []).forEach(function (m) {
+      if (!m) return;
+      const id = self._msgId(m);
+      if (id && byId[id] != null) {
+        const prev = out[byId[id]];
+        out[byId[id]] = self._preferMsg(prev, m);
+        return;
+      }
+      let dupeIdx = -1;
+      for (let i = 0; i < out.length; i++) {
+        if (self._isContentDupe(out[i], m)) {
+          dupeIdx = i;
+          break;
+        }
+      }
+      if (dupeIdx >= 0) {
+        const kept = self._preferMsg(out[dupeIdx], m);
+        const oldId = self._msgId(out[dupeIdx]);
+        if (oldId && byId[oldId] === dupeIdx) delete byId[oldId];
+        out[dupeIdx] = kept;
+        const kid = self._msgId(kept);
+        if (kid) byId[kid] = dupeIdx;
+        return;
+      }
+      const idx = out.length;
+      out.push(m);
+      if (id) byId[id] = idx;
+    });
+    out.sort(function (a, b) {
+      return (a.created_at || 0) - (b.created_at || 0);
+    });
+    return out;
+  };
+
+  GenChatP2P.prototype._saveLocalArr = function (arr) {
+    try {
+      while (arr.length > MAX_LOCAL) arr.shift();
+      localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
+      // Keep legacy key cleared so deletes aren't resurrected from the old store
+      if (this.channel === 'general') {
+        try { localStorage.removeItem(LOCAL_KEY_LEGACY); } catch (e) {}
+      }
+    } catch (e) {}
+  };
+
+  GenChatP2P.prototype.dedupeLocal = function () {
+    try {
+      const cleaned = this._dedupeList(this.loadLocal());
+      this._saveLocalArr(cleaned);
+      return cleaned;
+    } catch (e) {
+      return this.loadLocal();
+    }
+  };
+
+  GenChatP2P.prototype.removeLocal = function (id) {
+    if (!id) return;
+    try {
+      const arr = this.loadLocal();
+      const target = arr.find(function (m) {
+        return m && m.id === id;
+      });
+      const self = this;
+      const next = arr.filter(function (m) {
+        if (!m) return false;
+        if (m.id === id) return false;
+        if (target && self._isContentDupe(m, target)) return false;
+        return true;
+      });
+      this._saveLocalArr(next);
+      this._seenIds.delete(id);
+      if (target) {
+        const tid = this._msgId(target);
+        if (tid) this._seenIds.delete(tid);
+      }
+    } catch (e) {}
+  };
+
+  GenChatP2P.prototype.editLocal = function (id, content) {
+    if (!id) return;
+    try {
+      const arr = this.loadLocal();
+      const now = Math.floor(Date.now() / 1000);
+      arr.forEach(function (m) {
+        if (m && m.id === id) {
+          m.content = content;
+          m.edited = true;
+          m.edited_at = now;
+        }
+      });
+      this._saveLocalArr(arr);
+    } catch (e) {}
   };
 
   GenChatP2P.prototype._emitStatus = function () {
@@ -283,10 +420,12 @@
     try {
       const arr = JSON.parse(localStorage.getItem(localKey(this.channel)) || '[]');
       const id = this._msgId(msg);
-      if (arr.some(function (m) { return (m.id || '') === id; })) return;
+      const self = this;
+      if (id && arr.some(function (m) { return (m.id || '') === id; })) return;
+      // Skip content twin (same GIF/text from same sender within 2 min)
+      if (arr.some(function (m) { return self._isContentDupe(m, msg); })) return;
       arr.push(msg);
-      while (arr.length > MAX_LOCAL) arr.shift();
-      localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
+      this._saveLocalArr(arr);
     } catch (e) {}
   };
 
@@ -449,11 +588,7 @@
 
     if (env.kind === 'delete' && env.id) {
       try {
-        const arr = this.loadLocal().filter(function (m) {
-          return m.id !== env.id;
-        });
-        localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
-        this._seenIds.delete(env.id);
+        this.removeLocal(env.id);
       } catch (e) {}
       if (typeof this.onDelete === 'function') this.onDelete(env.id, env.slug || 'general');
       // Gossip delete so the whole mesh drops it
@@ -466,15 +601,7 @@
 
     if (env.kind === 'edit' && env.id && env.content != null) {
       try {
-        const arr = this.loadLocal();
-        arr.forEach(function (m) {
-          if (m.id === env.id) {
-            m.content = env.content;
-            m.edited = true;
-            m.edited_at = Math.floor(Date.now() / 1000);
-          }
-        });
-        localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
+        this.editLocal(env.id, env.content);
       } catch (e) {}
       if (typeof this.onEdit === 'function') this.onEdit(env.id, env.content, env.slug || 'general');
       this._broadcastEnvelope(

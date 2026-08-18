@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=9"></script>
-<script src="dm-p2p.js?v=9"></script>
+<script src="genchat-p2p.js?v=10"></script>
+<script src="dm-p2p.js?v=10"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -8525,16 +8525,11 @@ async function loadCommunityChannel(slug) {
     if (isP2PChatChannel(slug) && window.genChatP2P) {
       try {
         ensureGenChatP2P();
+        try { genChatP2P.dedupeLocal(); } catch (e0) {}
         const local = (genChatP2P.loadLocal() || []).filter(function (m) {
           return !m.slug || m.slug === slug;
         });
-        const byId = {};
-        msgs.concat(local).forEach(function(m) {
-          const id = m.id || (m.sender_wallet + ':' + m.created_at + ':' + (m.content||'').slice(0,32));
-          byId[id] = m;
-        });
-        msgs = Object.keys(byId).map(function(k){ return byId[k]; });
-        msgs.sort(function(a,b){ return (a.created_at||0) - (b.created_at||0); });
+        msgs = mergeCommunityMessages(msgs, local);
       } catch(e) { console.warn(e); }
     }
     renderCommunityMessages(msgs);
@@ -8894,19 +8889,28 @@ function commMsgSave() {
   downloadFromUrl(gif, 'lightchat-gif.gif');
 }
 
+function mergeCommunityMessages(serverMsgs, localMsgs) {
+  const list = [].concat(serverMsgs || [], localMsgs || []);
+  if (window.genChatP2P && typeof genChatP2P._dedupeList === 'function') {
+    return genChatP2P._dedupeList(list);
+  }
+  // Fallback: id-only merge
+  const byId = {};
+  list.forEach(function (m) {
+    if (!m) return;
+    const id = m.id || ((m.sender_wallet || '') + ':' + (m.created_at || '') + ':' + String(m.content || '').slice(0, 32));
+    byId[id] = m;
+  });
+  return Object.keys(byId).map(function (k) { return byId[k]; }).sort(function (a, b) {
+    return (a.created_at || 0) - (b.created_at || 0);
+  });
+}
+
 function applyCommMsgEditLocal(id, content) {
   if (!id) return;
   try {
-    if (window.genChatP2P) {
-      const arr = genChatP2P.loadLocal() || [];
-      arr.forEach(function (m) {
-        if (m.id === id) {
-          m.content = content;
-          m.edited = true;
-          m.edited_at = Math.floor(Date.now() / 1000);
-        }
-      });
-      localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
+    if (window.genChatP2P && typeof genChatP2P.editLocal === 'function') {
+      genChatP2P.editLocal(id, content);
     }
   } catch (e) {}
   const row = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
@@ -8979,15 +8983,36 @@ async function commMsgEdit() {
 
 function removeCommMsgLocal(id) {
   if (!id) return;
+  // Also drop on-screen content twins (same GIF under a different id)
+  let twinContent = '';
+  let twinSender = '';
   try {
-    if (window.genChatP2P) {
-      const arr = (genChatP2P.loadLocal() || []).filter(function (m) { return m.id !== id; });
-      localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
-      if (genChatP2P._seenIds) genChatP2P._seenIds.delete(id);
+    const row = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+    const bubble = row && row.querySelector('.comm-bubble');
+    if (bubble) {
+      twinSender = (bubble.getAttribute('data-sender') || '').toLowerCase();
+      try { twinContent = decodeURIComponent(bubble.getAttribute('data-content') || ''); } catch (e) { twinContent = ''; }
+    }
+  } catch (e) {}
+  try {
+    if (window.genChatP2P && typeof genChatP2P.removeLocal === 'function') {
+      genChatP2P.removeLocal(id);
     }
   } catch (e) {}
   const el = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
   if (el) el.remove();
+  if (twinContent && twinSender) {
+    try {
+      document.querySelectorAll('#genchat-msgs .comm-msg').forEach(function (node) {
+        const b = node.querySelector('.comm-bubble');
+        if (!b) return;
+        if ((b.getAttribute('data-sender') || '').toLowerCase() !== twinSender) return;
+        let c = '';
+        try { c = decodeURIComponent(b.getAttribute('data-content') || ''); } catch (e2) { return; }
+        if (c === twinContent) node.remove();
+      });
+    } catch (e3) {}
+  }
 }
 
 async function commMsgDelete() {
@@ -10262,14 +10287,7 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       socket.on('community_message_deleted', (data) => {
         const id = data && data.id;
         if (!id) return;
-        const el = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
-        if (el) el.remove();
-        try {
-          if (window.genChatP2P) {
-            const arr = (genChatP2P.loadLocal() || []).filter(function (m) { return m.id !== id; });
-            localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
-          }
-        } catch (e) {}
+        removeCommMsgLocal(id);
       });
       socket.on('community_timeout', (data) => {
         if (!data || !wallet) return;
