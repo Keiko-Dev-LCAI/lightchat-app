@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-orcaart-link">
+<meta name="lc-build" content="2026-08-18-bot-delete">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -9934,7 +9934,15 @@ function _commMsgMenuBtn(m) {
 
 function _commMsgHoverBar(m) {
   const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
-  if (isBot) return '';
+  const staff = typeof isCommStaff === 'function' && isCommStaff();
+  // Bot posts: staff still need Delete/⋯ (e.g. garden restore notices)
+  if (isBot && !staff) return '';
+  if (isBot && staff) {
+    return '<div class="comm-msg-hoverbar" role="toolbar" aria-label="Message actions">' +
+      '<button type="button" title="Delete" onclick="event.stopPropagation();hoverBarDelete(this)" aria-label="Delete">🗑</button>' +
+      '<button type="button" title="More" onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="More">⋯</button>' +
+      '</div>';
+  }
   const isMine = wallet && (m.sender_wallet || '').toLowerCase() === wallet.toLowerCase();
   const editBtn = isMine
     ? '<button type="button" title="Edit" onclick="event.stopPropagation();hoverBarEdit(this)" aria-label="Edit">✏️</button>'
@@ -9945,6 +9953,12 @@ function _commMsgHoverBar(m) {
     editBtn +
     '<button type="button" title="More" onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="More">⋯</button>' +
     '</div>';
+}
+
+function hoverBarDelete(btn) {
+  const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
+  _commMsgMenuCtx = _commMsgCtxFromBubble(bubble);
+  if (_commMsgMenuCtx) commMsgDelete();
 }
 
 function _commMsgCtxFromBubble(bubble) {
@@ -10218,9 +10232,10 @@ function appendCommunityMessage(m) {
   el.className = 'comm-msg';
   el.setAttribute('data-msg-id', m.id || '');
   // Discord-like: avatar · username · time · hover bar · body · reaction pills
+  const staff = typeof isCommStaff === 'function' && isCommStaff();
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
     _commMsgHoverBar(m) +
-    (isBot ? '' : _commMsgMenuBtn(m)) +
+    ((isBot && !staff) ? '' : _commMsgMenuBtn(m)) +
     '<div class="who">' + whoName + role + timeBit + '</div>' +
     _commReplyQuoteHtml(m) +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
@@ -10252,11 +10267,12 @@ function renderCommunityMessages(msgs) {
     const timeBit = when
       ? `<span class="comm-msg-time" title="${tip}">${escapeHtml(when)}${m.edited ? ' · edited' : ''}</span>`
       : '';
+    const staff = typeof isCommStaff === 'function' && isCommStaff();
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${_commMsgHoverBar(m)}
-        ${isBot ? '' : _commMsgMenuBtn(m)}
+        ${(isBot && !staff) ? '' : _commMsgMenuBtn(m)}
         <div class="who">${who}${role}${timeBit}</div>
         ${_commReplyQuoteHtml(m)}
         <div class="body">${renderCommBodyHtml(m.content)}</div>
