@@ -1717,7 +1717,26 @@ body {
             <h2># Gen Chat</h2>
             <div class="comm-sub">Everyone · Lightchain community</div>
           </div>
+          <button type="button" id="threads-toggle-btn" class="comm-gif-btn" onclick="toggleThreadsPanel()" title="Threads" style="height:36px;padding:0 10px;display:none">🧵</button>
+          <button type="button" id="new-thread-btn" class="comm-gif-btn" onclick="createChannelThread()" title="New thread (admins)" style="height:36px;padding:0 10px;display:none">＋🧵</button>
           <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
+        </div>
+        <div id="threads-panel" style="display:none;border-bottom:1px solid var(--border);max-height:160px;overflow-y:auto;padding:8px 12px;background:var(--card)"></div>
+        <div id="thread-chat" style="display:none;flex:1;flex-direction:column;min-height:0">
+          <div class="comm-header" style="gap:8px">
+            <button type="button" onclick="closeThreadChat()" style="background:none;border:none;color:var(--text);font-size:26px;cursor:pointer">‹</button>
+            <div style="flex:1;min-width:0">
+              <h2 id="thread-chat-title" style="font-size:15px;margin:0">Thread</h2>
+              <div class="comm-sub" id="thread-chat-sub">Invite-only</div>
+            </div>
+            <button type="button" class="comm-gif-btn" id="thread-invite-btn" onclick="inviteToActiveThread()" style="height:34px;padding:0 10px;font-size:12px;display:none">＋ Invite</button>
+            <button type="button" class="comm-gif-btn" id="thread-close-btn" onclick="closeActiveThread()" style="height:34px;padding:0 10px;font-size:12px;display:none">Close</button>
+          </div>
+          <div class="comm-msgs" id="thread-msgs"></div>
+          <div class="comm-input-row">
+            <input id="thread-input" placeholder="Message thread…" maxlength="4000" onkeydown="if(event.key==='Enter')sendThreadMsg()">
+            <button type="button" onclick="sendThreadMsg()">Send</button>
+          </div>
         </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div class="comm-input-row">
@@ -7916,7 +7935,7 @@ function displayRoleLabel(role) {
 let _dirMembers = [];
 let _activeCommSlug = 'general';
 /** Live channels that use WebRTC P2P mesh (same as Gen Chat). */
-const P2P_CHAT_CHANNELS = { general: true, dev: true, nodes: true };
+const P2P_CHAT_CHANNELS = { general: true, dev: true, nodes: true, mods: true };
 function isP2PChatChannel(slug) {
   return !!P2P_CHAT_CHANNELS[(slug || '').toLowerCase()];
 }
@@ -8138,17 +8157,204 @@ async function closeActiveTicket() {
   }
 }
 
+let _activeThreadId = null;
+let _threadsCache = [];
+
+function toggleThreadsPanel() {
+  const tp = document.getElementById('threads-panel');
+  if (!tp) return;
+  if (tp.style.display === 'none' || !tp.style.display) {
+    tp.style.display = 'block';
+    loadChannelThreads();
+  } else {
+    tp.style.display = 'none';
+  }
+}
+
+async function loadChannelThreads() {
+  const tp = document.getElementById('threads-panel');
+  if (!tp || !wallet) return;
+  const slug = _activeCommSlug || 'general';
+  tp.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">Loading threads…</div>';
+  try {
+    const r = await fetch(BACKEND + '/api/community/threads?wallet=' + encodeURIComponent(wallet) + '&channel=' + encodeURIComponent(slug));
+    const j = await r.json();
+    if (!r.ok) { tp.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">' + escapeHtml(j.error || 'No access') + '</div>'; return; }
+    _threadsCache = j.threads || [];
+    if (!_threadsCache.length) {
+      tp.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">No threads you can see here.' +
+        ((communityRole === 'owner' || communityRole === 'admin') ? ' Tap ＋🧵 to create one and tag wallets.' : '') + '</div>';
+      return;
+    }
+    tp.innerHTML = _threadsCache.map(function (t) {
+      return '<div class="dir-item" style="padding:10px" onclick="openThreadChat(\'' + escapeHtml(t.id) + '\')">' +
+        '<div class="comm-av">🧵</div><div class="meta" style="flex:1"><div class="n">' + escapeHtml(t.title) +
+        '</div><div class="d">' + (t.members ? t.members.length : 0) + ' tagged · ' + escapeHtml(formatMessageTime(t.created_at)) +
+        '</div></div></div>';
+    }).join('');
+  } catch (e) {
+    tp.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:8px">Could not load threads</div>';
+  }
+}
+
+async function createChannelThread() {
+  if (!wallet) return;
+  if (!(communityRole === 'owner' || communityRole === 'admin')) {
+    showToast('Admins only can create threads'); return;
+  }
+  const slug = _activeCommSlug || 'general';
+  const title = prompt('Thread title', 'Private discussion');
+  if (title === null || !title.trim()) return;
+  const invite = prompt('Tag wallets to invite (comma-separated 0x… addresses). Leave blank for just you + other admins can still see.', '');
+  if (invite === null) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/threads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, channel: slug, title: title.trim(), members: invite }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Could not create thread'); return; }
+    showToast('Thread created');
+    const tp = document.getElementById('threads-panel');
+    if (tp) tp.style.display = 'block';
+    await loadChannelThreads();
+    if (j.thread && j.thread.id) openThreadChat(j.thread.id);
+  } catch (e) {
+    showToast('Could not create thread');
+  }
+}
+
+async function openThreadChat(tid) {
+  if (!wallet || !tid) return;
+  _activeThreadId = tid;
+  document.getElementById('genchat-msgs').style.display = 'none';
+  document.getElementById('threads-panel').style.display = 'none';
+  const inputRow = document.querySelector('#tab-genchat .comm-input-row');
+  if (inputRow) inputRow.style.display = 'none';
+  const tc = document.getElementById('thread-chat');
+  if (tc) tc.style.display = 'flex';
+  try { if (socket) socket.emit('join_thread', { wallet, thread_id: tid }); } catch (e) {}
+  await refreshThreadChat();
+}
+
+function closeThreadChat(keepChannel) {
+  _activeThreadId = null;
+  const tc = document.getElementById('thread-chat');
+  if (tc) tc.style.display = 'none';
+  if (!keepChannel) {
+    document.getElementById('genchat-msgs').style.display = '';
+    const inputRow = document.querySelector('#tab-genchat .comm-input-row');
+    const slug = _activeCommSlug || 'general';
+    const ch = (communityChannels || []).find(c => c.slug === slug);
+    const mode = (ch && ch.mode) || (isP2PChatChannel(slug) ? 'chat' : 'post');
+    if (inputRow && (mode === 'chat' || isP2PChatChannel(slug))) inputRow.style.display = '';
+  }
+}
+
+async function refreshThreadChat() {
+  if (!_activeThreadId || !wallet) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/threads/' + encodeURIComponent(_activeThreadId) + '?wallet=' + encodeURIComponent(wallet));
+    const j = await r.json();
+    if (!r.ok) { showToast(j.error || 'Forbidden'); closeThreadChat(); return; }
+    const t = j.thread || {};
+    document.getElementById('thread-chat-title').textContent = t.title || 'Thread';
+    document.getElementById('thread-chat-sub').textContent =
+      '#' + (t.channel_slug || '') + ' · ' + ((t.members && t.members.length) || 0) + ' tagged · invite-only';
+    const isAdmin = communityRole === 'owner' || communityRole === 'admin';
+    document.getElementById('thread-invite-btn').style.display = isAdmin ? '' : 'none';
+    document.getElementById('thread-close-btn').style.display = isAdmin && t.status === 'open' ? '' : 'none';
+    const box = document.getElementById('thread-msgs');
+    const msgs = t.messages || [];
+    if (!msgs.length) {
+      box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center">Tagged members only — start the discussion.</div>';
+      return;
+    }
+    box.innerHTML = msgs.map(function (m) {
+      const name = escapeHtml(stripAt(m.display_name) || shortenWallet(m.sender_wallet));
+      const roleLbl = displayRoleLabel(m.role);
+      const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
+      return '<div class="comm-msg"><div class="comm-av">' + name.charAt(0).toUpperCase() + '</div>' +
+        '<div class="comm-bubble"><div class="who">' + name + role + '</div>' +
+        '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
+        '<div class="when">' + escapeHtml(formatMessageTime(m.created_at)) + '</div></div></div>';
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    showToast('Could not load thread');
+  }
+}
+
+async function sendThreadMsg() {
+  if (!wallet || !_activeThreadId) return;
+  const inp = document.getElementById('thread-input');
+  const content = (inp && inp.value || '').trim();
+  if (!content) return;
+  if (inp) inp.value = '';
+  try {
+    const r = await fetch(BACKEND + '/api/community/threads/' + encodeURIComponent(_activeThreadId) + '/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, content }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Send failed'); return; }
+    await refreshThreadChat();
+  } catch (e) {
+    showToast('Send failed');
+  }
+}
+
+async function inviteToActiveThread() {
+  if (!_activeThreadId || !wallet) return;
+  if (!(communityRole === 'owner' || communityRole === 'admin')) return;
+  const raw = prompt('Wallet to invite (0x…)');
+  if (!raw || !isValidWallet(raw)) { showToast('Valid wallet required'); return; }
+  try {
+    const r = await fetch(BACKEND + '/api/community/threads/' + encodeURIComponent(_activeThreadId) + '/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet, target: raw.toLowerCase() }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Invite failed'); return; }
+    showToast('Invited');
+    refreshThreadChat();
+  } catch (e) {
+    showToast('Invite failed');
+  }
+}
+
+async function closeActiveThread() {
+  if (!_activeThreadId || !wallet) return;
+  if (!confirm('Close this thread?')) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/threads/' + encodeURIComponent(_activeThreadId) + '/close', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Could not close'); return; }
+    showToast('Thread closed');
+    closeThreadChat();
+  } catch (e) {
+    showToast('Could not close');
+  }
+}
+
 async function loadChannelsList() {
   try {
-    const r = await fetch(BACKEND + '/api/community');
+    const r = await fetch(BACKEND + '/api/community' + (wallet ? ('?wallet=' + encodeURIComponent(wallet)) : ''));
     const j = await r.json();
     communityChannels = j.channels || [];
     const el = document.getElementById('channels-list');
     if (!el) return;
-    const visible = communityChannels.filter(c => c.mode !== 'hidden' && (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'start-here' || c.slug === 'announcements' || c.slug === 'media' || c.slug === 'links'));
+    const visible = communityChannels.filter(c => c.mode !== 'hidden' && (c.primary || c.slug === 'general' || c.slug === 'dev' || c.slug === 'nodes' || c.slug === 'mods' || c.slug === 'start-here' || c.slug === 'announcements' || c.slug === 'media' || c.slug === 'links'));
     el.innerHTML = visible.map(c => {
-      const mode = c.mode || (c.slug === 'general' || c.slug === 'dev' ? 'chat' : 'post');
-      const tag = mode === 'chat' ? (isP2PChatChannel(c.slug) ? 'P2P chat' : 'Live chat') : (mode === 'guide' ? 'Guide' : 'Posts');
+      const mode = c.mode || (isP2PChatChannel(c.slug) ? 'chat' : 'post');
+      const tag = c.staff_only ? 'Staff · P2P' : (mode === 'chat' ? (isP2PChatChannel(c.slug) ? 'P2P chat' : 'Live chat') : (mode === 'guide' ? 'Guide' : 'Posts'));
       return `<div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
         <div class="hash">#</div>
         <div class="meta">
@@ -8202,7 +8408,7 @@ async function loadCommunityChannel(slug) {
   if (inputRow) {
     if (mode === 'guide' || slug === 'start-here') {
       inputRow.style.display = 'none';
-    } else if (mode === 'chat' || slug === 'general') {
+    } else if (mode === 'chat' || slug === 'general' || isP2PChatChannel(slug)) {
       inputRow.style.display = '';
       const inp = document.getElementById('genchat-input');
       if (inp) inp.placeholder = slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…');
@@ -8214,8 +8420,19 @@ async function loadCommunityChannel(slug) {
       inputRow.style.display = 'none';
     }
   }
+  // Threads UI (admins create; tagged members join)
   try {
-    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80');
+    const thrBtn = document.getElementById('threads-toggle-btn');
+    const newThr = document.getElementById('new-thread-btn');
+    const showThr = mode === 'chat' || mode === 'post' || isP2PChatChannel(slug);
+    if (thrBtn) thrBtn.style.display = showThr && slug !== 'start-here' ? '' : 'none';
+    if (newThr) newThr.style.display = (communityRole === 'owner' || communityRole === 'admin') && slug !== 'start-here' ? '' : 'none';
+    closeThreadChat(true);
+    const tp = document.getElementById('threads-panel');
+    if (tp) tp.style.display = 'none';
+  } catch (e) {}
+  try {
+    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : ''));
     if (!r.ok) {
       box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages ('+r.status+'). Pull to refresh or reconnect.</div>';
       return;
@@ -9027,13 +9244,20 @@ function ensureGenChatP2P() {
     }
     const sub = document.querySelector('#tab-genchat .comm-sub');
     if (sub && isP2PChatChannel(_activeCommSlug || 'general')) {
-      const label = (_activeCommSlug === 'dev') ? '#dev' : 'Gen Chat';
+      const labels = { general: 'Gen Chat', dev: '#Devs', nodes: '#Nodes', mods: '#Mods' };
+      const label = labels[_activeCommSlug] || ('#' + (_activeCommSlug || 'chat'));
       if (st.connected > 0) {
         sub.textContent = label + ' · P2P mesh · ' + st.connected + ' peer' + (st.connected === 1 ? '' : 's');
       } else if (p2pOnly) {
         sub.textContent = label + ' · P2P only · waiting for peers';
+      } else if (_activeCommSlug === 'dev') {
+        sub.textContent = '#Devs · builders & tooling';
+      } else if (_activeCommSlug === 'nodes') {
+        sub.textContent = '#Nodes · operators & validators';
+      } else if (_activeCommSlug === 'mods') {
+        sub.textContent = '#Mods · staff only';
       } else {
-        sub.textContent = label + ' · node ops & builders' + (_activeCommSlug === 'dev' ? '' : ' · Lightchain community');
+        sub.textContent = 'Everyone · Lightchain community';
       }
     }
   };
@@ -9732,6 +9956,16 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       socket.on('community_ticket_closed', (data) => {
         if (data && data.id === _activeTicketId) refreshTicketChat();
         if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
+      });
+      socket.on('community_thread_message', (msg) => {
+        if (msg && msg.thread_id && msg.thread_id === _activeThreadId) refreshThreadChat();
+      });
+      socket.on('community_thread_created', () => {
+        const tp = document.getElementById('threads-panel');
+        if (tp && tp.style.display !== 'none') loadChannelThreads();
+      });
+      socket.on('community_thread_invited', (data) => {
+        showToast('Invited to thread: ' + ((data && data.title) || 'private'));
       });
       clearInterval(trySock);
     }
