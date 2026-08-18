@@ -2017,6 +2017,48 @@ body {
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div id="genchat-compose">
           <div id="mention-ac" class="mention-ac" role="listbox" aria-label="Mention members"></div>
+          <style>
+          .comm-msg-react-row { display:flex; flex-wrap:wrap; gap:4px; padding:6px 8px 4px; border-bottom:1px solid var(--border); }
+          .comm-msg-react-row button {
+            background:transparent!important; border:none!important; font-size:18px!important;
+            padding:4px 6px!important; cursor:pointer; line-height:1; border-radius:8px!important;
+          }
+          .comm-msg-react-row button:hover { background:var(--purple-glow)!important; }
+          .comm-reply-quote {
+            border-left:3px solid var(--lc-primary,#5B4BFF); padding:4px 8px 4px 10px; margin:0 0 6px;
+            background:rgba(91,75,255,0.08); border-radius:0 8px 8px 0; font-size:12px; color:var(--text2);
+            cursor:pointer; max-width:100%; overflow:hidden;
+          }
+          .comm-reply-quote .rq-who { font-weight:700; color:var(--text); font-size:12px; }
+          .comm-reply-quote .rq-body { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+          .comm-reactions { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+          .comm-react-pill {
+            appearance:none; border:1px solid var(--border); background:rgba(255,255,255,0.04);
+            border-radius:999px; padding:2px 8px; font-size:13px; cursor:pointer; color:var(--text);
+            line-height:1.4; font-family:inherit;
+          }
+          .comm-react-pill.me { border-color:var(--lc-primary,#5B4BFF); background:rgba(91,75,255,0.18); }
+          .comm-react-pill:hover { border-color:var(--lc-primary,#5B4BFF); }
+          .comm-reply-bar {
+            display:flex; align-items:center; gap:10px; padding:8px 12px 0; border-top:1px solid var(--border);
+            background:var(--card);
+          }
+          .comm-reply-bar-text { flex:1; min-width:0; border-left:3px solid var(--lc-primary,#5B4BFF); padding-left:10px; }
+          .comm-reply-bar-label { font-size:12px; font-weight:700; color:var(--lc-primary,#5B4BFF); }
+          .comm-reply-bar-preview { font-size:12px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+          .comm-reply-bar-x {
+            appearance:none; border:none; background:transparent; color:var(--text2); font-size:16px;
+            cursor:pointer; padding:6px 8px; border-radius:8px;
+          }
+          .comm-reply-bar-x:hover { background:rgba(255,255,255,0.06); color:var(--text); }
+          </style>
+          <div id="comm-reply-bar" class="comm-reply-bar" style="display:none">
+            <div class="comm-reply-bar-text">
+              <div class="comm-reply-bar-label">Replying to <span id="comm-reply-bar-who">…</span></div>
+              <div class="comm-reply-bar-preview" id="comm-reply-bar-preview"></div>
+            </div>
+            <button type="button" class="comm-reply-bar-x" onclick="clearCommReply()" title="Cancel reply" aria-label="Cancel reply">✕</button>
+          </div>
           <div class="comm-input-row">
             <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
             <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('sticker')" title="Stickers">🎭</button>
@@ -2938,6 +2980,15 @@ body {
 
 <!-- Gen Chat message actions -->
 <div id="comm-msg-menu" role="menu" aria-label="Message actions">
+  <button type="button" onclick="commMsgReply()">↩ Reply</button>
+  <div class="comm-msg-react-row" id="comm-msg-react-row">
+    <button type="button" onclick="commMsgReact('👍')">👍</button>
+    <button type="button" onclick="commMsgReact('😂')">😂</button>
+    <button type="button" onclick="commMsgReact('❤️')">❤️</button>
+    <button type="button" onclick="commMsgReact('🔥')">🔥</button>
+    <button type="button" onclick="commMsgReact('😮')">😮</button>
+    <button type="button" onclick="commMsgReact('😢')">😢</button>
+  </div>
   <button type="button" onclick="commMsgCopy()">📋 Copy</button>
   <button type="button" id="comm-msg-edit-btn" onclick="commMsgEdit()">✏️ Edit</button>
   <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
@@ -9320,6 +9371,7 @@ function setCommunityChannelHeader(slug) {
 function openCommunityChannel(slug) {
   slug = slug || 'general';
   _activeCommSlug = slug;
+  try { clearCommReply(); } catch (e) {}
   // Reuse genchat panel without forcing a load of #general (that was wiping Start Here)
   switchTab('genchat', { skipChannelLoad: true });
   setCommunityChannelHeader(slug);
@@ -9776,14 +9828,17 @@ window._gifImgError = function (img) {
   }
 };
 
+let _commReplyTo = null; // { id, display_name, content, slug }
+
 function _commMsgAttr(m) {
   const id = escapeHtml(m.id || '');
   const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
   const sender = escapeHtml((m.sender_wallet || '').toLowerCase());
   const content = encodeURIComponent(m.content || '');
   const edited = m.edited ? '1' : '0';
+  const who = encodeURIComponent(stripAt(m.display_name || '') || shortenWallet(m.sender_wallet || ''));
   return 'data-msg-id="' + id + '" data-slug="' + slug + '" data-sender="' + sender +
-    '" data-content="' + content + '" data-edited="' + edited + '"';
+    '" data-content="' + content + '" data-edited="' + edited + '" data-who="' + who + '"';
 }
 
 function isCommMsgAuthor(ctx) {
@@ -9796,6 +9851,120 @@ function _commMsgMenuBtn(m) {
     'onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="Message menu">⋯</button>';
 }
 
+function _commReplyQuoteHtml(m) {
+  const r = m && m.reply;
+  if (!r) return '';
+  const who = escapeHtml(stripAt(r.display_name) || 'Message');
+  const body = escapeHtml(r.gone ? '(original message unavailable)' : (r.content || ''));
+  const rid = escapeHtml(r.id || m.reply_to || '');
+  return '<div class="comm-reply-quote" onclick="event.stopPropagation();scrollToCommMsg(\'' + rid + '\')">' +
+    '<div class="rq-who">' + who + '</div><div class="rq-body">' + body + '</div></div>';
+}
+
+function _commReactionsHtml(m) {
+  const list = (m && m.reactions) || [];
+  if (!list.length) return '<div class="comm-reactions" data-react-host="' + escapeHtml(m.id || '') + '"></div>';
+  const mid = escapeHtml(m.id || '');
+  const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
+  return '<div class="comm-reactions" data-react-host="' + mid + '">' + list.map(function (r) {
+    const me = r.me ? ' me' : '';
+    return '<button type="button" class="comm-react-pill' + me + '" title="React" ' +
+      'onclick="event.stopPropagation();toggleCommReaction(\'' + mid + '\',\'' + slug + '\',\'' + escapeHtml(r.emoji) + '\')">' +
+      escapeHtml(r.emoji) + ' ' + (r.count || 1) + '</button>';
+  }).join('') + '</div>';
+}
+
+function scrollToCommMsg(id) {
+  if (!id) return;
+  const el = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.outline = '2px solid var(--lc-primary,#5B4BFF)';
+    setTimeout(function () { el.style.outline = ''; }, 1200);
+  }
+}
+
+function setCommReply(ctx) {
+  if (!ctx || !ctx.id) return;
+  let preview = ctx.content || '';
+  if (preview.indexOf('[[img]]') === 0) preview = '📷 Image';
+  else if (preview.indexOf('[[gif]]') === 0) preview = 'GIF';
+  else if (preview.indexOf('[[video]]') === 0) preview = '🎬 Video';
+  if (preview.length > 100) preview = preview.slice(0, 97) + '…';
+  _commReplyTo = {
+    id: ctx.id,
+    display_name: ctx.who || ctx.display_name || 'User',
+    content: preview,
+    slug: ctx.slug || _activeCommSlug || 'general',
+  };
+  const bar = document.getElementById('comm-reply-bar');
+  const whoEl = document.getElementById('comm-reply-bar-who');
+  const prevEl = document.getElementById('comm-reply-bar-preview');
+  if (whoEl) whoEl.textContent = stripAt(_commReplyTo.display_name) || 'User';
+  if (prevEl) prevEl.textContent = preview;
+  if (bar) bar.style.display = 'flex';
+  const inp = document.getElementById('genchat-input');
+  if (inp) { try { inp.focus(); } catch (e) {} }
+}
+
+function clearCommReply() {
+  _commReplyTo = null;
+  const bar = document.getElementById('comm-reply-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function commMsgReply() {
+  if (!_commMsgMenuCtx || !_commMsgMenuCtx.id) { closeCommMsgMenu(); return; }
+  let who = '';
+  try { who = decodeURIComponent(_commMsgMenuCtx.who || ''); } catch (e) { who = _commMsgMenuCtx.who || ''; }
+  setCommReply({
+    id: _commMsgMenuCtx.id,
+    who: who,
+    content: _commMsgMenuCtx.content || '',
+    slug: _commMsgMenuCtx.slug,
+  });
+  closeCommMsgMenu();
+}
+
+async function commMsgReact(emoji) {
+  if (!_commMsgMenuCtx || !_commMsgMenuCtx.id) { closeCommMsgMenu(); return; }
+  const id = _commMsgMenuCtx.id;
+  const slug = _commMsgMenuCtx.slug || _activeCommSlug || 'general';
+  closeCommMsgMenu();
+  await toggleCommReaction(id, slug, emoji);
+}
+
+async function toggleCommReaction(msgId, slug, emoji) {
+  if (!wallet) { showToast('Connect wallet to react'); return; }
+  if (!msgId || !emoji) return;
+  slug = slug || _activeCommSlug || 'general';
+  try {
+    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '/' + encodeURIComponent(msgId) + '/reactions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: wallet, emoji: emoji }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { showToast(j.error || 'Could not react'); return; }
+    applyCommReactions(msgId, j.reactions || []);
+  } catch (e) {
+    showToast('Could not react');
+  }
+}
+
+function applyCommReactions(msgId, reactions) {
+  const host = document.querySelector('.comm-reactions[data-react-host="' + String(msgId).replace(/"/g, '') + '"]');
+  if (!host) return;
+  const slug = _activeCommSlug || 'general';
+  if (!reactions || !reactions.length) { host.innerHTML = ''; return; }
+  host.innerHTML = reactions.map(function (r) {
+    const me = r.me ? ' me' : '';
+    return '<button type="button" class="comm-react-pill' + me + '" title="React" ' +
+      'onclick="event.stopPropagation();toggleCommReaction(\'' + escapeHtml(msgId) + '\',\'' + escapeHtml(slug) + '\',\'' + escapeHtml(r.emoji) + '\')">' +
+      escapeHtml(r.emoji) + ' ' + (r.count || 1) + '</button>';
+  }).join('');
+}
+
 function appendCommunityMessage(m) {
   const box = document.getElementById('genchat-msgs');
   if (!box || !m) return;
@@ -9803,7 +9972,7 @@ function appendCommunityMessage(m) {
   if (empty && box.children.length === 1) box.innerHTML = '';
   if (m.id) {
     const sid = String(m.id).replace(/"/g, '');
-    if (box.querySelector('[data-msg-id="' + sid + '"]')) return;
+    if (box.querySelector('.comm-msg[data-msg-id="' + sid + '"]')) return;
   }
   // Skip on-screen content twins (same sender+body) — stops GIF doubles from P2P+relay
   try {
@@ -9840,7 +10009,9 @@ function appendCommunityMessage(m) {
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
     (isBot ? '' : _commMsgMenuBtn(m)) +
     '<div class="who">' + escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet))) + role + '</div>' +
+    _commReplyQuoteHtml(m) +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
+    _commReactionsHtml(m) +
     '<div class="when" title="Shown in your local timezone">' + escapeHtml(when) + via + edited + '</div></div>';
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
@@ -9870,7 +10041,9 @@ function renderCommunityMessages(msgs) {
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${isBot ? '' : _commMsgMenuBtn(m)}
         <div class="who">${who}${role}</div>
+        ${_commReplyQuoteHtml(m)}
         <div class="body">${renderCommBodyHtml(m.content)}</div>
+        ${_commReactionsHtml(m)}
         <div class="when" title="Shown in your local timezone">${escapeHtml(when)}${via}${edited}</div>
       </div>
     </div>`;
@@ -9889,11 +10062,16 @@ function openCommMsgMenu(ev, btn) {
   try { content = decodeURIComponent(bubble.getAttribute('data-content') || ''); } catch (e) {
     content = bubble.getAttribute('data-content') || '';
   }
+  let who = '';
+  try { who = decodeURIComponent(bubble.getAttribute('data-who') || ''); } catch (e) {
+    who = bubble.getAttribute('data-who') || '';
+  }
   _commMsgMenuCtx = {
     id: bubble.getAttribute('data-msg-id') || '',
     slug: bubble.getAttribute('data-slug') || _activeCommSlug || 'general',
     sender: (bubble.getAttribute('data-sender') || '').toLowerCase(),
     content: content,
+    who: who,
   };
   const menu = document.getElementById('comm-msg-menu');
   if (!menu) return;
@@ -10720,6 +10898,7 @@ async function sendCommunityContent(slug, content) {
 
   const prof = window._commProfile || {};
   const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
+  const replyTo = (_commReplyTo && _commReplyTo.id) ? _commReplyTo : null;
   const msg = {
     id: 'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
     sender_wallet: wallet,
@@ -10729,7 +10908,15 @@ async function sendCommunityContent(slug, content) {
     role: communityRole || 'member',
     has_avatar: !!(prof.has_avatar),
     slug: slug,
-    transport: 'p2p'
+    transport: 'p2p',
+    reply_to: replyTo ? replyTo.id : '',
+    reply: replyTo ? {
+      id: replyTo.id,
+      display_name: replyTo.display_name,
+      content: replyTo.content,
+      gone: false,
+    } : null,
+    reactions: [],
   };
 
   // Dual-write: save to server for history (handoff / refresh), unless P2P-only mode.
@@ -10737,10 +10924,12 @@ async function sendCommunityContent(slug, content) {
   let relayOk = false;
   if (!p2pOnly) {
     try {
+      const body = { wallet: wallet, content: content };
+      if (replyTo && replyTo.id) body.reply_to = replyTo.id;
       const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, content }),
+        body: JSON.stringify(body),
       });
       const j = await r.json().catch(function () { return {}; });
       if (!r.ok) {
@@ -10756,12 +10945,16 @@ async function sendCommunityContent(slug, content) {
         msg.display_name = j.message.display_name || msg.display_name;
         msg.role = j.message.role || msg.role;
         msg.has_avatar = j.message.has_avatar;
+        if (j.message.reply) msg.reply = j.message.reply;
+        if (j.message.reply_to) msg.reply_to = j.message.reply_to;
+        if (j.message.reactions) msg.reactions = j.message.reactions;
         relayOk = true;
       }
     } catch (e) {
       console.warn('relay save', e);
     }
   }
+  clearCommReply();
 
   let p2pCount = 0;
   if (isP2PChatChannel(slug) && window.genChatP2P) {
@@ -11716,6 +11909,11 @@ async function saveCommunityProfile() { return saveEditProfile(); }
           if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
           else loadCommunityChannel(_activeCommSlug || 'general');
         }
+      });
+      socket.on('community_reaction', (data) => {
+        if (!data || !data.id) return;
+        if (data.slug && data.slug !== _activeCommSlug) return;
+        applyCommReactions(data.id, data.reactions || []);
       });
       socket.on('community_garden', (st) => {
         if (_activeCommSlug !== 'garden') return;
