@@ -917,14 +917,23 @@ def register_community_routes(app, socketio, get_db):
         conn = get_db()
         try:
             role = ensure_member(conn, wallet)
-            if role not in ("owner", "admin", "mod") and not has_perm(role, "delete_messages"):
-                return jsonify({"error": "mods only"}), 403
             ch = conn.execute(
                 "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
                 (COMMUNITY_ID, slug),
             ).fetchone()
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
+            row = conn.execute(
+                "SELECT sender_wallet FROM community_messages WHERE id=? AND channel_id=?",
+                (msg_id, ch["id"]),
+            ).fetchone()
+            if not row:
+                # May already be gone or P2P-only — still OK for client local delete
+                return jsonify({"ok": True, "missing": True})
+            is_mod = role in ("owner", "admin", "mod") or has_perm(role, "delete_messages")
+            is_author = _norm(row["sender_wallet"]) == wallet
+            if not is_mod and not is_author:
+                return jsonify({"error": "you can only delete your own messages"}), 403
             conn.execute(
                 "DELETE FROM community_messages WHERE id=? AND channel_id=?",
                 (msg_id, ch["id"]),
