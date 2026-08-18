@@ -290,6 +290,16 @@ def init_community_db(get_db):
             PRIMARY KEY (community_id, wallet)
         )"""
     )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_bans (
+            community_id TEXT NOT NULL,
+            wallet TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            by_wallet TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (community_id, wallet)
+        )"""
+    )
     conn.commit()
     try:
         conn.execute(
@@ -374,9 +384,12 @@ def get_role(conn, wallet: str) -> str:
 
 
 def ensure_member(conn, wallet: str) -> str:
-    """Join as member if not in community. First human join becomes owner if no owners."""
+    """Join as member if not in community. First human join becomes owner if no owners.
+    Returns None if wallet invalid or banned (banned users cannot rejoin)."""
     wallet = _norm(wallet)
     if not wallet.startswith("0x"):
+        return None
+    if is_banned(conn, wallet):
         return None
     role = get_role(conn, wallet)
     if role:
@@ -465,6 +478,80 @@ def set_timeout(conn, wallet: str, seconds: int, reason: str, by_wallet: str = "
     )
     conn.commit()
     return until
+
+
+def clear_timeout(conn, wallet: str) -> None:
+    conn.execute(
+        "DELETE FROM community_timeouts WHERE community_id=? AND wallet=?",
+        (COMMUNITY_ID, _norm(wallet)),
+    )
+    conn.commit()
+
+
+def is_banned(conn, wallet: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM community_bans WHERE community_id=? AND wallet=?",
+        (COMMUNITY_ID, _norm(wallet)),
+    ).fetchone()
+    return bool(row)
+
+
+def set_ban(conn, wallet: str, reason: str, by_wallet: str = "") -> None:
+    wallet = _norm(wallet)
+    now = int(time.time())
+    conn.execute(
+        """INSERT INTO community_bans (community_id, wallet, reason, by_wallet, created_at)
+           VALUES (?,?,?,?,?)
+           ON CONFLICT(community_id, wallet) DO UPDATE SET
+             reason=excluded.reason,
+             by_wallet=excluded.by_wallet,
+             created_at=excluded.created_at""",
+        (COMMUNITY_ID, wallet, (reason or "")[:200], _norm(by_wallet), now),
+    )
+    # Also remove membership so they are out of the server
+    conn.execute(
+        "DELETE FROM community_members WHERE community_id=? AND wallet=?",
+        (COMMUNITY_ID, wallet),
+    )
+    conn.commit()
+
+
+def clear_ban(conn, wallet: str) -> None:
+    conn.execute(
+        "DELETE FROM community_bans WHERE community_id=? AND wallet=?",
+        (COMMUNITY_ID, _norm(wallet)),
+    )
+    conn.commit()
+
+
+def kick_member(conn, wallet: str) -> None:
+    """Remove from community; they may rejoin later (unlike ban)."""
+    wallet = _norm(wallet)
+    conn.execute(
+        "DELETE FROM community_members WHERE community_id=? AND wallet=?",
+        (COMMUNITY_ID, wallet),
+    )
+    clear_timeout(conn, wallet)
+    conn.commit()
+
+
+TIMEOUT_DURATIONS = {
+    "1h": 3600,
+    "24h": 86400,
+    "1w": 604800,
+    "1hr": 3600,
+    "24hr": 86400,
+    "1wk": 604800,
+}
+
+
+def can_moderate(actor_role: str, target_role: str) -> bool:
+    """Staff may act only on non-staff (members/helpers)."""
+    if not is_staff(actor_role):
+        return False
+    if is_staff(target_role):
+        return False
+    return True
 
 
 def profile_dict(conn, wallet: str) -> dict:
@@ -614,10 +701,15 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"error": "valid wallet required"}), 400
         conn = get_db()
         try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "You are banned from this community", "code": "banned"}), 403
             role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "Could not join"}), 400
             return jsonify({"ok": True, "role": role, "profile": profile_dict(conn, wallet)})
         finally:
             conn.close()
+
     @app.route("/api/community/me")
     def api_community_me():
         wallet = _norm(request.args.get("wallet", ""))
@@ -625,8 +717,95 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"error": "wallet required"}), 400
         conn = get_db()
         try:
+            if is_banned(conn, wallet):
+                return jsonify({
+                    "error": "banned",
+                    "code": "banned",
+                    "role": None,
+                    "banned": True,
+                }), 403
             role = ensure_member(conn, wallet)
             return jsonify({"role": role, "profile": profile_dict(conn, wallet), "perms": list(ROLE_PERMS.get(role, []))})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/moderate", methods=["POST"])
+    def api_moderate():
+        """Staff moderation on non-staff: timeout | kick | ban | unban | untimeout.
+        Body: wallet (actor), target, action, duration? (1h|24h|1w), reason?
+        """
+        data = request.json or {}
+        actor = _norm(data.get("wallet", ""))
+        target = _norm(data.get("target", ""))
+        action = (data.get("action") or "").lower().strip()
+        duration = (data.get("duration") or "1h").lower().strip()
+        reason = (data.get("reason") or "")[:200]
+        if not actor.startswith("0x") or not target.startswith("0x"):
+            return jsonify({"error": "wallet and target required"}), 400
+        if actor == target:
+            return jsonify({"error": "cannot moderate yourself"}), 400
+        conn = get_db()
+        try:
+            a_role = ensure_member(conn, actor)
+            if not is_staff(a_role):
+                return jsonify({"error": "mods and admins only"}), 403
+            t_role = get_role(conn, target) or "member"
+            if action in ("timeout", "kick", "ban") and not can_moderate(a_role, t_role):
+                return jsonify({"error": "cannot moderate admins or mods"}), 403
+
+            now = int(time.time())
+            if action == "timeout":
+                secs = TIMEOUT_DURATIONS.get(duration)
+                if not secs:
+                    return jsonify({"error": "duration must be 1h, 24h, or 1w"}), 400
+                until = set_timeout(conn, target, secs, reason or f"Timeout {duration}", actor)
+                payload = {
+                    "ok": True,
+                    "action": "timeout",
+                    "target": target,
+                    "until": until,
+                    "duration": duration,
+                    "remaining": until - now,
+                }
+                try:
+                    socketio.emit("community_timeout", {
+                        "wallet": target,
+                        "until": until,
+                        "reason": reason or f"Timed out ({duration})",
+                        "remaining": until - now,
+                        "by": actor,
+                    })
+                except Exception:
+                    pass
+                return jsonify(payload)
+
+            if action == "untimeout":
+                clear_timeout(conn, target)
+                return jsonify({"ok": True, "action": "untimeout", "target": target})
+
+            if action == "kick":
+                kick_member(conn, target)
+                try:
+                    socketio.emit("community_kicked", {"wallet": target, "by": actor, "reason": reason})
+                except Exception:
+                    pass
+                return jsonify({"ok": True, "action": "kick", "target": target})
+
+            if action == "ban":
+                set_ban(conn, target, reason or "Banned", actor)
+                try:
+                    socketio.emit("community_banned", {"wallet": target, "by": actor, "reason": reason})
+                except Exception:
+                    pass
+                return jsonify({"ok": True, "action": "ban", "target": target})
+
+            if action == "unban":
+                if a_role not in ("owner", "admin"):
+                    return jsonify({"error": "admins only to unban"}), 403
+                clear_ban(conn, target)
+                return jsonify({"ok": True, "action": "unban", "target": target})
+
+            return jsonify({"error": "action must be timeout|untimeout|kick|ban|unban"}), 400
         finally:
             conn.close()
 
@@ -885,7 +1064,11 @@ def register_community_routes(app, socketio, get_db):
                 return jsonify({"error": "GIF must be a Tenor/Giphy HTTPS URL"}), 400
         conn = get_db()
         try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "You are banned from this community", "code": "banned"}), 403
             role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "not a member — join first", "code": "kicked"}), 403
             now = int(time.time())
             until = get_timeout_until(conn, wallet)
             if until > now:

@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=5"></script>
-<script src="dm-p2p.js?v=5"></script>
+<script src="genchat-p2p.js?v=6"></script>
+<script src="dm-p2p.js?v=6"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1211,6 +1211,18 @@ body {
 }
 #comm-msg-menu button:hover { background:var(--purple-glow); }
 #comm-msg-menu button.danger { color:#ff6b6b; }
+#mod-member-menu {
+  display:none; position:fixed; z-index:960; min-width:200px;
+  background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 10px 36px rgba(0,0,0,0.55); padding:6px; flex-direction:column; gap:2px;
+}
+#mod-member-menu.open { display:flex; }
+#mod-member-menu button {
+  background:none; border:none; color:var(--text); text-align:left; padding:12px 14px;
+  font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; font-family:inherit;
+}
+#mod-member-menu button:hover { background:var(--purple-glow); }
+#mod-member-menu button.danger { color:#ff6b6b; }
 .comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); align-items:center; }
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
@@ -1433,6 +1445,18 @@ body {
 }
 #comm-msg-menu button:hover { background:var(--purple-glow); }
 #comm-msg-menu button.danger { color:#ff6b6b; }
+#mod-member-menu {
+  display:none; position:fixed; z-index:960; min-width:200px;
+  background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 10px 36px rgba(0,0,0,0.55); padding:6px; flex-direction:column; gap:2px;
+}
+#mod-member-menu.open { display:flex; }
+#mod-member-menu button {
+  background:none; border:none; color:var(--text); text-align:left; padding:12px 14px;
+  font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; font-family:inherit;
+}
+#mod-member-menu button:hover { background:var(--purple-glow); }
+#mod-member-menu button.danger { color:#ff6b6b; }
 .comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); align-items:center; }
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
@@ -2492,6 +2516,17 @@ body {
   <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
   <button type="button" class="danger" id="comm-msg-del-btn" onclick="commMsgDelete()">🗑 Delete</button>
   <button type="button" onclick="closeCommMsgMenu()">✕ Close</button>
+</div>
+
+<!-- Members moderation (mods + admins) -->
+<div id="mod-member-menu" role="menu" aria-label="Moderate member">
+  <div id="mod-member-title" style="padding:10px 14px 6px;font-size:12px;color:var(--text2);font-weight:700"></div>
+  <button type="button" onclick="modMemberAction('timeout','1h')">⏱ Timeout 1 hour</button>
+  <button type="button" onclick="modMemberAction('timeout','24h')">⏱ Timeout 24 hours</button>
+  <button type="button" onclick="modMemberAction('timeout','1w')">⏱ Timeout 1 week</button>
+  <button type="button" onclick="modMemberAction('kick')">👢 Kick from chat</button>
+  <button type="button" class="danger" onclick="modMemberAction('ban')">🚫 Ban from chat</button>
+  <button type="button" onclick="closeModMemberMenu()">✕ Close</button>
 </div>
 
 <!-- ── VIDEO CALL OVERLAYS ── -->
@@ -7697,19 +7732,27 @@ let _dirMembers = [];
 let _activeCommSlug = 'general';
 
 async function communityJoin() {
-  if (!wallet) return;
+  if (!wallet) return false;
   try {
     const r = await fetch(BACKEND + '/api/community/join', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({wallet})
     });
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (j.code === 'banned') {
+        communityRole = null;
+        showToast(j.error || 'You are banned from this community');
+      }
+      return false;
+    }
     if (j.role) communityRole = j.role;
     if (j.profile) window._commProfile = j.profile;
     try { syncPresencePickerFromProfile(); } catch(e) {}
     try { if (typeof updateUI === 'function') updateUI(); } catch(e) {}
     try { refreshOwnerMenuVisibility(); } catch(e) {}
-  } catch(e) { console.warn('community join', e); }
+    return true;
+  } catch(e) { console.warn('community join', e); return false; }
 }
 
 async function loadChannelsList() {
@@ -8185,9 +8228,15 @@ async function commMsgDelete() {
 
 document.addEventListener('click', function (e) {
   const menu = document.getElementById('comm-msg-menu');
-  if (!menu || !menu.classList.contains('open')) return;
-  if (menu.contains(e.target) || (e.target && e.target.classList && e.target.classList.contains('comm-msg-more'))) return;
-  closeCommMsgMenu();
+  if (menu && menu.classList.contains('open')) {
+    if (!(menu.contains(e.target) || (e.target && e.target.classList && e.target.classList.contains('comm-msg-more')))) {
+      closeCommMsgMenu();
+    }
+  }
+  const modMenu = document.getElementById('mod-member-menu');
+  if (modMenu && modMenu.classList.contains('open')) {
+    if (!modMenu.contains(e.target)) closeModMemberMenu();
+  }
 });
 
 async function sendCommunityMsg(slug) {
@@ -8612,6 +8661,12 @@ function _dirMemberRow(m) {
   const statusHint = selfInv && !online ? '<div class="d">Invisible — others see you offline</div>' : '';
   const w = escapeHtml(m.wallet);
   const dn = escapeHtml(m.display_name);
+  const targetStaff = role === 'owner' || role === 'admin' || role === 'mod';
+  const iAmStaff = isCommStaff();
+  const showMod = iAmStaff && !targetStaff && wallet && m.wallet !== wallet;
+  const modBtn = showMod
+    ? `<button type="button" title="Moderate" onclick="event.stopPropagation();openModMemberMenu(event,'${w}','${dn.replace(/'/g, "\\'")}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">🛡</button>`
+    : '';
   return `<div class="dir-item">
     <div class="dir-av-wrap" onclick="if(wallet){ openChat('${w}', '${dn.replace(/'/g, "\\'")}') }"><div class="comm-av">${av}</div>${dot}</div>
     <div class="meta" style="flex:1;min-width:0" onclick="if(wallet){ openChat('${w}', '${dn.replace(/'/g, "\\'")}') }">
@@ -8619,8 +8674,64 @@ function _dirMemberRow(m) {
       <div class="d">${m.hide_wallet ? '' : escapeHtml(shortenWallet(m.wallet))}</div>
       ${statusHint}
     </div>
+    ${modBtn}
     <button type="button" title="Add friend (P2P)" onclick="event.stopPropagation();addP2PFriend('${w}','${dn.replace(/'/g, "\\'")}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">＋</button>
   </div>`;
+}
+
+let _modMemberTarget = null;
+
+function openModMemberMenu(ev, targetWallet, displayName) {
+  if (!isCommStaff()) { showToast('Mods and admins only'); return; }
+  _modMemberTarget = { wallet: (targetWallet || '').toLowerCase(), name: displayName || '' };
+  const menu = document.getElementById('mod-member-menu');
+  const title = document.getElementById('mod-member-title');
+  if (title) title.textContent = 'Moderate ' + (displayName || shortenWallet(targetWallet));
+  if (!menu) return;
+  menu.classList.add('open');
+  const x = Math.min((ev && ev.clientX) || 16, window.innerWidth - 220);
+  const y = Math.min((ev && ev.clientY) || 16, window.innerHeight - 320);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+
+function closeModMemberMenu() {
+  document.getElementById('mod-member-menu')?.classList.remove('open');
+  _modMemberTarget = null;
+}
+
+async function modMemberAction(action, duration) {
+  const t = _modMemberTarget;
+  closeModMemberMenu();
+  if (!t || !t.wallet || !wallet) return;
+  if (!isCommStaff()) { showToast('Mods and admins only'); return; }
+  const labels = {
+    timeout: 'timeout this member (' + (duration || '1h') + ')',
+    kick: 'kick this member from chat (they can rejoin)',
+    ban: 'BAN this member from chat',
+  };
+  if (!confirm('Really ' + (labels[action] || action) + '?')) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/moderate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet,
+        target: t.wallet,
+        action,
+        duration: duration || '1h',
+        reason: '',
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showToast(j.error || 'Action failed'); return; }
+    if (action === 'timeout') showToast('Timed out ' + (t.name || shortenWallet(t.wallet)) + ' · ' + (duration || '1h'));
+    else if (action === 'kick') showToast('Kicked ' + (t.name || shortenWallet(t.wallet)));
+    else if (action === 'ban') showToast('Banned ' + (t.name || shortenWallet(t.wallet)));
+    loadDirectory();
+  } catch (e) {
+    showToast('Action failed');
+  }
 }
 
 function filterDirectory() {
@@ -8989,6 +9100,24 @@ async function saveCommunityProfile() { return saveEditProfile(); }
         if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
         if (data.until) setLocalTimeoutUntil(data.until);
         showToast(data.reason || 'You were timed out');
+      });
+      socket.on('community_kicked', (data) => {
+        if (!data || !wallet) return;
+        if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
+        communityRole = null;
+        showToast('You were kicked from the community chat');
+        try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
+      });
+      socket.on('community_banned', (data) => {
+        if (!data || !wallet) return;
+        if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
+        communityRole = null;
+        showToast('You are banned from this community');
+        try { if (window.genChatP2P) genChatP2P.leave(); } catch (e) {}
+      });
+      socket.on('community_message_edited', (msg) => {
+        if (!msg || !msg.id) return;
+        applyCommMsgEditLocal(msg.id, msg.content || '');
       });
       clearInterval(trySock);
     }
