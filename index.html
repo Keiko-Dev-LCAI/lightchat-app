@@ -2051,6 +2051,11 @@ body {
             cursor:pointer; padding:6px 8px; border-radius:8px;
           }
           .comm-reply-bar-x:hover { background:rgba(255,255,255,0.06); color:var(--text); }
+          .comm-msg .who { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
+          .comm-msg-time {
+            font-size:11px; font-weight:500; color:var(--text2); opacity:0.85;
+            margin-left:2px; white-space:nowrap;
+          }
           </style>
           <div id="comm-reply-bar" class="comm-reply-bar" style="display:none">
             <div class="comm-reply-bar-text">
@@ -8840,18 +8845,29 @@ try { migrateStripAtFromLocalLogs(); } catch (e) {}
  * Same unix timestamp → different clock in China vs US (e.g. EDT vs CST).
  */
 function formatMessageTime(tsSeconds) {
+  /** Discord-like: "3:42 PM" today, "Yesterday at 3:42 PM", else "Aug 18, 3:42 PM" */
   if (!tsSeconds) return '';
   const d = new Date(Number(tsSeconds) * 1000);
   if (isNaN(d.getTime())) return '';
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDiff = Math.round((startToday - startMsg) / 86400000);
+  let timeStr = '';
   try {
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
+    timeStr = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  } catch (e) {
+    timeStr = d.toLocaleTimeString();
+  }
+  if (dayDiff === 0) return timeStr;
+  if (dayDiff === 1) return 'Yesterday at ' + timeStr;
+  try {
+    const dateStr = d.toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
+      year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
     });
+    return dateStr + ', ' + timeStr;
   } catch (e) {
     return d.toLocaleString();
   }
@@ -10002,13 +10018,17 @@ function appendCommunityMessage(m) {
   const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
   const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
   const whoName = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
+  const timeBit = when
+    ? '<span class="comm-msg-time" title="' + escapeHtml(when) + (m.edited ? ' · edited' : '') + '">' +
+      escapeHtml(when) + (m.edited ? ' · edited' : '') + '</span>'
+    : '';
   const el = document.createElement('div');
   el.className = 'comm-msg';
   el.setAttribute('data-msg-id', m.id || '');
-  // Compact Discord-like: avatar + name (+ Mod/Admin badge). No per-post timestamp row.
+  // Discord-like: avatar · username · small time · body · reaction pills
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
     (isBot ? '' : _commMsgMenuBtn(m)) +
-    '<div class="who" title="' + escapeHtml(when) + (m.edited ? ' · edited' : '') + '">' + whoName + role + '</div>' +
+    '<div class="who">' + whoName + role + timeBit + '</div>' +
     _commReplyQuoteHtml(m) +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
     _commReactionsHtml(m) +
@@ -10035,11 +10055,14 @@ function renderCommunityMessages(msgs) {
     const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
     const who = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
     const tip = escapeHtml(when) + (m.edited ? ' · edited' : '');
+    const timeBit = when
+      ? `<span class="comm-msg-time" title="${tip}">${escapeHtml(when)}${m.edited ? ' · edited' : ''}</span>`
+      : '';
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${isBot ? '' : _commMsgMenuBtn(m)}
-        <div class="who" title="${tip}">${who}${role}</div>
+        <div class="who">${who}${role}${timeBit}</div>
         ${_commReplyQuoteHtml(m)}
         <div class="body">${renderCommBodyHtml(m.content)}</div>
         ${_commReactionsHtml(m)}
