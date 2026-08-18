@@ -8258,6 +8258,7 @@ function startHereAction(act) {
   if (act === 'edit-profile') { switchTab('me'); setTimeout(() => openEditProfile(), 200); return; }
   if (act === 'directory') { switchTab('directory'); return; }
   if (act === 'events') { switchTab('calendar'); return; }
+  if (act === 'tickets') { switchTab('tickets'); return; }
 }
 
 function renderCommBodyHtml(content) {
@@ -9635,6 +9636,20 @@ async function saveCommunityProfile() { return saveEditProfile(); }
       socket.on('community_message_edited', (msg) => {
         if (!msg || !msg.id) return;
         applyCommMsgEditLocal(msg.id, msg.content || '');
+      });
+      socket.on('community_ticket_created', () => {
+        if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
+        else if (isCommStaff()) document.getElementById('stickets-dot')?.classList.add('show');
+      });
+      socket.on('community_ticket_message', (msg) => {
+        if (msg && msg.ticket_id && msg.ticket_id === _activeTicketId) refreshTicketChat();
+        else if (isCommStaff() || (msg && wallet && msg.ticket_id)) {
+          document.getElementById('stickets-dot')?.classList.add('show');
+        }
+      });
+      socket.on('community_ticket_closed', (data) => {
+        if (data && data.id === _activeTicketId) refreshTicketChat();
+        if (document.getElementById('tab-tickets')?.classList.contains('active')) loadTicketsList();
       });
       clearInterval(trySock);
     }
