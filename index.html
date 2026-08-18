@@ -1817,9 +1817,12 @@ body {
             <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
             <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('sticker')" title="Stickers">🎭</button>
             <button type="button" class="comm-gif-btn" onclick="openGifSheet('genchat')" title="Send a GIF">GIF</button>
+            <button type="button" class="comm-gif-btn" id="genchat-media-btn" onclick="pickCommunityMedia()" title="Upload image" style="display:none">🖼</button>
+            <input type="file" id="genchat-media-input" accept="image/png,image/jpeg,image/webp,image/gif" style="display:none" onchange="uploadCommunityMedia(this)">
             <input id="genchat-input" placeholder="Message… type @ to mention" maxlength="4000"
               autocomplete="off"
               oninput="onGenchatMentionInput()"
+              onpaste="onGenchatPaste(event)"
               onkeydown="return onGenchatKeydown(event)">
             <button type="button" onclick="sendCommunityMsg('general')">Send</button>
           </div>
@@ -8607,6 +8610,7 @@ function setCommunityChannelHeader(slug) {
     else if (slug === 'dev') s.textContent = '#Devs · builders & tooling';
     else if (slug === 'nodes') s.textContent = '#Nodes · operators & validators';
     else if (slug === 'mods') s.textContent = '#Mods · staff only';
+    else if (slug === 'media') s.textContent = 'Images · GIFs · video links';
     else s.textContent = ch ? (ch.description || 'Lightchain community') : 'Lightchain community';
   }
 }
@@ -8655,20 +8659,31 @@ async function loadCommunityChannel(slug) {
   // mode=post: mods post only. mode=guide: no composer.
   const ch = (communityChannels || []).find(c => c.slug === slug);
   const isMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
-  const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : 'post');
+  const mode = (ch && ch.mode) || (slug === 'general' ? 'chat' : (slug === 'media' ? 'media' : 'post'));
+  const mediaBtn = document.getElementById('genchat-media-btn');
   if (compose) {
     if (mode === 'guide' || slug === 'start-here') {
       compose.style.display = 'none';
+      if (mediaBtn) mediaBtn.style.display = 'none';
+    } else if (mode === 'media' || slug === 'media') {
+      compose.style.display = '';
+      const inp = document.getElementById('genchat-input');
+      if (inp) inp.placeholder = 'Paste image/GIF/video link · or tap 🖼 to upload';
+      if (mediaBtn) mediaBtn.style.display = '';
     } else if (mode === 'chat' || slug === 'general' || isP2PChatChannel(slug)) {
       compose.style.display = '';
       const inp = document.getElementById('genchat-input');
       if (inp) inp.placeholder = (slug === 'general' ? 'Message Gen Chat…' : ('Message #' + slug + '…')) + ' · type @ to mention';
+      // Staff can upload images in Gen Chat / live channels
+      if (mediaBtn) mediaBtn.style.display = isMod ? '' : 'none';
     } else if (mode === 'post' && isMod) {
       compose.style.display = '';
       const inp = document.getElementById('genchat-input');
       if (inp) inp.placeholder = 'Post to #' + slug + '… · type @ to mention';
+      if (mediaBtn) mediaBtn.style.display = '';
     } else {
       compose.style.display = 'none';
+      if (mediaBtn) mediaBtn.style.display = 'none';
     }
   }
   // Threads UI (admins create; tagged members join)
@@ -8899,7 +8914,46 @@ function alertCommunityMention(m) {
   } catch (e) {}
 }
 
+function parseImgContent(content) {
+  const c = String(content || '').trim();
+  if (!c.startsWith('[[img]]')) return null;
+  return c.slice(7).trim() || null;
+}
+
+function parseVideoContent(content) {
+  const c = String(content || '').trim();
+  if (!c.startsWith('[[video]]')) return null;
+  return c.slice(9).trim() || null;
+}
+
+function encodeImgContent(url) {
+  return '[[img]]' + String(url || '').trim();
+}
+
+function encodeVideoContent(url) {
+  return '[[video]]' + String(url || '').trim();
+}
+
 function renderCommBodyHtml(content) {
+  const imgUrl = parseImgContent(content);
+  if (imgUrl) {
+    let src = imgUrl;
+    if (src.indexOf('/chat-image/') === 0) src = BACKEND + src;
+    else if (/^\d+$/.test(src)) src = BACKEND + '/chat-image/' + src;
+    const safe = escapeHtml(src);
+    return '<img class="comm-gif" src="' + safe + '" alt="image" loading="lazy" style="max-width:min(320px,75vw);max-height:280px;border-radius:10px;display:block;margin-top:4px">';
+  }
+  const vidUrl = parseVideoContent(content);
+  if (vidUrl) {
+    const low = vidUrl.toLowerCase();
+    if (low.includes('youtube.com') || low.includes('youtu.be') || low.includes('vimeo.com')) {
+      return '<a href="' + escapeHtml(vidUrl) + '" target="_blank" rel="noopener" style="color:var(--lc-primary);font-weight:600">🎬 Open video ↗</a>';
+    }
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(vidUrl)) {
+      return '<video class="comm-gif" src="' + escapeHtml(vidUrl) + '" controls playsinline style="max-width:min(320px,75vw);max-height:280px;border-radius:10px;display:block;margin-top:4px"></video>';
+    }
+    return '<a href="' + escapeHtml(vidUrl) + '" target="_blank" rel="noopener" style="color:var(--lc-primary);font-weight:600">🎬 ' + escapeHtml(vidUrl) + ' ↗</a>';
+  }
   const stickerId = parseStickerContent(content);
   if (stickerId) {
     let src = '';
@@ -9284,19 +9338,131 @@ document.addEventListener('click', function (e) {
   }
 });
 
+function normalizeCommunityMediaContent(content, slug) {
+  content = String(content || '').trim();
+  if (!content) return content;
+  if (content.startsWith('[[img]]') || content.startsWith('[[gif]]') || content.startsWith('[[video]]') ||
+      content.startsWith('[[sticker]]') || content.startsWith('[[emoji]]')) {
+    return content;
+  }
+  // Tenor/Giphy → GIF
+  if (content.length < 800 && typeof normalizeGifUrl === 'function' && normalizeGifUrl(content)) {
+    return null; // async resolve needed
+  }
+  const low = content.toLowerCase();
+  if (low.startsWith('https://') && !/\s/.test(content)) {
+    if (/\.(mp4|webm|mov)(\?|$)/i.test(content) || /youtube\.com|youtu\.be|vimeo\.com/i.test(content)) {
+      return encodeVideoContent(content);
+    }
+    if (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(content)) {
+      return encodeImgContent(content);
+    }
+  }
+  return content;
+}
+
 async function sendCommunityMsg(slug) {
   closeMentionAc();
   const inp = document.getElementById('genchat-input');
   let content = (inp && inp.value || '').trim();
   slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
   if (!content) return;
-  // Paste Tenor/Giphy page or media URL → send as GIF
+  // Paste Tenor/Giphy page or media URL → GIF / image / video
   if (content.length < 800 && normalizeGifUrl(content)) {
     const resolved = await resolveGifUrl(content);
     if (resolved) content = encodeGifContent(resolved);
+  } else {
+    content = normalizeCommunityMediaContent(content, slug) || content;
   }
   if (inp) inp.value = '';
   await sendCommunityContent(slug, content);
+}
+
+function canPostCommunityMedia() {
+  const slug = _activeCommSlug || 'general';
+  if (slug === 'media') return true;
+  return isCommStaff();
+}
+
+function pickCommunityMedia() {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  if (!canPostCommunityMedia()) {
+    showToast('Only mods/admins can upload images in Gen Chat — use #media or ask staff');
+    return;
+  }
+  const inp = document.getElementById('genchat-media-input');
+  if (inp) inp.click();
+}
+
+async function uploadCommunityMedia(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (!wallet) { showToast('Connect wallet'); input.value = ''; return; }
+  if (!canPostCommunityMedia()) {
+    showToast('Only mods/admins can upload here');
+    input.value = '';
+    return;
+  }
+  if (!(file.type || '').startsWith('image/')) {
+    showToast('Upload an image (PNG/JPEG/WebP/GIF). For video, paste a link.');
+    input.value = '';
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    showToast('Image too large — max ~8 MB');
+    input.value = '';
+    return;
+  }
+  const slug = _activeCommSlug || 'general';
+  showToast('Uploading image…');
+  try {
+    const compressed = (typeof compressImage === 'function')
+      ? await compressImage(file)
+      : await new Promise(function (resolve, reject) {
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const dataUrl = e.target.result;
+            resolve({ base64: String(dataUrl).split(',')[1], type: file.type || 'image/jpeg' });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+    const resp = await fetch(BACKEND + '/chat-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet,
+        image_data: compressed.base64,
+        image_type: compressed.type || file.type || 'image/jpeg',
+      }),
+    }).then(function (r) { return r.json(); }).catch(function () { return { error: 'Upload failed' }; });
+    if (resp.error) { showToast(resp.error); input.value = ''; return; }
+    const url = BACKEND + '/chat-image/' + resp.image_id;
+    await sendCommunityContent(slug, encodeImgContent(url));
+    showToast('Image posted');
+  } catch (e) {
+    showToast('Image upload failed');
+  }
+  input.value = '';
+}
+
+function onGenchatPaste(event) {
+  try {
+    if (!canPostCommunityMedia()) return;
+    const items = event.clipboardData && event.clipboardData.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (it.type && it.type.indexOf('image/') === 0) {
+        event.preventDefault();
+        const file = it.getAsFile();
+        if (!file) return;
+        const fake = { files: [file], value: '' };
+        uploadCommunityMedia(fake);
+        return;
+      }
+    }
+  } catch (e) {}
 }
 
 /* ── @mention autocomplete (Discord-style) ── */
@@ -9474,8 +9640,21 @@ function contentHasLink(content) {
   const c = String(content || '').trim();
   if (!c) return false;
   if (c.startsWith('[[sticker]]') || c.startsWith('[[emoji]]')) return false;
-  if (c.startsWith('[[gif]]')) return true;
+  if (c.startsWith('[[gif]]') || c.startsWith('[[img]]') || c.startsWith('[[video]]')) return true;
   return /(https?:\/\/|www\.|discord\.gg\/|t\.me\/)|(\b[a-z0-9-]+\.(com|org|net|io|ai|xyz|app|gg|me|co|info|dev)(\/[^\s]*)?)/i.test(c);
+}
+
+function isMediaOnlyContentClient(content) {
+  const c = String(content || '').trim();
+  if (!c) return false;
+  if (c.startsWith('[[img]]') || c.startsWith('[[gif]]') || c.startsWith('[[video]]')) return true;
+  if (c.startsWith('[[sticker]]') || c.startsWith('[[emoji]]')) return true;
+  const low = c.toLowerCase();
+  if (low.startsWith('https://') && !/\s/.test(c)) {
+    if (/\.(png|jpe?g|gif|webp|mp4|webm|mov)(\?|$)/i.test(c)) return true;
+    if (/youtube\.com|youtu\.be|vimeo\.com/i.test(c)) return true;
+  }
+  return false;
 }
 
 function openEmojiStickerSheet(tab) {
@@ -9647,10 +9826,19 @@ async function enforceLinkAndTimeout(content) {
     showToast('Timed out — ' + mins + ' min left');
     return false;
   }
+  const slug = _activeCommSlug || 'general';
+  // #media: anyone may post media-only (images/GIF/video links)
+  if (slug === 'media') {
+    if (!isMediaOnlyContentClient(content)) {
+      showToast('Media channel: upload an image or paste a GIF/video link');
+      return false;
+    }
+    return true;
+  }
   if (contentHasLink(content) && !isCommStaff()) {
     // Hit server so timeout sticks (also blocks the post)
     try {
-      const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(_activeCommSlug || 'general'), {
+      const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet, content }),

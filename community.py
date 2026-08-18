@@ -385,6 +385,21 @@ def init_community_db(get_db):
     except Exception as e:
         print("  [community] media channel seed:", e)
 
+    # #media: open for members to share images / GIF / video links (not staff-only)
+    try:
+        conn.execute(
+            """UPDATE community_channels
+               SET name='Media', description=?, readonly_members=0, kind='media'
+               WHERE community_id=? AND slug='media'""",
+            (
+                "Share images, GIFs, and video links — upload or paste",
+                COMMUNITY_ID,
+            ),
+        )
+        conn.commit()
+    except Exception as e:
+        print("  [community] media channel open:", e)
+
     # keep start-here / links read-only for members (migrate existing DBs)
     try:
         conn.execute(
@@ -586,16 +601,52 @@ _LINK_RE = re.compile(
 
 
 def content_has_link(content: str) -> bool:
-    """True if message contains a URL / invite-style link (incl. [[gif]] media).
+    """True if message contains a URL / invite-style link (incl. [[gif]]/[[img]]/[[video]]).
     Built-in/custom stickers use [[sticker]]… and are NOT treated as links."""
     c = (content or "").strip()
     if not c:
         return False
     if c.startswith("[[sticker]]") or c.startswith("[[emoji]]"):
         return False
-    if c.startswith("[[gif]]"):
+    if c.startswith("[[gif]]") or c.startswith("[[img]]") or c.startswith("[[video]]"):
         return True
     return bool(_LINK_RE.search(c))
+
+
+_MEDIA_HOST_OK = (
+    "tenor.com", "tenor.co", "giphy.com", "giphy.gif",
+    "imgur.com", "i.imgur.com", "media.discordapp.net", "cdn.discordapp.com",
+)
+
+
+def is_media_only_content(content: str) -> bool:
+    """True if message is an allowed media post (image embed, gif, or video URL)."""
+    c = (content or "").strip()
+    if not c:
+        return False
+    if c.startswith("[[sticker]]") or c.startswith("[[emoji]]"):
+        return True
+    if c.startswith("[[img]]"):
+        url = c[7:].strip()
+        return url.startswith("https://") or url.startswith("/chat-image/") or "/chat-image/" in url
+    if c.startswith("[[gif]]"):
+        url = c[7:].strip().lower()
+        return url.startswith("https://") and any(h in url for h in ("tenor.com", "tenor.co", "giphy.com"))
+    if c.startswith("[[video]]"):
+        url = c[9:].strip().lower()
+        if not url.startswith("https://"):
+            return False
+        if any(x in url for x in (".mp4", ".webm", ".mov", "youtube.com", "youtu.be", "vimeo.com")):
+            return True
+        return any(h in url for h in _MEDIA_HOST_OK)
+    # bare https image/video URL
+    low = c.lower()
+    if low.startswith("https://") and " " not in c.strip():
+        if any(low.endswith(ext) or ext + "?" in low for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".webm")):
+            return True
+        if any(h in low for h in ("youtube.com", "youtu.be", "vimeo.com")):
+            return True
+    return False
 
 
 _MENTION_RE = re.compile(r"@([A-Za-z0-9_]{2,40}|everyone)\b", re.I)
@@ -933,13 +984,16 @@ def register_community_routes(app, socketio, get_db):
                     d["staff_only"] = True
                 elif slug in GUIDE_SLUGS:
                     d["mode"] = "guide"
+                elif slug == "media":
+                    d["mode"] = "media"  # everyone can post images/GIF/video links
+                    d["staff_only"] = False
                 elif slug in P2P_CHAT_SLUGS or ro == 0:
                     d["mode"] = "chat"
                     d["staff_only"] = False
                 else:
                     d["mode"] = "post"
                     d["staff_only"] = False
-                d["primary"] = slug in PRIMARY_SLUGS or d["mode"] == "chat"
+                d["primary"] = slug in PRIMARY_SLUGS or d["mode"] in ("chat", "media")
                 if slug not in PRIMARY_SLUGS and d["mode"] != "chat":
                     d["mode"] = "hidden"
                     d["primary"] = False
@@ -1384,42 +1438,6 @@ def register_community_routes(app, socketio, get_db):
                     "remaining": until - now,
                 }), 403
 
-            # Links / GIFs: admins + mods only. Others → 1 hour timeout.
-            if content_has_link(content) and not is_staff(role):
-                until = set_timeout(
-                    conn,
-                    wallet,
-                    3600,
-                    "Posted a link (admins/mods only)",
-                    "system",
-                )
-                try:
-                    socketio.emit(
-                        "community_timeout",
-                        {
-                            "wallet": wallet,
-                            "until": until,
-                            "reason": "Posted a link (admins/mods only)",
-                            "remaining": 3600,
-                        },
-                    )
-                except Exception:
-                    pass
-                return jsonify({
-                    "error": "Only admins and mods can post links. Timed out for 1 hour.",
-                    "code": "link_timeout",
-                    "until": until,
-                    "remaining": 3600,
-                }), 403
-
-            # Mentions: @everyone = staff only; anyone may @individuals
-            mention_everyone, mention_wallets = parse_mentions(conn, content)
-            if mention_everyone and not is_staff(role):
-                return jsonify({
-                    "error": "Only mods and admins can @everyone",
-                    "code": "mention_everyone_denied",
-                }), 403
-
             ch = conn.execute(
                 "SELECT * FROM community_channels WHERE community_id=? AND slug=?",
                 (COMMUNITY_ID, slug),
@@ -1430,8 +1448,54 @@ def register_community_routes(app, socketio, get_db):
             # readonly_members=0 → open chat (Gen Chat now; other channels when we flip).
             if ch["slug"] == "start-here":
                 return jsonify({"error": "Start Here is info only — no chatting"}), 403
+
+            # #media: anyone may post media-only; reject plain text / random links
+            if ch["slug"] == "media":
+                if not is_media_only_content(content):
+                    return jsonify({
+                        "error": "Media channel: upload an image or paste a GIF/video link",
+                        "code": "media_only",
+                    }), 400
+            else:
+                # Links / GIFs / images: admins + mods only (except #media above).
+                # Staff may post [[img]]/[[gif]]/[[video]] in Gen Chat etc.
+                if content_has_link(content) and not is_staff(role):
+                    until = set_timeout(
+                        conn,
+                        wallet,
+                        3600,
+                        "Posted a link (admins/mods only)",
+                        "system",
+                    )
+                    try:
+                        socketio.emit(
+                            "community_timeout",
+                            {
+                                "wallet": wallet,
+                                "until": until,
+                                "reason": "Posted a link (admins/mods only)",
+                                "remaining": 3600,
+                            },
+                        )
+                    except Exception:
+                        pass
+                    return jsonify({
+                        "error": "Only admins and mods can post links. Timed out for 1 hour.",
+                        "code": "link_timeout",
+                        "until": until,
+                        "remaining": 3600,
+                    }), 403
+
+            # Mentions: @everyone = staff only; anyone may @individuals
+            mention_everyone, mention_wallets = parse_mentions(conn, content)
+            if mention_everyone and not is_staff(role):
+                return jsonify({
+                    "error": "Only mods and admins can @everyone",
+                    "code": "mention_everyone_denied",
+                }), 403
+
             ro = int(ch["readonly_members"] or 0)
-            if ro and not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
+            if ch["slug"] != "media" and ro and not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
                 return jsonify({"error": "this channel is read-only — only mods can post"}), 403
             mid = str(uuid.uuid4())
             conn.execute(
