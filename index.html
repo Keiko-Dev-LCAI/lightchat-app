@@ -1837,13 +1837,15 @@ body {
         </div>
         <div class="comm-header">
           <img class="lc-inline-mark" src="brand/symbol-light.svg" alt="" style="width:28px;height:28px">
-          <div style="flex:1">
+          <div style="flex:1;min-width:0">
             <h2># Gen Chat</h2>
             <div class="comm-sub">Everyone · Lightchain community</div>
           </div>
-          <button type="button" id="threads-toggle-btn" class="comm-gif-btn" onclick="toggleThreadsPanel()" title="Threads" style="height:36px;padding:0 10px;display:none">🧵</button>
-          <button type="button" id="new-thread-btn" class="comm-gif-btn" onclick="createChannelThread()" title="New thread (admins)" style="height:36px;padding:0 10px;display:none">＋🧵</button>
-          <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
+          <div class="comm-header-actions">
+            <button type="button" id="threads-toggle-btn" class="comm-gif-btn" onclick="toggleThreadsPanel()" title="Threads" style="height:34px;padding:0 12px;display:none">Threads</button>
+            <button type="button" id="new-thread-btn" class="comm-gif-btn" onclick="createChannelThread()" title="New thread (admins)" style="height:34px;padding:0 12px;display:none">New thread</button>
+            <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
+          </div>
         </div>
         <div id="threads-panel" style="display:none;border-bottom:1px solid var(--border);max-height:160px;overflow-y:auto;padding:8px 12px;background:var(--card)"></div>
         <div id="thread-chat" style="display:none;flex:1;flex-direction:column;min-height:0">
@@ -2062,6 +2064,9 @@ body {
           </div>
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
+          </div>
+          <div class="me-menu-item" onclick="clearCommDeleteTombstones()">
+            <div class="me-menu-icon">♻️</div><div>Restore hidden chat history</div><div class="me-menu-arrow">›</div>
           </div>
           <div class="me-menu-item" id="me-logoff-btn" onclick="logOff()" style="display:none;color:#ff8a8a">
             <div class="me-menu-icon">🚪</div><div>Log off</div><div class="me-menu-arrow">›</div>
@@ -3397,6 +3402,22 @@ function updateUI() {
   if (logBtn) logBtn.style.display = wallet ? '' : 'none';
   const sideLog = document.getElementById('sidebar-logoff-btn');
   if (sideLog) sideLog.style.display = wallet ? '' : 'none';
+}
+
+/** Clear local delete tombstones so P2P history can show again (does not undelete server rows). */
+function clearCommDeleteTombstones() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('lc_p2p_tombstones_') === 0) keys.push(k);
+    }
+    keys.forEach(function (k) { localStorage.removeItem(k); });
+    showToast('Cleared delete memory — reloading channel');
+    loadCommunityChannel(_activeCommSlug || 'general');
+  } catch (e) {
+    showToast('Could not clear');
+  }
 }
 
 /** Log off LightChat: revoke session, leave sockets/P2P, show Connect Wallet. Keeps local chat cache. */
@@ -10109,17 +10130,49 @@ async function sendCommunityContent(slug, content) {
   }
 
   const prof = window._commProfile || {};
+  const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
   const msg = {
-    id: 'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2,8),
+    id: 'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
     sender_wallet: wallet,
     content: content,
-    created_at: Math.floor(Date.now()/1000),
+    created_at: Math.floor(Date.now() / 1000),
     display_name: stripAt(prof.display_name || (typeof myHandle !== 'undefined' && myHandle) || '') || shortenWallet(wallet),
     role: communityRole || 'member',
     has_avatar: !!(prof.has_avatar),
     slug: slug,
     transport: 'p2p'
   };
+
+  // Dual-write: save to server for history (handoff / refresh), unless P2P-only mode.
+  // Live delivery still prefers WebRTC peers when available.
+  let relayOk = false;
+  if (!p2pOnly) {
+    try {
+      const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, content }),
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!r.ok) {
+        if (j.until) setLocalTimeoutUntil(j.until);
+        // If server rejects, still try P2P so chat isn't bricked
+        if (!(isP2PChatChannel(slug) && window.genChatP2P)) {
+          showToast(j.error || 'Send failed');
+          return;
+        }
+      } else if (j.message && j.message.id) {
+        msg.id = j.message.id;
+        msg.created_at = j.message.created_at || msg.created_at;
+        msg.display_name = j.message.display_name || msg.display_name;
+        msg.role = j.message.role || msg.role;
+        msg.has_avatar = j.message.has_avatar;
+        relayOk = true;
+      }
+    } catch (e) {
+      console.warn('relay save', e);
+    }
+  }
 
   let p2pCount = 0;
   if (isP2PChatChannel(slug) && window.genChatP2P) {
@@ -10129,7 +10182,6 @@ async function sendCommunityContent(slug, content) {
     } catch (e) { console.warn('p2p send', e); }
   }
 
-  // Optional Holepunch / Hyperswarm path (experimental) — does not replace WebRTC
   let hpCount = 0;
   if (isP2PChatChannel(slug) && window.genChatHolepunch && genChatHolepunch.isEnabled()) {
     try {
@@ -10138,16 +10190,17 @@ async function sendCommunityContent(slug, content) {
     } catch (e) { console.warn('holepunch send', e); }
   }
 
-  if (p2pCount > 0 || hpCount > 0) {
+  if (p2pCount > 0 || hpCount > 0 || relayOk) {
+    msg.transport = p2pCount > 0 ? 'p2p' : (hpCount > 0 ? 'holepunch' : 'relay');
     appendCommunityMessage(msg);
     const bits = [];
     if (p2pCount > 0) bits.push('P2P · ' + p2pCount);
     if (hpCount > 0) bits.push('HP · ' + hpCount);
-    showToast('Sent via ' + bits.join(' + '));
+    if (relayOk) bits.push('saved');
+    showToast(bits.length ? ('Sent · ' + bits.join(' · ')) : 'Sent');
     return;
   }
 
-  const p2pOnly = localStorage.getItem('lc_p2p_only') === '1';
   if (p2pOnly && isP2PChatChannel(slug)) {
     try { if (window.genChatP2P) { genChatP2P._storeLocal(msg); genChatP2P._seenIds.add(msg.id); } } catch (e) {}
     appendCommunityMessage(msg);
@@ -10155,22 +10208,7 @@ async function sendCommunityContent(slug, content) {
     return;
   }
 
-  try {
-    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({wallet, content})
-    });
-    const j = await r.json();
-    if (!r.ok) {
-      if (j.until) setLocalTimeoutUntil(j.until);
-      showToast(j.error || 'Send failed');
-      return;
-    }
-    if (j.message) appendCommunityMessage(Object.assign({ transport: 'relay' }, j.message));
-    else await loadCommunityChannel(slug);
-    if (isP2PChatChannel(slug) && parseGifContent(content)) showToast('GIF sent');
-    else if (isP2PChatChannel(slug)) showToast('Sent via relay (no P2P peers online)');
-  } catch(e) { showToast('Send failed'); }
+  showToast('Send failed — no peers and relay unavailable');
 }
 
 
