@@ -76,17 +76,78 @@
     );
   };
 
-  /** Same sender + identical content within 2 minutes → treat as one message. */
+  /** Normalize media posts so the same image/video asset matches across ids/hosts. */
+  GenChatP2P.prototype._mediaFingerprint = function (content) {
+    const c = String(content || '').trim();
+    if (!c) return '';
+    let m = c.match(/\[\[(img|gif|video)\]\]\s*(.+)$/i);
+    if (!m) return '';
+    let url = (m[2] || '').trim();
+    // strip host → path so BACKEND URL vs /chat-image/id match
+    url = url.replace(/^https?:\/\/[^/]+/i, '');
+    const idImg = url.match(/\/chat-image\/(\d+)/i);
+    if (idImg) return 'img:' + idImg[1];
+    const idFile = url.match(/\/chat-file\/(\d+)/i);
+    if (idFile) return 'file:' + idFile[1];
+    return (m[1].toLowerCase() + ':' + url).slice(0, 180);
+  };
+
+  /** Same sender + identical content OR same media asset within 10 minutes. */
   GenChatP2P.prototype._isContentDupe = function (a, b) {
     if (!a || !b) return false;
     const sa = String(a.sender_wallet || '').toLowerCase();
     const sb = String(b.sender_wallet || '').toLowerCase();
     if (!sa || sa !== sb) return false;
-    if (String(a.content || '') !== String(b.content || '')) return false;
-    if (!a.content) return false;
+    if (!a.content && !b.content) return false;
     const ta = a.created_at || 0;
     const tb = b.created_at || 0;
-    return Math.abs(ta - tb) <= 120;
+    if (Math.abs(ta - tb) > 600) return false;
+    if (String(a.content || '') === String(b.content || '') && a.content) return true;
+    const fa = this._mediaFingerprint(a.content);
+    const fb = this._mediaFingerprint(b.content);
+    return !!(fa && fb && fa === fb);
+  };
+
+  GenChatP2P.prototype._tombstoneKey = function () {
+    return 'lc_p2p_tombstones_' + (this.channel || 'general');
+  };
+
+  GenChatP2P.prototype._loadTombstones = function () {
+    try {
+      const o = JSON.parse(localStorage.getItem(this._tombstoneKey()) || '{}');
+      return {
+        ids: o.ids || [],
+        media: o.media || [],
+      };
+    } catch (e) {
+      return { ids: [], media: [] };
+    }
+  };
+
+  GenChatP2P.prototype._saveTombstones = function (ts) {
+    try {
+      const ids = (ts.ids || []).slice(-400);
+      const media = (ts.media || []).slice(-400);
+      localStorage.setItem(this._tombstoneKey(), JSON.stringify({ ids: ids, media: media }));
+    } catch (e) {}
+  };
+
+  GenChatP2P.prototype._addTombstone = function (id, content) {
+    const ts = this._loadTombstones();
+    if (id && ts.ids.indexOf(id) < 0) ts.ids.push(id);
+    const fp = this._mediaFingerprint(content);
+    if (fp && ts.media.indexOf(fp) < 0) ts.media.push(fp);
+    this._saveTombstones(ts);
+  };
+
+  GenChatP2P.prototype._isTombstoned = function (msg) {
+    if (!msg) return true;
+    const ts = this._loadTombstones();
+    const id = this._msgId(msg);
+    if (id && ts.ids.indexOf(id) >= 0) return true;
+    const fp = this._mediaFingerprint(msg.content);
+    if (fp && ts.media.indexOf(fp) >= 0) return true;
+    return false;
   };
 
   GenChatP2P.prototype._preferMsg = function (a, b) {
@@ -159,27 +220,44 @@
     }
   };
 
-  GenChatP2P.prototype.removeLocal = function (id) {
-    if (!id) return;
+  GenChatP2P.prototype.removeLocal = function (id, contentHint) {
+    if (!id && !contentHint) return;
     try {
       const arr = this.loadLocal();
-      const target = arr.find(function (m) {
+      const self = this;
+      let target = arr.find(function (m) {
         return m && m.id === id;
       });
-      const self = this;
+      if (!target && contentHint) {
+        target = { id: id, content: contentHint, sender_wallet: '' };
+      }
+      if (target) this._addTombstone(id || target.id, target.content || contentHint);
+      else if (id) this._addTombstone(id, contentHint || '');
+
       const next = arr.filter(function (m) {
         if (!m) return false;
-        if (m.id === id) return false;
-        if (target && self._isContentDupe(m, target)) return false;
+        if (id && m.id === id) return false;
+        if (target && self._isContentDupe(m, target)) {
+          self._addTombstone(m.id, m.content);
+          return false;
+        }
+        if (self._isTombstoned(m)) return false;
         return true;
       });
       this._saveLocalArr(next);
-      this._seenIds.delete(id);
+      if (id) this._seenIds.delete(id);
       if (target) {
         const tid = this._msgId(target);
         if (tid) this._seenIds.delete(tid);
       }
     } catch (e) {}
+  };
+
+  GenChatP2P.prototype.loadLocalFiltered = function () {
+    const self = this;
+    return this.loadLocal().filter(function (m) {
+      return m && !self._isTombstoned(m);
+    });
   };
 
   GenChatP2P.prototype.editLocal = function (id, content) {
@@ -226,7 +304,10 @@
   };
 
   GenChatP2P.prototype._floodRecent = function () {
-    const msgs = this.loadLocal().slice(-60);
+    const self = this;
+    const msgs = this.loadLocal().filter(function (m) {
+      return m && !self._isTombstoned(m);
+    }).slice(-60);
     const self = this;
     msgs.forEach(function (msg) {
       self._broadcastEnvelope({ v: 1, kind: 'gossip', msg: msg }, null);
@@ -418,11 +499,12 @@
 
   GenChatP2P.prototype._storeLocal = function (msg) {
     try {
+      if (this._isTombstoned(msg)) return;
       const arr = JSON.parse(localStorage.getItem(localKey(this.channel)) || '[]');
       const id = this._msgId(msg);
       const self = this;
       if (id && arr.some(function (m) { return (m.id || '') === id; })) return;
-      // Skip content twin (same GIF/text from same sender within 2 min)
+      // Skip content / media twin
       if (arr.some(function (m) { return self._isContentDupe(m, msg); })) return;
       arr.push(msg);
       this._saveLocalArr(arr);
@@ -586,14 +668,21 @@
       return;
     }
 
-    if (env.kind === 'delete' && env.id) {
+    if (env.kind === 'delete' && (env.id || env.content)) {
       try {
-        this.removeLocal(env.id);
+        this.removeLocal(env.id, env.content || '');
       } catch (e) {}
       if (typeof this.onDelete === 'function') this.onDelete(env.id, env.slug || 'general');
-      // Gossip delete so the whole mesh drops it
+      // Gossip delete so the whole mesh drops it (include content for media twins)
       this._broadcastEnvelope(
-        { v: 1, kind: 'delete', id: env.id, slug: env.slug || 'general', by: env.by || fromWallet },
+        {
+          v: 1,
+          kind: 'delete',
+          id: env.id,
+          content: env.content || '',
+          slug: env.slug || 'general',
+          by: env.by || fromWallet,
+        },
         fromWallet
       );
       return;
@@ -625,6 +714,7 @@
 
   GenChatP2P.prototype._ingestChat = function (msg, fromWallet, doGossip) {
     if (!msg || !msg.content) return;
+    if (this._isTombstoned(msg)) return; // deleted — do not resurrect from peer sync
     const id = this._msgId(msg);
     if (!id || this._seenIds.has(id)) return;
     this._seenIds.add(id);
