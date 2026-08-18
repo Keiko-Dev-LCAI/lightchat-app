@@ -1,23 +1,28 @@
 /**
- * Gen Chat P2P — WebRTC mesh between wallets.
- * Socket.IO = signaling ONLY (who's here + SDP/ICE).
- * Message bodies: datachannels. Gossip + history sync so late joiners catch up
- * without the app server owning the log.
+ * Channel P2P — WebRTC mesh for live chat channels (Gen Chat, #dev, …).
+ * Socket.IO = signaling ONLY (who's here + SDP/ICE) per channel room.
+ * Message bodies: datachannels. Gossip + history sync per channel.
  */
 (function (global) {
   'use strict';
 
-  const LOCAL_KEY = 'lc_genchat_p2p_log';
+  function localKey(channel) {
+    return 'lc_p2p_log_' + (channel || 'general');
+  }
+  const LOCAL_KEY_LEGACY = 'lc_genchat_p2p_log';
   const MAX_LOCAL = 400;
   const SYNC_LIMIT = 80;
 
   function GenChatP2P() {
     this.wallet = null;
     this.profile = null;
+    this.channel = 'general';
     this.socket = null;
     this.peers = new Map();
     this.onMessage = null;
     this.onStatus = null;
+    this.onDelete = null;
+    this.onEdit = null;
     this._joined = false;
     this._seenIds = new Set();
     this._sockBound = false;
@@ -27,6 +32,14 @@
 
   GenChatP2P.prototype._hydrateSeen = function () {
     try {
+      if (this.channel === 'general') {
+        try {
+          const legacy = localStorage.getItem(LOCAL_KEY_LEGACY);
+          if (legacy && !localStorage.getItem(localKey('general'))) {
+            localStorage.setItem(localKey('general'), legacy);
+          }
+        } catch (e) {}
+      }
       const arr = this.loadLocal();
       const self = this;
       arr.forEach(function (m) {
@@ -112,7 +125,7 @@
     const self = this;
     if (this.socket && this.socket.connected && this.wallet) {
       try {
-        this.socket.emit('genchat_p2p_join', { wallet: this.wallet });
+        this.socket.emit('genchat_p2p_join', { wallet: this.wallet, channel: this.channel || 'general' });
       } catch (e) {}
     }
     this.peers.forEach(function (entry, w) {
@@ -154,7 +167,7 @@
 
     socket.on('connect', function () {
       if (self.wallet && self._joined) {
-        socket.emit('genchat_p2p_join', { wallet: self.wallet });
+        socket.emit('genchat_p2p_join', { wallet: self.wallet, channel: self.channel || 'general' });
       }
     });
 
@@ -183,9 +196,16 @@
     });
   };
 
-  GenChatP2P.prototype.join = async function (wallet, profile) {
+  GenChatP2P.prototype.join = async function (wallet, profile, channel) {
+    const nextCh = (channel || this.channel || 'general').toLowerCase();
+    if (this._joined && this.channel && this.channel !== nextCh) {
+      this.leave();
+    }
+    this.channel = nextCh;
     this.wallet = (wallet || '').toLowerCase();
     this.profile = profile || {};
+    this._seenIds = new Set();
+    this._hydrateSeen();
     if (!this.wallet) return;
 
     if (typeof loadIceServers === 'function') {
@@ -207,7 +227,7 @@
   GenChatP2P.prototype.leave = function () {
     if (this.socket && this._joined && this.wallet) {
       try {
-        this.socket.emit('genchat_p2p_leave', { wallet: this.wallet });
+        this.socket.emit('genchat_p2p_leave', { wallet: this.wallet, channel: this.channel || 'general' });
       } catch (e) {}
     }
     const self = this;
@@ -233,7 +253,7 @@
     msg.id = id;
     msg.transport = 'p2p';
     msg.created_at = msg.created_at || Math.floor(Date.now() / 1000);
-    msg.slug = msg.slug || 'general';
+    msg.slug = msg.slug || this.channel || 'general';
     this._seenIds.add(id);
     this._storeLocal(msg);
     const n = this._broadcastEnvelope({ v: 1, kind: 'chat', msg: msg }, null);
@@ -261,18 +281,18 @@
 
   GenChatP2P.prototype._storeLocal = function (msg) {
     try {
-      const arr = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]');
+      const arr = JSON.parse(localStorage.getItem(localKey(this.channel)) || '[]');
       const id = this._msgId(msg);
       if (arr.some(function (m) { return (m.id || '') === id; })) return;
       arr.push(msg);
       while (arr.length > MAX_LOCAL) arr.shift();
-      localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
+      localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
     } catch (e) {}
   };
 
   GenChatP2P.prototype.loadLocal = function () {
     try {
-      return JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]');
+      return JSON.parse(localStorage.getItem(localKey(this.channel)) || '[]');
     } catch (e) {
       return [];
     }
@@ -328,6 +348,7 @@
       self.socket.emit('genchat_p2p_signal', {
         from: self.wallet,
         to: remoteWallet,
+        channel: self.channel || 'general',
         type: 'ice',
         candidate: ev.candidate,
       });
@@ -431,7 +452,7 @@
         const arr = this.loadLocal().filter(function (m) {
           return m.id !== env.id;
         });
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
+        localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
         this._seenIds.delete(env.id);
       } catch (e) {}
       if (typeof this.onDelete === 'function') this.onDelete(env.id, env.slug || 'general');
@@ -453,7 +474,7 @@
             m.edited_at = Math.floor(Date.now() / 1000);
           }
         });
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
+        localStorage.setItem(localKey(this.channel), JSON.stringify(arr));
       } catch (e) {}
       if (typeof this.onEdit === 'function') this.onEdit(env.id, env.content, env.slug || 'general');
       this._broadcastEnvelope(
@@ -504,6 +525,7 @@
         this.socket.emit('genchat_p2p_signal', {
           from: this.wallet,
           to: remoteWallet,
+          channel: this.channel || 'general',
           type: 'offer',
           sdp: entry.pc.localDescription,
         });
@@ -536,6 +558,7 @@
           this.socket.emit('genchat_p2p_signal', {
             from: this.wallet,
             to: from,
+            channel: this.channel || 'general',
             type: 'answer',
             sdp: pc.localDescription,
           });
