@@ -628,17 +628,26 @@ def is_media_only_content(content: str) -> bool:
         return True
     if c.startswith("[[img]]"):
         url = c[7:].strip()
-        return url.startswith("https://") or url.startswith("/chat-image/") or "/chat-image/" in url
+        return (
+            url.startswith("https://")
+            or url.startswith("/chat-image/")
+            or "/chat-image/" in url
+            or url.startswith("/chat-file/")
+            or "/chat-file/" in url
+        )
     if c.startswith("[[gif]]"):
         url = c[7:].strip().lower()
         return url.startswith("https://") and any(h in url for h in ("tenor.com", "tenor.co", "giphy.com"))
     if c.startswith("[[video]]"):
-        url = c[9:].strip().lower()
-        if not url.startswith("https://"):
-            return False
-        if any(x in url for x in (".mp4", ".webm", ".mov", "youtube.com", "youtu.be", "vimeo.com")):
+        url = c[9:].strip()
+        low = url.lower()
+        if "/chat-file/" in low or low.startswith("/chat-file/"):
             return True
-        return any(h in url for h in _MEDIA_HOST_OK)
+        if not low.startswith("https://"):
+            return False
+        if any(x in low for x in (".mp4", ".webm", ".mov", "youtube.com", "youtu.be", "vimeo.com")):
+            return True
+        return any(h in low for h in _MEDIA_HOST_OK)
     # bare https image/video URL
     low = c.lower()
     if low.startswith("https://") and " " not in c.strip():
