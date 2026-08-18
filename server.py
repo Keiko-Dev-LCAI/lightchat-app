@@ -365,6 +365,16 @@ def api_auth_verify():
         return jsonify({'error': 'message does not match challenge'}), 400
     if wallet not in message.lower():
         return jsonify({'error': 'message wallet mismatch'}), 400
+    # Require Lightchain chain id in the signed message
+    if f"Chain ID: {_AIVM_CHAIN_ID}" not in message:
+        return jsonify({'error': f'Lightchain network required (chain {_AIVM_CHAIN_ID})'}), 400
+    client_chain = data.get('chainId')
+    if client_chain is not None:
+        try:
+            if int(client_chain) != _AIVM_CHAIN_ID:
+                return jsonify({'error': f'Wrong network — use Lightchain (chain {_AIVM_CHAIN_ID})'}), 400
+        except (TypeError, ValueError):
+            return jsonify({'error': 'invalid chainId'}), 400
     try:
         from eth_account.messages import encode_defunct
         from eth_account import Account
@@ -386,19 +396,12 @@ def api_auth_verify():
 
 @app.route('/api/auth/soft', methods=['POST'])
 def api_auth_soft():
-    """Paste-address mode: session token without signature (weaker — UI discloses this)."""
-    data = request.json or {}
-    wallet = (data.get('wallet') or '').lower().strip()
-    if not re.match(r'^0x[0-9a-f]{40}$', wallet):
-        return jsonify({'error': 'valid wallet required'}), 400
-    token, exp = _store_session(wallet, 'soft')
+    """Disabled — LightChat requires a wallet on Lightchain network (signed login)."""
     return jsonify({
-        'token': token,
-        'expires_at': exp,
-        'wallet': wallet,
-        'mode': 'soft',
-        'note': 'Paste-address sessions cannot prove wallet ownership. Prefer Connect with a wallet app for signed login.'
-    })
+        'error': 'Soft login disabled. Connect a wallet on Lightchain (chain 9200) and sign in.',
+        'code': 'lc_network_required',
+        'chainId': _AIVM_CHAIN_ID,
+    }), 403
 
 
 @app.route('/api/auth/session', methods=['GET'])

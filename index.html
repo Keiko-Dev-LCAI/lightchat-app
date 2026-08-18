@@ -2704,18 +2704,18 @@ body {
   <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:32px 24px;width:100%;max-width:390px;position:relative">
     <button onclick="closeWCModal()" style="position:absolute;top:14px;right:18px;background:none;border:none;color:var(--text2);font-size:26px;cursor:pointer;line-height:1;padding:4px 8px">✕</button>
     <div style="font-size:34px;text-align:center;margin-bottom:10px">🔗</div>
-    <div style="font-size:26px;font-weight:700;text-align:center;margin-bottom:8px">Connect Wallet</div>
-    <div id="wc-welcome-back" style="display:none;font-size:17px;color:var(--text2);text-align:center;margin-bottom:20px;line-height:1.5">Welcome back — tap <strong style="color:var(--text)">Connect</strong> to continue.</div>
-    <div id="wc-setup-steps" style="font-size:17px;color:var(--text2);text-align:center;margin-bottom:6px;line-height:1.5">One-time setup — then the app remembers you.</div>
+    <div style="font-size:26px;font-weight:700;text-align:center;margin-bottom:8px">Lightchain only</div>
+    <div id="wc-welcome-back" style="display:none;font-size:17px;color:var(--text2);text-align:center;margin-bottom:20px;line-height:1.5">Welcome back — use your wallet on <strong style="color:var(--text)">Lightchain</strong>.</div>
+    <div id="wc-setup-steps" style="font-size:17px;color:var(--text2);text-align:center;margin-bottom:6px;line-height:1.5">Sign-in requires a wallet on <strong style="color:var(--text)">Lightchain</strong> (chain 9200).</div>
     <div id="wc-setup-guide" style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:16px 14px;margin-bottom:20px;font-size:16px;color:var(--text2);line-height:1.6">
-      <div style="margin-bottom:6px">1️⃣ Open your <strong style="color:var(--text)">wallet app</strong></div>
-      <div style="margin-bottom:6px">2️⃣ Copy your wallet address</div>
-      <div>3️⃣ Paste below and tap Connect</div>
+      <div style="margin-bottom:6px">1️⃣ Open LightChat in <strong style="color:var(--text)">MetaMask / Trust</strong> (in-app browser)</div>
+      <div style="margin-bottom:6px">2️⃣ Switch network to <strong style="color:var(--text)">Lightchain AI</strong></div>
+      <div>3️⃣ Tap Connect and sign the login message</div>
     </div>
-    <input id="wc-addr-input" type="text" placeholder="Paste your 0x address here" autocomplete="off" autocorrect="off" spellcheck="false"
+    <input id="wc-addr-input" type="text" placeholder="Optional: 0x address (still must sign on Lightchain)" autocomplete="off" autocorrect="off" spellcheck="false"
       style="width:100%;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-size:17px;padding:16px 14px;margin-bottom:16px;outline:none;font-family:monospace">
-    <button onclick="connectPastedAddress()" style="width:100%;padding:18px;border-radius:14px;background:var(--purple);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer">Connect →</button>
-    <div style="text-align:center;margin-top:14px;font-size:14px;color:var(--text2);opacity:0.7">Your wallet address is public — no password needed</div>
+    <button onclick="connectPastedAddress()" style="width:100%;padding:18px;border-radius:14px;background:var(--purple);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer">Connect on Lightchain →</button>
+    <div style="text-align:center;margin-top:14px;font-size:14px;color:var(--text2);opacity:0.7">Other networks (Ethereum, BSC, etc.) cannot sign in</div>
   </div>
 </div>
 
@@ -2835,18 +2835,21 @@ function acceptTermsIfNeeded() {
 }
 
 async function ensureSession() {
-  /** Sign-once when wallet provider available; soft token for paste-address. */
+  /** Lightchain network wallet only — signed personal_sign after chain check. */
   if (!isValidWallet(wallet)) throw new Error('invalid wallet');
   wallet = wallet.toLowerCase();
   const prov = _activeProvider || window.ethereum;
 
-  // Reuse valid stored token for this wallet
+  await requireLightchainNetwork(prov);
+  bindLightchainChainGuard(prov);
+
+  // Reuse valid stored token for this wallet (still must be on LC above)
   if (sessionToken) {
     try {
       const chk = await fetch(BACKEND + '/api/auth/session', {
         headers: { 'Authorization': 'Bearer ' + sessionToken }
       }).then(r => r.json());
-      if (chk.valid && chk.wallet === wallet) {
+      if (chk.valid && chk.wallet === wallet && (chk.mode === 'signed' || sessionMode === 'signed')) {
         sessionMode = chk.mode || sessionMode;
         localStorage.setItem('lc_session_mode', sessionMode || '');
         return sessionToken;
@@ -2856,42 +2859,27 @@ async function ensureSession() {
     localStorage.removeItem('lc_session_token');
   }
 
-  // Hard auth: personal_sign
-  if (prov && typeof prov.request === 'function') {
-    try {
-      const ch = await fetch(BACKEND + '/api/auth/challenge?address=' + encodeURIComponent(wallet))
-        .then(r => r.json());
-      if (!ch.message) throw new Error(ch.error || 'No challenge');
-      const sig = await prov.request({
-        method: 'personal_sign',
-        params: [ch.message, wallet]
-      });
-      const ver = await fetch(BACKEND + '/api/auth/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wallet, message: ch.message, signature: sig })
-      }).then(r => r.json());
-      if (!ver.token) throw new Error(ver.error || 'Verify failed');
-      sessionToken = ver.token;
-      sessionMode = ver.mode || 'signed';
-      localStorage.setItem('lc_session_token', sessionToken);
-      localStorage.setItem('lc_session_mode', sessionMode);
-      return sessionToken;
-    } catch (e) {
-      if (e && e.code === 4001) throw e;
-      console.warn('Signed login failed, trying soft session', e);
-    }
+  // Hard auth: personal_sign on Lightchain
+  if (!(prov && typeof prov.request === 'function')) {
+    const err = new Error('Connect MetaMask/Trust/etc on Lightchain to sign in');
+    err.code = 'lc_network_required';
+    throw err;
   }
-
-  // Soft auth: paste-address (cannot prove ownership)
-  const soft = await fetch(BACKEND + '/api/auth/soft', {
+  const ch = await fetch(BACKEND + '/api/auth/challenge?address=' + encodeURIComponent(wallet))
+    .then(r => r.json());
+  if (!ch.message) throw new Error(ch.error || 'No challenge');
+  const sig = await prov.request({
+    method: 'personal_sign',
+    params: [ch.message, wallet]
+  });
+  const ver = await fetch(BACKEND + '/api/auth/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ wallet })
+    body: JSON.stringify({ wallet, message: ch.message, signature: sig, chainId: LC_CHAIN_ID })
   }).then(r => r.json());
-  if (!soft.token) throw new Error(soft.error || 'Soft auth failed');
-  sessionToken = soft.token;
-  sessionMode = soft.mode || 'soft';
+  if (!ver.token) throw new Error(ver.error || 'Verify failed');
+  sessionToken = ver.token;
+  sessionMode = ver.mode || 'signed';
   localStorage.setItem('lc_session_token', sessionToken);
   localStorage.setItem('lc_session_mode', sessionMode);
   return sessionToken;
@@ -2911,7 +2899,11 @@ async function finishConnect() {
       showToast('Signature required to login — cancelled');
       return;
     }
-    showToast('Login session failed — try again');
+    if (e && e.code === 'lc_network_required') {
+      showToast(e.message || 'Lightchain network required');
+      return;
+    }
+    showToast(e.message || 'Login session failed — try again');
     console.error(e);
     return;
   }
@@ -2960,6 +2952,53 @@ async function switchToLightchain(prov) {
       });
     } else { throw e; }
   }
+}
+
+/** Login only allowed when the connected wallet is on Lightchain (9200). */
+async function requireLightchainNetwork(prov) {
+  if (!prov || typeof prov.request !== 'function') {
+    const err = new Error('Connect a wallet on Lightchain network');
+    err.code = 'lc_network_required';
+    throw err;
+  }
+  showToast('Checking Lightchain network…');
+  try {
+    await switchToLightchain(prov);
+  } catch (e) {
+    if (e && e.code === 4001) throw e;
+    const err = new Error('Switch your wallet to Lightchain (chain 9200) to sign in');
+    err.code = 'lc_network_required';
+    throw err;
+  }
+  const chainHex = await prov.request({ method: 'eth_chainId' });
+  const chainId = parseInt(chainHex, 16);
+  if (chainId !== LC_CHAIN_ID) {
+    const err = new Error('Wrong network — Lightchain only (chain ID 9200)');
+    err.code = 'lc_network_required';
+    throw err;
+  }
+}
+
+function bindLightchainChainGuard(prov) {
+  if (!prov || prov._lcChainGuard) return;
+  prov._lcChainGuard = true;
+  const onChain = function (hex) {
+    try {
+      const id = parseInt(hex, 16);
+      if (id !== LC_CHAIN_ID && wallet) {
+        showToast('Switched off Lightchain — reconnect on chain 9200 to use LightChat');
+        // Soft-lock: clear session so they must re-auth on LC
+        sessionToken = null;
+        sessionMode = null;
+        try {
+          localStorage.removeItem('lc_session_token');
+          localStorage.removeItem('lc_session_mode');
+        } catch (e) {}
+      }
+    } catch (e) {}
+  };
+  if (typeof prov.on === 'function') prov.on('chainChanged', onChain);
+  else if (prov.addListener) prov.addListener('chainChanged', onChain);
 }
 
 function isWalletInAppBrowser() {
@@ -8064,7 +8103,7 @@ function appendCommunityMessage(m) {
   const av = m.has_avatar
     ? '<img src="' + BACKEND + '/api/community/avatar/' + m.sender_wallet + '" alt="">'
     : letter;
-  const when = m.created_at ? new Date(m.created_at * 1000).toLocaleString() : '';
+  const when = formatMessageTime(m.created_at);
   const roleLbl = displayRoleLabel(m.role);
   const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
   const via = m.transport === 'p2p' ? ' · P2P' : '';
@@ -8076,7 +8115,7 @@ function appendCommunityMessage(m) {
     _commMsgMenuBtn(m) +
     '<div class="who">' + escapeHtml(stripAt(m.display_name) || shortenWallet(m.sender_wallet)) + role + '</div>' +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
-    '<div class="when">' + escapeHtml(when) + via + edited + '</div></div>';
+    '<div class="when" title="Shown in your local timezone">' + escapeHtml(when) + via + edited + '</div></div>';
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -8093,7 +8132,7 @@ function renderCommunityMessages(msgs) {
     const av = m.has_avatar
       ? `<img src="${BACKEND}/api/community/avatar/${m.sender_wallet}" alt="">`
       : letter;
-    const when = m.created_at ? new Date(m.created_at*1000).toLocaleString() : '';
+    const when = formatMessageTime(m.created_at);
     const roleLbl = displayRoleLabel(m.role);
     const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
     const via = m.transport === 'p2p' ? ' · P2P' : '';
@@ -8104,7 +8143,7 @@ function renderCommunityMessages(msgs) {
         ${_commMsgMenuBtn(m)}
         <div class="who">${escapeHtml(stripAt(m.display_name)||shortenWallet(m.sender_wallet))}${role}</div>
         <div class="body">${renderCommBodyHtml(m.content)}</div>
-        <div class="when">${escapeHtml(when)}${via}${edited}</div>
+        <div class="when" title="Shown in your local timezone">${escapeHtml(when)}${via}${edited}</div>
       </div>
     </div>`;
   }).join('');
