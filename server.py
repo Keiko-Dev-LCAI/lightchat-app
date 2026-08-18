@@ -989,19 +989,29 @@ def post_chat_file():
     file_name = data.get('file_name', 'file')
     file_data = data.get('file_data', '')
     file_type = data.get('file_type', 'application/octet-stream')
-    file_size = data.get('file_size', 0)
+    file_size = int(data.get('file_size', 0) or 0)
     if not wallet or not file_data:
         return jsonify({'error': 'wallet and file_data required'}), 400
+    # Cap uploads (SQLite / Railway memory) — images smaller; video up to ~20MB
+    max_bytes = 20 * 1024 * 1024
+    if file_type.startswith('image/'):
+        max_bytes = 8 * 1024 * 1024
+    if file_size and file_size > max_bytes:
+        return jsonify({'error': f'File too large (max {max_bytes // (1024*1024)} MB)'}), 400
+    # Approximate from base64 if size missing
+    approx = int(len(file_data) * 0.75)
+    if approx > max_bytes + 500_000:
+        return jsonify({'error': f'File too large (max {max_bytes // (1024*1024)} MB)'}), 400
     now = int(time.time())
     conn = get_db()
     cursor = conn.execute(
         'INSERT INTO chat_files (wallet, file_name, file_data, file_type, file_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        (wallet, file_name, file_data, file_type, file_size, now, NEVER_EXPIRES)
+        (wallet, file_name, file_data, file_type, file_size or approx, now, NEVER_EXPIRES)
     )
     file_id = cursor.lastrowid
     conn.commit()
     conn.close()
-    return jsonify({'file_id': file_id})
+    return jsonify({'file_id': file_id, 'file_type': file_type, 'file_name': file_name})
 
 @app.route('/chat-file/<int:file_id>')
 def get_chat_file(file_id):
@@ -1018,9 +1028,11 @@ def get_chat_file(file_id):
     resp = make_response(file_bytes)
     resp.headers['Content-Type'] = row['file_type']
     resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
     safe_name = row['file_name'].replace('"', '\\"')
-    # Images render inline; other files force download
-    if row['file_type'].startswith('image/'):
+    # Images + videos play inline in chat; other files download
+    ft = (row['file_type'] or '').lower()
+    if ft.startswith('image/') or ft.startswith('video/'):
         resp.headers['Content-Disposition'] = f'inline; filename="{safe_name}"'
     else:
         resp.headers['Content-Disposition'] = f'attachment; filename="{safe_name}"'
