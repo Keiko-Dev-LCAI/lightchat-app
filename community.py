@@ -20,6 +20,7 @@ DEFAULT_CHANNELS = [
     ("start-here", "Start Here", "welcome", "Welcome, rules, how to use LightChat", 0, 1),
     ("announcements", "Announcements", "info", "Official updates (mods post)", 1, 1),
     ("general", "Gen Chat", "text", "Main hangout — everyone talks here", 2, 0),
+    ("off-topic", "Off Topic", "text", "Non-Lightchain hangout — memes, life, random chat", 4, 0),
     ("introduce-yourself", "Introduce Yourself", "text", "New members say hi", 3, 0),
     ("help", "Help", "text", "Questions and support", 4, 0),
     ("dev", "Devs", "text", "Builders, apps, contracts, tooling — P2P live chat", 5, 0),
@@ -57,6 +58,7 @@ START_HERE_SECTIONS = [
         "body": "Talk with everyone, find members, introduce yourself.",
         "links": [
             {"label": "# Gen Chat", "href": "#channel:general", "kind": "channel"},
+            {"label": "# Off Topic", "href": "#channel:off-topic", "kind": "channel"},
             {"label": "# Devs", "href": "#channel:dev", "kind": "channel"},
             {"label": "# Nodes", "href": "#channel:nodes", "kind": "channel"},
             {"label": "# Introduce Yourself", "href": "#channel:introduce-yourself", "kind": "channel"},
@@ -486,6 +488,39 @@ def init_community_db(get_db):
         conn.commit()
     except Exception as e:
         print("  [community] garden channel seed:", e)
+
+    # #off-topic — non-Lightchain hangout (memes, life, anything else)
+    try:
+        row_ot = conn.execute(
+            "SELECT id FROM community_channels WHERE community_id=? AND slug='off-topic'",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if not row_ot:
+            conn.execute(
+                """INSERT INTO community_channels
+                   (id, community_id, slug, name, kind, description, sort_order, readonly_members)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    f"{COMMUNITY_ID}:off-topic",
+                    COMMUNITY_ID,
+                    "off-topic",
+                    "Off Topic",
+                    "text",
+                    "Non-Lightchain hangout — memes, life, random chat",
+                    4,
+                    0,
+                ),
+            )
+        else:
+            conn.execute(
+                """UPDATE community_channels
+                   SET name='Off Topic', description=?, kind='text', readonly_members=0
+                   WHERE community_id=? AND slug='off-topic'""",
+                ("Non-Lightchain hangout — memes, life, random chat", COMMUNITY_ID),
+            )
+        conn.commit()
+    except Exception as e:
+        print("  [community] off-topic channel seed:", e)
 
     # keep start-here / links read-only for members (migrate existing DBs)
     try:
@@ -1481,10 +1516,10 @@ def register_community_routes(app, socketio, get_db):
             GUIDE_SLUGS = {"start-here"}
             STAFF_ONLY_SLUGS = {"mods"}
             PRIMARY_SLUGS = {
-                "general", "dev", "nodes", "mods",
+                "general", "off-topic", "dev", "nodes", "mods",
                 "start-here", "announcements", "media", "links", "garden",
             }
-            P2P_CHAT_SLUGS = {"general", "dev", "nodes", "mods"}
+            P2P_CHAT_SLUGS = {"general", "off-topic", "dev", "nodes", "mods"}
             # wallet from query for staff-only channel filtering
             viewer = _norm(request.args.get("wallet", ""))
             viewer_role = get_role(conn, viewer) if viewer else None
