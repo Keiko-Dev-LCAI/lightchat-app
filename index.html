@@ -25,6 +25,7 @@
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="genchat-p2p.js"></script>
+<script src="dm-p2p.js"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -1187,11 +1188,28 @@ body {
 .comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
 .comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
 .comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
+.comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
 .comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
-.comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); }
+.comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); align-items:center; }
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
-.comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; }
+.comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; height:44px; }
+.comm-gif-btn { background:var(--bg)!important; border:1px solid var(--border)!important; color:var(--text)!important; font-size:13px!important; padding:0 12px!important; white-space:nowrap; }
+#gif-sheet {
+  display:none; position:fixed; left:0; right:0; bottom:0; top:auto;
+  max-height:min(72vh,560px); z-index:450;
+  background:var(--card); border-top:1px solid var(--border);
+  border-radius:18px 18px 0 0; flex-direction:column;
+  box-shadow:0 -12px 40px rgba(0,0,0,0.45);
+}
+#gif-sheet.open { display:flex; }
+#gif-sheet-backdrop {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:449;
+}
+#gif-sheet-backdrop.open { display:block; }
+.gif-sheet-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; border-bottom:1px solid var(--border); }
+.gif-sheet-head h3 { flex:1; margin:0; font-size:16px; font-weight:700; }
+.gif-sheet-attr { font-size:11px; color:var(--text2); padding:6px 14px 12px; text-align:center; }
 .chan-list, .dir-list, .evt-list { overflow-y:auto; padding:8px 12px; flex:1; }
 .chan-item, .dir-item, .evt-item { display:flex; align-items:center; gap:12px; padding:14px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
 .chan-item:hover, .dir-item:hover, .evt-item:hover { background:var(--purple-glow); border-color:var(--border); }
@@ -1371,11 +1389,28 @@ body {
 .comm-bubble .who { font-size:13px; font-weight:700; color:var(--lc-primary); margin-bottom:4px; }
 .comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:11px; margin-left:6px; text-transform:uppercase; }
 .comm-bubble .body { font-size:15px; line-height:1.45; word-break:break-word; white-space:pre-wrap; }
+.comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:10px; display:block; margin-top:4px; background:var(--bg); }
 .comm-bubble .when { font-size:11px; color:var(--text2); margin-top:6px; opacity:0.8; }
-.comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); }
+.comm-input-row { display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--border); flex-shrink:0; background:var(--card); align-items:center; }
 .comm-input-row input { flex:1; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
 .comm-input-row input:focus { outline:none; border-color:var(--lc-primary); }
-.comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; }
+.comm-input-row button { background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); border:none; color:#fff; font-weight:700; border-radius:12px; padding:0 18px; cursor:pointer; font-size:14px; height:44px; }
+.comm-gif-btn { background:var(--bg)!important; border:1px solid var(--border)!important; color:var(--text)!important; font-size:13px!important; padding:0 12px!important; white-space:nowrap; }
+#gif-sheet {
+  display:none; position:fixed; left:0; right:0; bottom:0; top:auto;
+  max-height:min(72vh,560px); z-index:450;
+  background:var(--card); border-top:1px solid var(--border);
+  border-radius:18px 18px 0 0; flex-direction:column;
+  box-shadow:0 -12px 40px rgba(0,0,0,0.45);
+}
+#gif-sheet.open { display:flex; }
+#gif-sheet-backdrop {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:449;
+}
+#gif-sheet-backdrop.open { display:block; }
+.gif-sheet-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; border-bottom:1px solid var(--border); }
+.gif-sheet-head h3 { flex:1; margin:0; font-size:16px; font-weight:700; }
+.gif-sheet-attr { font-size:11px; color:var(--text2); padding:6px 14px 12px; text-align:center; }
 .chan-list, .dir-list, .evt-list { overflow-y:auto; padding:8px 12px; flex:1; }
 .chan-item, .dir-item, .evt-item { display:flex; align-items:center; gap:12px; padding:14px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
 .chan-item:hover, .dir-item:hover, .evt-item:hover { background:var(--purple-glow); border-color:var(--border); }
@@ -1612,6 +1647,7 @@ body {
         </div>
         <div class="comm-msgs" id="genchat-msgs"><div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Connect wallet to join the conversation</div></div>
         <div class="comm-input-row">
+          <button type="button" class="comm-gif-btn" onclick="openGifSheet('genchat')" title="Send a GIF">GIF</button>
           <input id="genchat-input" placeholder="Message #general…" maxlength="4000" onkeydown="if(event.key==='Enter')sendCommunityMsg('general')">
           <button type="button" onclick="sendCommunityMsg('general')">Send</button>
         </div>
@@ -1673,12 +1709,18 @@ body {
     <!-- Contacts tab -->
     <div class="tab" id="tab-contacts">
       <div class="contacts-actions">
-</div>
         <div class="action-card" onclick="showSearchPanel()">
           <div class="action-icon">🔍</div>
           <div>
             <div class="action-label">Find by name</div>
             <div class="action-sub">Search for someone to add</div>
+          </div>
+        </div>
+        <div class="action-card" onclick="copyP2PFriendLink()">
+          <div class="action-icon">🔗</div>
+          <div>
+            <div class="action-label">Copy friend link</div>
+            <div class="action-sub">P2P-first — they open it to add you</div>
           </div>
         </div>
       </div>
@@ -1687,7 +1729,7 @@ body {
       <div class="contacts-section-title">Friends</div>
       <div id="contacts-list">
         <div class="empty-state" style="padding:40px">
-          <div class="empty-text">No contacts yet. Share your invite link to get started.</div>
+          <div class="empty-text">No contacts yet. Share your friend link to get started.</div>
         </div>
       </div>
     </div>
@@ -2377,6 +2419,24 @@ body {
   </div>
 </div>
 
+<!-- ── GIF SHEET — Gen Chat + DMs ([[gif]] URL; search off-Railway later) ── -->
+<div id="gif-sheet-backdrop" onclick="closeGifSheet()"></div>
+<div id="gif-sheet" role="dialog" aria-label="Send GIF">
+  <div class="gif-sheet-head">
+    <h3>GIFs</h3>
+    <button type="button" onclick="closeGifSheet()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer;padding:4px 8px" aria-label="Close">✕</button>
+  </div>
+  <div style="padding:12px 14px;overflow-y:auto;flex:1;min-height:0">
+    <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">
+      Search popup (Tenor/Giphy) will live off our app server — P2P-first. For now, paste a <strong style="color:var(--text)">Tenor GIF link</strong> and send. The chat stores only the URL (<code style="font-size:12px">[[gif]]…</code>), so Gen Chat can carry it over P2P/relay.
+    </div>
+    <input class="gif-search-input" id="gif-sheet-url" type="url" placeholder="https://media.tenor.com/….gif" autocomplete="off" style="margin-bottom:10px">
+    <button type="button" class="primary-btn" style="width:100%;margin-bottom:14px" onclick="sendGifFromPaste()">Send GIF</button>
+    <div id="gif-sheet-grid" class="gif-grid" style="display:none" aria-hidden="true"></div>
+  </div>
+  <div class="gif-sheet-attr" id="gif-sheet-attr">URL-only · no Railway GIF search</div>
+</div>
+
 <!-- ── VIDEO CALL OVERLAYS ── -->
 <div id="call-incoming-overlay" data-removed="1" style="display:none!important">
   <div style="font-size:80px">📹</div>
@@ -2737,6 +2797,7 @@ async function finishConnect() {
     myHandle = resp.handle;
     updateUI();
     connectSocket();
+    try { ensureDmP2P(); } catch (e) {}
     loadContacts();
     loadGroups();
     loadMemories();
@@ -2744,6 +2805,7 @@ async function finishConnect() {
     handleInviteParam();
     handleShareParam();
     runPendingDeepLink();
+    applyAddFriendDeepLink();
   } else {
     showHandleModal();
   }
@@ -2937,6 +2999,7 @@ function connectSocket() {
         if (_activeCommSlug === 'general') ensureGenChatP2P();
       }
     } catch(e) {}
+    try { ensureDmP2P(); } catch(e) {}
     try {
       const mode = window._myPresenceMode
         || (window._commProfile && window._commProfile.presence_mode)
@@ -3115,6 +3178,18 @@ function connectSocket() {
 async function loadContacts() {
   if (!wallet) return;
   contacts = await fetch(BACKEND + '/contacts/' + wallet).then(r => r.json()).catch(() => []);
+  // Merge P2P-local friends so DMs work without server approve
+  try {
+    const local = (window.dmP2P && dmP2P.listLocalFriends()) || JSON.parse(localStorage.getItem('lc_p2p_friends') || '[]');
+    const have = {};
+    contacts.forEach(function (c) { have[(c.wallet || '').toLowerCase()] = true; });
+    local.forEach(function (f) {
+      const w = (f.wallet || f || '').toLowerCase();
+      if (!w || have[w]) return;
+      contacts.push({ wallet: w, handle: f.handle || '', status: 'approved', p2p_local: true });
+      have[w] = true;
+    });
+  } catch (e) {}
   renderContacts(); updateChatList();
 }
 
@@ -3135,7 +3210,7 @@ function renderContacts() {
         </div>`).join('');
 
   if (approved.length === 0) {
-    document.getElementById('contacts-list').innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-text">No contacts yet. Share your invite link!</div></div>';
+    document.getElementById('contacts-list').innerHTML = '<div class="empty-state" style="padding:30px"><div class="empty-text">No friends yet. Copy your friend link (P2P) or search by name.</div></div>';
   } else {
     document.getElementById('contacts-dot').classList.remove('show');
     document.getElementById('scontacts-dot') && document.getElementById('scontacts-dot').classList.remove('show');
@@ -3143,7 +3218,7 @@ function renderContacts() {
       <div class="contact-item" onclick="openChat('${c.wallet}','${(c.handle||'').replace(/'/g,'\\u0027')}')">
         <div class="chat-avatar" style="width:46px;height:46px;font-size:20px">${avatarLetter(c.handle)}</div>
         <div style="flex:1">
-          <div style="font-size:18px;font-weight:600">${c.handle || shortenWallet(c.wallet)}</div>
+          <div style="font-size:18px;font-weight:600">${c.handle || shortenWallet(c.wallet)}${c.p2p_local ? ' <span style="font-size:11px;color:var(--text2)">· P2P</span>' : ''}</div>
           <div style="font-size:14px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
         </div>
         <button onclick="event.stopPropagation();deleteContact('${c.wallet}')" style="background:none;border:none;color:var(--red);font-size:26px;cursor:pointer;padding:8px 12px;margin-left:4px;line-height:1" title="Remove contact">🗑</button>
@@ -3193,6 +3268,7 @@ async function deleteContact(contactWallet) {
 
 async function openChat(contactWallet, handle) {
   if (!wallet) { showToast('Connect your wallet first'); return; }
+  contactWallet = (contactWallet || '').toLowerCase();
   currentChat = {wallet: contactWallet, handle: handle || shortenWallet(contactWallet)};
   unreadCounts[contactWallet] = 0;
   document.getElementById('chat-header-name').textContent = currentChat.handle;
@@ -3202,9 +3278,24 @@ async function openChat(contactWallet, handle) {
   document.getElementById('chat-view').classList.add('open');
   document.getElementById('messages-area').innerHTML = '';
   if (socket) socket.emit('join_chat', {wallet, contact_wallet: contactWallet});
-  const msgs = await fetch(BACKEND + '/messages/' + wallet + '/' + contactWallet).then(r => r.json()).catch(() => []);
+  try {
+    ensureDmP2P();
+    dmP2P.openWith(contactWallet);
+  } catch (e) {}
+  let msgs = await fetch(BACKEND + '/messages/' + wallet + '/' + contactWallet).then(r => r.json()).catch(() => []);
+  try {
+    if (window.dmP2P) {
+      const local = dmP2P.loadLocal(contactWallet) || [];
+      const byId = {};
+      (msgs || []).concat(local).forEach(function (m) {
+        const id = m.id || (m.sender_wallet + ':' + m.created_at + ':' + String(m.content || '').slice(0, 24));
+        byId[id] = m;
+      });
+      msgs = Object.keys(byId).map(function (k) { return byId[k]; });
+      msgs.sort(function (a, b) { return (a.created_at || 0) - (b.created_at || 0); });
+    }
+  } catch (e) {}
   msgs.forEach(m => appendMessage(m));
-  // Scroll after animation settles (chat-view slides in over ~300ms)
   scrollToBottom();
   setTimeout(scrollToBottom, 50);
   setTimeout(scrollToBottom, 300);
@@ -3445,10 +3536,9 @@ function clearSearchResult() {
 
 async function sendContactRequest() {
   if (!wallet || !searchFoundWallet) return;
-  const resp = await fetch(BACKEND + '/contact-request', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet,contact_wallet:searchFoundWallet})}).then(r => r.json()).catch(() => ({}));
-  if (resp.status === 'sent') { showToast('Contact request sent!'); closePanel('search-panel'); }
-  else if (resp.status === 'already_contacts') showToast('Already in your contacts');
-  else showToast(resp.error || 'Something went wrong');
+  const handle = (document.getElementById('search-result-handle')?.textContent || '').trim();
+  addP2PFriend(searchFoundWallet, handle);
+  closePanel('search-panel');
 }
 
 function inviteUrl() {
@@ -4135,18 +4225,15 @@ const STICKER_LIST = [
   {s:'orca-celebrate',l:'Orca Party'},
 ];
 
-const TENOR_KEY = 'LIVDSRZULELA';
 let gifSearchTimer = null;
+let _gifPickerTarget = 'dm'; // 'dm' | 'genchat'
+const GIF_PREFIX = '[[gif]]';
 
 function initPicker() {
-  // Emoji grid
   const eg = document.getElementById('emoji-grid');
-  eg.innerHTML = EMOJI_LIST.map(e => `<button class="emoji-btn" onclick="sendEmoji('${e}')">${e}</button>`).join('');
-  // Sticker grid
+  if (eg) eg.innerHTML = EMOJI_LIST.map(e => `<button class="emoji-btn" onclick="sendEmoji('${e}')">${e}</button>`).join('');
   const sg = document.getElementById('sticker-grid');
-  sg.innerHTML = STICKER_LIST.map(s => `<button class="sticker-btn" onclick="sendSticker('${s.s}')"><img class="sticker-img" src="/stickers/${s.s}.png" alt="${s.l}" loading="lazy"><div class="sticker-label">${s.l}</div></button>`).join('');
-  // Load trending GIFs
-  loadGifs('');
+  if (sg) sg.innerHTML = STICKER_LIST.map(s => `<button class="sticker-btn" onclick="sendSticker('${s.s}')"><img class="sticker-img" src="/stickers/${s.s}.png" alt="${s.l}" loading="lazy"><div class="sticker-label">${s.l}</div></button>`).join('');
 }
 
 function togglePicker() {
@@ -4158,20 +4245,58 @@ function togglePicker() {
   } else {
     panel.classList.add('open');
     btn.classList.add('active');
+    _gifPickerTarget = 'dm';
   }
 }
 
 function closePicker() {
-  document.getElementById('picker-panel').classList.remove('open');
-  document.getElementById('picker-toggle-btn').classList.remove('active');
+  const panel = document.getElementById('picker-panel');
+  const btn = document.getElementById('picker-toggle-btn');
+  if (panel) panel.classList.remove('open');
+  if (btn) btn.classList.remove('active');
 }
 
 function switchPickerTab(tab) {
   ['emoji','sticker','gif','photo','file'].forEach(t => {
-    document.getElementById('ptab-' + t).classList.toggle('active', t === tab);
-    document.getElementById('picker-' + t).classList.toggle('active', t === tab);
+    const pb = document.getElementById('ptab-' + t);
+    const pc = document.getElementById('picker-' + t);
+    if (pb) pb.classList.toggle('active', t === tab);
+    if (pc) pc.classList.toggle('active', t === tab);
   });
-  if (tab === 'gif' && !document.getElementById('gif-grid').children.length) loadGifs('');
+  if (tab === 'gif') {
+    openGifSheet('dm');
+  }
+}
+
+function openGifSheet(target) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  _gifPickerTarget = target === 'genchat' ? 'genchat' : 'dm';
+  if (_gifPickerTarget === 'dm' && !currentChat && !currentGroupChat) {
+    showToast('Open a chat first'); return;
+  }
+  document.getElementById('gif-sheet-backdrop')?.classList.add('open');
+  document.getElementById('gif-sheet')?.classList.add('open');
+  const urlIn = document.getElementById('gif-sheet-url');
+  if (urlIn) { urlIn.value = ''; setTimeout(() => urlIn.focus(), 50); }
+}
+
+function closeGifSheet() {
+  document.getElementById('gif-sheet-backdrop')?.classList.remove('open');
+  document.getElementById('gif-sheet')?.classList.remove('open');
+}
+
+function sendGifFromPaste() {
+  const raw = (document.getElementById('gif-sheet-url')?.value || '').trim();
+  if (!raw) { showToast('Paste a Tenor GIF URL first'); return; }
+  let url = raw;
+  // Allow wrapping if user pasted [[gif]]… already
+  if (url.startsWith(GIF_PREFIX)) url = url.slice(GIF_PREFIX.length).trim();
+  const low = url.toLowerCase();
+  if (!(low.startsWith('https://') && (low.includes('tenor.com') || low.includes('tenor.co')))) {
+    showToast('Need an https:// Tenor GIF link');
+    return;
+  }
+  sendGif(url);
 }
 
 function sendEmoji(e) {
@@ -4190,34 +4315,55 @@ function sendSticker(slug) {
   closePicker();
 }
 
+function encodeGifContent(url) {
+  return GIF_PREFIX + String(url || '').trim();
+}
+
+function parseGifContent(content) {
+  const c = String(content || '');
+  if (c.startsWith(GIF_PREFIX)) return c.slice(GIF_PREFIX.length).trim();
+  // legacy: bare tenor URL stored as content
+  if (/^https?:\/\/([a-z0-9.-]+\.)?tenor\.(com|co)\//i.test(c)) return c;
+  return null;
+}
+
 function sendGif(url) {
+  url = String(url || '').trim();
+  if (!url) return;
+  if (_gifPickerTarget === 'genchat') {
+    closeGifSheet();
+    closePicker();
+    sendCommunityGif(url);
+    return;
+  }
   if (!wallet || (!currentChat && !currentGroupChat) || !socket) { showToast('Open a chat first'); return; }
   appendMessage({sender_wallet: wallet, content: url, type: 'gif', msg_type: 'gif', created_at: Math.floor(Date.now()/1000)});
   scrollToBottom();
   _emitMsg(url, 'gif');
   closePicker();
+  closeGifSheet();
+}
+
+async function sendCommunityGif(url) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  const slug = (document.getElementById('genchat-input')?.dataset.slug) || _activeCommSlug || 'general';
+  const content = encodeGifContent(url);
+  await sendCommunityContent(slug, content);
 }
 
 async function loadGifs(query) {
+  // Tenor search is intentionally off the app server (no Railway dependency).
+  // Gen Chat / DMs still send [[gif]]https://…tenor… via paste in the GIF sheet.
   const grid = document.getElementById('gif-grid');
-  grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text2);font-size:16px">Loading...</div>';
-  try {
-    const endpoint = query
-      ? `https://g.tenor.com/v1/search?key=${TENOR_KEY}&q=${encodeURIComponent(query)}&limit=9&contentfilter=medium`
-      : `https://g.tenor.com/v1/trending?key=${TENOR_KEY}&limit=9&contentfilter=medium`;
-    const data = await fetch(endpoint).then(r => r.json());
-    if (!data.results || !data.results.length) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text2)">No GIFs found</div>'; return; }
-    grid.innerHTML = data.results.map(g => {
-      const preview = g.media[0].tinygif ? g.media[0].tinygif.url : g.media[0].gif.url;
-      const full = g.media[0].gif.url;
-      return `<button class="gif-item" onclick="sendGif('${full}')"><img src="${preview}" alt="gif" loading="lazy"></button>`;
-    }).join('');
-  } catch(e) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--red)">Could not load GIFs</div>'; }
+  if (grid) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:16px;color:var(--text2);font-size:14px;line-height:1.5">' +
+      'GIF search will run off-server (P2P-first).<br>Use the GIF sheet to paste a Tenor link.</div>';
+  }
 }
 
 function searchGifs(query) {
+  // no-op — search not hosted on Railway
   clearTimeout(gifSearchTimer);
-  gifSearchTimer = setTimeout(() => loadGifs(query), 500);
 }
 
 // ════════════════════════════════
@@ -6426,14 +6572,35 @@ function closeCreateGroupModal() {
   document.getElementById('create-group-modal').style.display = 'none';
 }
 
-// Helper: route message emit to DM or group
+// Helper: route message emit to DM or group — prefer P2P DM when live
 function _emitMsg(content, type) {
-  if (!socket) return;
   if (isGroupChat && currentGroupChat) {
+    if (!socket) return;
     socket.emit('send_group_message', {wallet: wallet, group_id: currentGroupChat.id, content: content, type: type});
-  } else if (currentChat) {
-    socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: currentChat.wallet, content: content, type: type});
+    return;
   }
+  if (!currentChat) return;
+  const peer = (currentChat.wallet || '').toLowerCase();
+  const msg = {
+    sender_wallet: wallet,
+    recipient_wallet: peer,
+    content: content,
+    type: type,
+    msg_type: type,
+    created_at: Math.floor(Date.now() / 1000),
+  };
+  try {
+    if (window.dmP2P) {
+      ensureDmP2P();
+      dmP2P.openWith(peer);
+      if (dmP2P.send(peer, msg)) {
+        showToast('DM via P2P');
+        return;
+      }
+    }
+  } catch (e) { console.warn('dm p2p', e); }
+  if (!socket) return;
+  socket.emit('send_message', {sender_wallet: wallet, recipient_wallet: peer, content: content, type: type});
 }
 
 function applyDeepLinkTab() {
@@ -6472,6 +6639,7 @@ window.addEventListener('load', async () => {
   }
   // e.g. push notification opens ?tab=contacts for pending requests
   applyDeepLinkTab();
+  try { applyAddFriendDeepLink(); } catch (e) {}
 });
 
 if (window.ethereum) {
@@ -7556,6 +7724,18 @@ function startHereAction(act) {
   if (act === 'events') { switchTab('calendar'); return; }
 }
 
+function renderCommBodyHtml(content) {
+  const gifUrl = parseGifContent(content);
+  if (gifUrl) {
+    // Prefer Tenor CDN directly (no Railway). Optional proxy only as fallback.
+    const safe = escapeHtml(gifUrl);
+    const proxy = BACKEND + '/proxy-gif?url=' + encodeURIComponent(gifUrl) + '&name=gif.gif';
+    return '<img class="comm-gif" src="' + safe + '" data-fallback="' + escapeHtml(proxy) +
+      '" alt="GIF" loading="lazy" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback">';
+  }
+  return escapeHtml(content || '');
+}
+
 function renderCommunityMessages(msgs) {
   const box = document.getElementById('genchat-msgs');
   if (!box) return;
@@ -7579,7 +7759,7 @@ function renderCommunityMessages(msgs) {
       <div class="comm-av">${av}</div>
       <div class="comm-bubble">
         <div class="who">${escapeHtml(m.display_name||shortenWallet(m.sender_wallet))}${role}</div>
-        <div class="body">${escapeHtml(m.content)}</div>
+        <div class="body">${renderCommBodyHtml(m.content)}</div>
         <div class="when">${escapeHtml(when)}${via}${del}</div>
       </div>
     </div>`;
@@ -7588,11 +7768,19 @@ function renderCommunityMessages(msgs) {
 }
 
 async function sendCommunityMsg(slug) {
-  if (!wallet) { showToast('Connect your wallet first'); return; }
   const inp = document.getElementById('genchat-input');
   const content = (inp && inp.value || '').trim();
   slug = (inp && inp.dataset.slug) || slug || _activeCommSlug || 'general';
   if (!content) return;
+  if (inp) inp.value = '';
+  await sendCommunityContent(slug, content);
+}
+
+async function sendCommunityContent(slug, content) {
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  content = String(content || '').trim();
+  if (!content) return;
+  slug = slug || _activeCommSlug || 'general';
   await communityJoin();
 
   const prof = window._commProfile || {};
@@ -7608,7 +7796,6 @@ async function sendCommunityMsg(slug) {
     transport: 'p2p'
   };
 
-  // Gen Chat: try P2P first (message body over WebRTC — not Railway)
   let p2pCount = 0;
   if (slug === 'general' && window.genChatP2P) {
     try {
@@ -7617,24 +7804,12 @@ async function sendCommunityMsg(slug) {
     } catch (e) { console.warn('p2p send', e); }
   }
 
-  if (inp) inp.value = '';
-
   if (p2pCount > 0) {
-    // Delivered peer-to-peer — show locally; skip Railway body for this send
-    try {
-      const box = document.getElementById('genchat-msgs');
-      if (box) {
-        // append without full reload
-        const existing = [];
-        // reload merge from local+optional server history
-        await loadCommunityChannel(slug);
-      }
-    } catch (e) {}
+    try { await loadCommunityChannel(slug); } catch (e) {}
     showToast('Sent via P2P · ' + p2pCount + ' peer(s)');
     return;
   }
 
-  // Fallback relay (Railway) when no live P2P peers
   try {
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug), {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -7643,7 +7818,8 @@ async function sendCommunityMsg(slug) {
     const j = await r.json();
     if (!r.ok) { showToast(j.error || 'Send failed'); return; }
     await loadCommunityChannel(slug);
-    if (slug === 'general') showToast('Sent via relay (no P2P peers online)');
+    if (slug === 'general' && parseGifContent(content)) showToast('GIF sent');
+    else if (slug === 'general') showToast('Sent via relay (no P2P peers online)');
   } catch(e) { showToast('Send failed'); }
 }
 
@@ -7722,8 +7898,7 @@ function ensureGenChatP2P() {
   if (!window.genChatP2P || !wallet) return;
   genChatP2P.attachSocket(socket);
   genChatP2P.onMessage = function(msg) {
-    if (_activeCommSlug === 'general' || _activeCommSlug === msg.slug) {
-      // merge into view
+    if (_activeCommSlug === 'general' || _activeCommSlug === msg.slug || !msg.slug) {
       loadCommunityChannel('general');
     }
   };
@@ -7739,6 +7914,83 @@ function ensureGenChatP2P() {
     }
   };
   genChatP2P.join(wallet, window._commProfile || {});
+}
+
+function ensureDmP2P() {
+  if (!window.dmP2P || !wallet) return;
+  dmP2P.attachSocket(socket);
+  dmP2P.setWallet(wallet);
+  dmP2P.onMessage = function(msg, fromPeer) {
+    const peer = (fromPeer || msg.sender_wallet || '').toLowerCase();
+    if (currentChat && currentChat.wallet === peer) {
+      appendMessage(msg);
+      scrollToBottom();
+    } else {
+      unreadCounts[peer] = (unreadCounts[peer] || 0) + 1;
+      try { updateChatList(); } catch (e) {}
+      const dot = document.getElementById('chats-dot');
+      if (dot) dot.classList.add('show');
+      showToast('💬 P2P DM');
+    }
+  };
+  if (currentChat && currentChat.wallet) {
+    dmP2P.openWith(currentChat.wallet);
+  }
+}
+
+/** P2P-first friend: local list + optional server contact request */
+function addP2PFriend(friendWallet, handle) {
+  friendWallet = (friendWallet || '').toLowerCase();
+  if (!friendWallet || !wallet) return;
+  if (window.dmP2P) {
+    ensureDmP2P();
+    dmP2P.addLocalFriend(friendWallet, { handle: handle || '' });
+  }
+  // Also try classic server friend request when online (hybrid until LC cutover)
+  fetch(BACKEND + '/contact-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet, contact_wallet: friendWallet }),
+  }).then(function (r) { return r.json(); }).then(function (j) {
+    if (j.status === 'sent' || j.status === 'already_contacts') {
+      showToast(j.status === 'already_contacts' ? 'Already friends' : 'Friend request sent · P2P ready');
+    }
+  }).catch(function () {
+    showToast('Saved as local P2P friend');
+  });
+  try { loadContacts(); } catch (e) {}
+}
+
+function p2pFriendLink() {
+  if (!wallet) return '';
+  const base = (typeof location !== 'undefined' && location.origin) ? location.origin : 'https://lightchat.chat';
+  return base + '/?add=' + encodeURIComponent(wallet);
+}
+
+function copyP2PFriendLink() {
+  const link = p2pFriendLink();
+  if (!link) { showToast('Connect wallet first'); return; }
+  try {
+    navigator.clipboard.writeText(link);
+    showToast('Friend link copied — they open it to add you (P2P)');
+  } catch (e) {
+    showToast(link);
+  }
+}
+
+function applyAddFriendDeepLink() {
+  try {
+    const add = new URLSearchParams(window.location.search).get('add');
+    if (!add || !isValidWallet(add)) return;
+    if (!wallet) {
+      showToast('Connect wallet to accept friend link');
+      return;
+    }
+    if (add.toLowerCase() === wallet) return;
+    addP2PFriend(add.toLowerCase(), '');
+    window.history.replaceState({}, '', window.location.pathname);
+    switchTab('contacts');
+  } catch (e) {}
 }
 
 async function loadDirectory() {
