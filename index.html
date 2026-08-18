@@ -2886,7 +2886,7 @@ async function finishConnect() {
 
   const resp = await fetch(BACKEND + '/handle/' + wallet).then(r => r.json()).catch(() => ({}));
   if (resp.handle) {
-    myHandle = resp.handle;
+    myHandle = stripAt(resp.handle);
     updateUI();
     connectSocket();
     try { ensureDmP2P(); } catch (e) {}
@@ -3016,7 +3016,7 @@ async function registerHandle() {
   }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
 
   if (resp.error) { showHandleError(resp.error); return; }
-  myHandle = resp.handle;
+  myHandle = stripAt(resp.handle);
   document.getElementById('handle-modal').classList.remove('open');
   updateUI(); connectSocket(); loadContacts(); loadGroups(); loadMemories();
   refreshEmptyInviteUI();
@@ -3037,7 +3037,7 @@ function updateUI() {
   document.getElementById('me-avatar').textContent = letter;
   try { refreshMeAvatarFromProfile(); } catch(e) {}
   const _dn = (window._commProfile && window._commProfile.display_name) ? String(window._commProfile.display_name).trim() : '';
-  document.getElementById('me-handle-display').textContent = _dn || myHandle || (wallet ? shortenWallet(wallet) : 'Not Connected');
+  document.getElementById('me-handle-display').textContent = stripAt(_dn || myHandle) || (wallet ? shortenWallet(wallet) : 'Not Connected');
   window._meWalletRevealed = false;
   const wEl = document.getElementById('me-wallet-display');
   if (wEl) {
@@ -4258,7 +4258,7 @@ async function submitChangeHandle() {
     body: JSON.stringify({wallet, handle: raw})
   }).then(r => r.json()).catch(() => ({error: 'Connection failed'}));
   if (resp.error) { errEl.textContent = resp.error; errEl.style.display = 'block'; return; }
-  myHandle = resp.handle;
+  myHandle = stripAt(resp.handle);
   document.getElementById('change-handle-modal').style.display = 'none';
   updateUI();
   showToast('Handle updated to ' + myHandle + '!');
@@ -7719,6 +7719,11 @@ connectSocket = function() {
 let communityChannels = [];
 let communityRole = null;
 
+/** Never show @ on names/handles in the UI. */
+function stripAt(s) {
+  return String(s == null ? '' : s).replace(/^@+/, '');
+}
+
 /** Display labels — less “centralized owner” feel. Internal role stays owner. */
 function displayRoleLabel(role) {
   const r = (role || 'member').toLowerCase();
@@ -8000,7 +8005,7 @@ function appendCommunityMessage(m) {
   el.setAttribute('data-msg-id', m.id || '');
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
     _commMsgMenuBtn(m) +
-    '<div class="who">' + escapeHtml(m.display_name || shortenWallet(m.sender_wallet)) + role + '</div>' +
+    '<div class="who">' + escapeHtml(stripAt(m.display_name) || shortenWallet(m.sender_wallet)) + role + '</div>' +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
     '<div class="when">' + escapeHtml(when) + via + edited + '</div></div>';
   box.appendChild(el);
@@ -8028,7 +8033,7 @@ function renderCommunityMessages(msgs) {
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${_commMsgMenuBtn(m)}
-        <div class="who">${escapeHtml(m.display_name||shortenWallet(m.sender_wallet))}${role}</div>
+        <div class="who">${escapeHtml(stripAt(m.display_name)||shortenWallet(m.sender_wallet))}${role}</div>
         <div class="body">${renderCommBodyHtml(m.content)}</div>
         <div class="when">${escapeHtml(when)}${via}${edited}</div>
       </div>
@@ -8318,7 +8323,11 @@ async function sendCommunityContent(slug, content) {
   content = String(content || '').trim();
   if (!content) return;
   slug = slug || _activeCommSlug || 'general';
-  await communityJoin();
+  const joined = await communityJoin();
+  if (!joined) {
+    showToast('Cannot post — join the community first (or you may be banned/kicked)');
+    return;
+  }
 
   if (!(await enforceLinkAndTimeout(content))) return;
 
@@ -8328,7 +8337,7 @@ async function sendCommunityContent(slug, content) {
     sender_wallet: wallet,
     content: content,
     created_at: Math.floor(Date.now()/1000),
-    display_name: prof.display_name || (typeof myHandle !== 'undefined' && myHandle) || shortenWallet(wallet),
+    display_name: stripAt(prof.display_name || (typeof myHandle !== 'undefined' && myHandle) || '') || shortenWallet(wallet),
     role: communityRole || 'member',
     has_avatar: !!(prof.has_avatar),
     slug: slug,
@@ -8660,7 +8669,7 @@ function _dirMemberRow(m) {
     : (selfInv ? '<span class="dir-online-dot" title="Invisible" style="background:#747f8d"></span>' : '');
   const statusHint = selfInv && !online ? '<div class="d">Invisible — others see you offline</div>' : '';
   const w = escapeHtml(m.wallet);
-  const dn = escapeHtml(m.display_name);
+  const dn = escapeHtml(stripAt(m.display_name));
   const targetStaff = role === 'owner' || role === 'admin' || role === 'mod';
   const iAmStaff = isCommStaff();
   const showMod = iAmStaff && !targetStaff && wallet && m.wallet !== wallet;
