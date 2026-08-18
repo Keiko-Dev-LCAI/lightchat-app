@@ -8933,9 +8933,14 @@ function _dirMemberRow(m) {
   const statusHint = selfInv && !online ? '<div class="d">Invisible — others see you offline</div>' : '';
   const w = escapeHtml(m.wallet);
   const dn = escapeHtml(stripAt(m.display_name));
-  const targetStaff = role === 'owner' || role === 'admin' || role === 'mod';
   const iAmStaff = isCommStaff();
-  const showMod = iAmStaff && !targetStaff && wallet && m.wallet !== wallet;
+  const myRole = (communityRole || '').toLowerCase();
+  // Admin/owner: anyone except self. Mod: mods + members, not admins/owners.
+  let showMod = false;
+  if (iAmStaff && wallet && m.wallet !== wallet) {
+    if (myRole === 'owner' || myRole === 'admin') showMod = true;
+    else if (myRole === 'mod' && role !== 'owner' && role !== 'admin') showMod = true;
+  }
   const modBtn = showMod
     ? `<button type="button" title="Moderate" onclick="event.stopPropagation();openModMemberMenu(event,'${w}','${dn.replace(/'/g, "\\'")}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">🛡</button>`
     : '';
@@ -8973,14 +8978,23 @@ function closeModMemberMenu() {
 }
 
 async function modMemberAction(action, duration) {
-  const t = _modMemberTarget;
+  let t = _modMemberTarget;
   closeModMemberMenu();
-  if (!t || !t.wallet || !wallet) return;
+  if (!wallet) return;
   if (!isCommStaff()) { showToast('Mods and admins only'); return; }
+  // Unban may need a wallet if target left the directory
+  if (action === 'unban' && (!t || !t.wallet)) {
+    const raw = prompt('Wallet to unban (0x…)');
+    if (!raw || !isValidWallet(raw)) { showToast('Valid wallet required'); return; }
+    t = { wallet: raw.toLowerCase(), name: '' };
+  }
+  if (!t || !t.wallet) return;
   const labels = {
     timeout: 'timeout this member (' + (duration || '1h') + ')',
+    untimeout: 'remove timeout from this member',
     kick: 'kick this member from chat (they can rejoin)',
     ban: 'BAN this member from chat',
+    unban: 'remove ban from this wallet',
   };
   if (!confirm('Really ' + (labels[action] || action) + '?')) return;
   try {
@@ -8997,9 +9011,12 @@ async function modMemberAction(action, duration) {
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { showToast(j.error || 'Action failed'); return; }
-    if (action === 'timeout') showToast('Timed out ' + (t.name || shortenWallet(t.wallet)) + ' · ' + (duration || '1h'));
-    else if (action === 'kick') showToast('Kicked ' + (t.name || shortenWallet(t.wallet)));
-    else if (action === 'ban') showToast('Banned ' + (t.name || shortenWallet(t.wallet)));
+    const who = t.name || shortenWallet(t.wallet);
+    if (action === 'timeout') showToast('Timed out ' + who + ' · ' + (duration || '1h'));
+    else if (action === 'untimeout') showToast('Timeout removed · ' + who);
+    else if (action === 'kick') showToast('Kicked ' + who);
+    else if (action === 'ban') showToast('Banned ' + who);
+    else if (action === 'unban') showToast('Ban removed · ' + who);
     loadDirectory();
   } catch (e) {
     showToast('Action failed');
@@ -9371,7 +9388,8 @@ async function saveCommunityProfile() { return saveEditProfile(); }
         if (!data || !wallet) return;
         if ((data.wallet || '').toLowerCase() !== wallet.toLowerCase()) return;
         if (data.until) setLocalTimeoutUntil(data.until);
-        showToast(data.reason || 'You were timed out');
+        else setLocalTimeoutUntil(0);
+        showToast(data.reason || (data.until ? 'You were timed out' : 'Timeout cleared'));
       });
       socket.on('community_kicked', (data) => {
         if (!data || !wallet) return;
