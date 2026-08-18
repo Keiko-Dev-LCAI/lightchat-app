@@ -334,6 +334,22 @@ def init_community_db(get_db):
             PRIMARY KEY (community_id, wallet)
         )"""
     )
+    # Append-only garden audit log — survives counter resets; used to reconcile height
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_garden_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            community_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            wallet TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0,
+            detail TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_garden_events_cid
+           ON community_garden_events(community_id, id)"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_bot_tokens (
             token TEXT PRIMARY KEY,
@@ -1031,12 +1047,88 @@ def garden_ensure_columns(conn) -> None:
         "ALTER TABLE community_garden ADD COLUMN last_waterer TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE community_garden ADD COLUMN apples INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE community_garden_waters ADD COLUMN apples INTEGER NOT NULL DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS community_garden_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            community_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            wallet TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0,
+            detail TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL
+        )""",
+        """CREATE INDEX IF NOT EXISTS idx_garden_events_cid
+           ON community_garden_events(community_id, id)""",
     ):
         try:
             conn.execute(sql)
             conn.commit()
         except Exception:
             pass
+
+
+def garden_log_event(conn, kind: str, wallet: str = "", size: int = 0, detail: str = "") -> None:
+    """Append-only water/catch/restore event (persistence / rebuild source)."""
+    garden_ensure_columns(conn)
+    try:
+        conn.execute(
+            """INSERT INTO community_garden_events
+               (community_id, kind, wallet, size, detail, created_at)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                COMMUNITY_ID,
+                (kind or "event")[:40],
+                _norm(wallet or ""),
+                int(size or 0),
+                (detail or "")[:200],
+                int(time.time()),
+            ),
+        )
+    except Exception as e:
+        print("  [garden] event log failed:", e)
+
+
+def garden_reconcile_from_events(conn) -> bool:
+    """If counters were wiped but events remain, restore waters/xp/stage from max size."""
+    garden_ensure_columns(conn)
+    try:
+        row = conn.execute(
+            """SELECT MAX(size) AS mx FROM community_garden_events
+               WHERE community_id=? AND kind IN ('water','restore')""",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        mx = int(row["mx"] or 0) if row and row["mx"] is not None else 0
+    except Exception:
+        return False
+    if mx <= 0:
+        return False
+    g = conn.execute(
+        "SELECT waters, xp FROM community_garden WHERE community_id=?",
+        (COMMUNITY_ID,),
+    ).fetchone()
+    cur = int(g["waters"] or 0) if g else 0
+    if cur >= mx:
+        return False
+    stage_i, *_rest = garden_stage_for_size(mx)
+    now = int(time.time())
+    old_xp = int(g["xp"] or 0) if g else 0
+    new_xp = max(old_xp, mx)
+    if g:
+        conn.execute(
+            """UPDATE community_garden
+               SET waters=?, xp=?, stage=?, updated_at=?
+               WHERE community_id=?""",
+            (mx, new_xp, stage_i, now, COMMUNITY_ID),
+        )
+    else:
+        conn.execute(
+            """INSERT INTO community_garden
+               (community_id, xp, waters, stage, updated_at, last_milestone)
+               VALUES (?,?,?,?,?,?)""",
+            (COMMUNITY_ID, new_xp, mx, stage_i, now, 0),
+        )
+    conn.commit()
+    print(f"  [garden] reconciled waters {cur} → {mx} from event log")
+    return True
 
 
 def garden_prune_apple_drops() -> None:
@@ -1121,6 +1213,10 @@ def garden_contributors(conn, limit: int = 10) -> list[dict]:
 
 def garden_state_dict(conn, viewer: str = "") -> dict:
     garden_ensure_columns(conn)
+    try:
+        garden_reconcile_from_events(conn)
+    except Exception:
+        pass
     row = conn.execute(
         "SELECT * FROM community_garden WHERE community_id=?",
         (COMMUNITY_ID,),
@@ -2926,6 +3022,13 @@ def register_community_routes(app, socketio, get_db):
                        VALUES (?,?,?,?)""",
                     (COMMUNITY_ID, wallet, now, 1),
                 )
+            garden_log_event(
+                conn,
+                "water",
+                wallet=wallet,
+                size=new_size,
+                detail=f"stage={new_stage}:{label}",
+            )
             conn.commit()
             prof = profile_dict(conn, wallet)
             who = (prof.get("display_name") or "").strip() or (
@@ -3056,6 +3159,17 @@ def register_community_routes(app, socketio, get_db):
                        VALUES (?,?,?,?,?)""",
                     (COMMUNITY_ID, wallet, 0, 0, 1),
                 )
+            gsize = conn.execute(
+                "SELECT waters FROM community_garden WHERE community_id=?",
+                (COMMUNITY_ID,),
+            ).fetchone()
+            garden_log_event(
+                conn,
+                "catch",
+                wallet=wallet,
+                size=int(gsize["waters"] or 0) if gsize else 0,
+                detail="apple",
+            )
             conn.commit()
             post_channel_bot_message(
                 conn,
@@ -3075,6 +3189,64 @@ def register_community_routes(app, socketio, get_db):
             except Exception:
                 pass
             return jsonify({"ok": True, "garden": st, "caught": True, "by_name": who})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/garden/restore", methods=["POST"])
+    def api_garden_restore():
+        """Staff: set tree height after accidental wipe. Body: { wallet, waters }."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        try:
+            waters = int(data.get("waters") or data.get("height_ft") or 0)
+        except Exception:
+            waters = 0
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if waters < 0 or waters > 100000:
+            return jsonify({"error": "waters out of range"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if not is_staff(role):
+                return jsonify({"error": "staff only"}), 403
+            garden_ensure_columns(conn)
+            now = int(time.time())
+            stage_i, emoji, label, _art = garden_stage_for_size(waters)
+            conn.execute(
+                """INSERT INTO community_garden (community_id, xp, waters, stage, updated_at, last_milestone)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(community_id) DO UPDATE SET
+                     xp=excluded.xp, waters=excluded.waters, stage=excluded.stage,
+                     updated_at=excluded.updated_at""",
+                (COMMUNITY_ID, max(waters, 0), waters, stage_i, now, 0),
+            )
+            # Don't set last_waterer so anyone can water next
+            conn.execute(
+                """UPDATE community_garden SET last_waterer='' WHERE community_id=?""",
+                (COMMUNITY_ID,),
+            )
+            garden_log_event(
+                conn,
+                "restore",
+                wallet=wallet,
+                size=waters,
+                detail=f"staff restore → {label}",
+            )
+            conn.commit()
+            post_channel_bot_message(
+                conn,
+                socketio,
+                "garden",
+                f"{emoji} Tree height restored to **{waters}ft** ({label}) by staff.",
+                GARDEN_BOT_NAME,
+            )
+            st = garden_state_dict(conn, viewer=wallet)
+            try:
+                socketio.emit("community_garden", st, room="community:garden")
+            except Exception:
+                pass
+            return jsonify({"ok": True, "garden": st})
         finally:
             conn.close()
 
