@@ -291,6 +291,13 @@ def init_community_db(get_db):
         )"""
     )
     conn.commit()
+    try:
+        conn.execute(
+            "ALTER TABLE community_messages ADD COLUMN edited_at INTEGER"
+        )
+        conn.commit()
+    except Exception:
+        pass
 
 
     # ensure media post-only channel exists
@@ -799,20 +806,34 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
-            rows = conn.execute(
-                """SELECT id, sender_wallet, content, created_at FROM community_messages
-                   WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
-                (ch["id"], limit),
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    """SELECT id, sender_wallet, content, created_at, edited_at FROM community_messages
+                       WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
+                    (ch["id"], limit),
+                ).fetchall()
+            except Exception:
+                rows = conn.execute(
+                    """SELECT id, sender_wallet, content, created_at FROM community_messages
+                       WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
+                    (ch["id"], limit),
+                ).fetchall()
             msgs = []
             for r in reversed(list(rows)):
                 prof = profile_dict(conn, r["sender_wallet"])
+                edited_at = None
+                try:
+                    edited_at = r["edited_at"]
+                except Exception:
+                    edited_at = None
                 msgs.append(
                     {
                         "id": r["id"],
                         "sender_wallet": r["sender_wallet"],
                         "content": r["content"],
                         "created_at": r["created_at"],
+                        "edited": bool(edited_at),
+                        "edited_at": edited_at,
                         "display_name": prof["display_name"],
                         "role": prof["role"],
                         "has_avatar": prof["has_avatar"],
@@ -1039,6 +1060,81 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"ok": True, "target": target, "role": new_role})
         finally:
             conn.close()
+    @app.route("/api/community/messages/<slug>/<msg_id>", methods=["PATCH", "PUT"])
+    def api_channel_edit_msg(slug, msg_id):
+        """Authors only: edit own message content."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet") or "")
+        content = (data.get("content") or "").strip()
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if not content or len(content) > 4000:
+            return jsonify({"error": "content required (max 4000)"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            until = get_timeout_until(conn, wallet)
+            now = int(time.time())
+            if until > now:
+                return jsonify({"error": "You are timed out", "code": "timed_out"}), 403
+            if content_has_link(content) and not is_staff(role):
+                until = set_timeout(
+                    conn, wallet, 3600, "Edited in a link (admins/mods only)", "system"
+                )
+                return jsonify({
+                    "error": "Only admins and mods can post links. Timed out for 1 hour.",
+                    "code": "link_timeout",
+                    "until": until,
+                }), 403
+            ch = conn.execute(
+                "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+                (COMMUNITY_ID, slug),
+            ).fetchone()
+            if not ch:
+                return jsonify({"error": "channel not found"}), 404
+            row = conn.execute(
+                "SELECT sender_wallet, content FROM community_messages WHERE id=? AND channel_id=?",
+                (msg_id, ch["id"]),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "message not found"}), 404
+            if _norm(row["sender_wallet"]) != wallet:
+                return jsonify({"error": "you can only edit your own messages"}), 403
+            try:
+                conn.execute(
+                    "UPDATE community_messages SET content=?, edited_at=? WHERE id=? AND channel_id=?",
+                    (content, now, msg_id, ch["id"]),
+                )
+            except Exception:
+                conn.execute(
+                    "UPDATE community_messages SET content=? WHERE id=? AND channel_id=?",
+                    (content, msg_id, ch["id"]),
+                )
+            conn.commit()
+            prof = profile_dict(conn, wallet)
+            msg = {
+                "id": msg_id,
+                "sender_wallet": wallet,
+                "content": content,
+                "edited": True,
+                "edited_at": now,
+                "display_name": prof["display_name"],
+                "role": prof["role"],
+                "has_avatar": prof["has_avatar"],
+                "slug": slug,
+            }
+            try:
+                socketio.emit(
+                    "community_message_edited",
+                    msg,
+                    room=f"community:{slug}",
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": True, "message": msg})
+        finally:
+            conn.close()
+
     @app.route("/api/community/messages/<slug>/<msg_id>", methods=["DELETE"])
     def api_channel_delete_msg(slug, msg_id):
         data = request.json or {}

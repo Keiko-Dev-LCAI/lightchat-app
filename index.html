@@ -2488,6 +2488,7 @@ body {
 <!-- Gen Chat message actions -->
 <div id="comm-msg-menu" role="menu" aria-label="Message actions">
   <button type="button" onclick="commMsgCopy()">📋 Copy</button>
+  <button type="button" id="comm-msg-edit-btn" onclick="commMsgEdit()">✏️ Edit</button>
   <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
   <button type="button" class="danger" id="comm-msg-del-btn" onclick="commMsgDelete()">🗑 Delete</button>
   <button type="button" onclick="closeCommMsgMenu()">✕ Close</button>
@@ -7918,7 +7919,14 @@ function _commMsgAttr(m) {
   const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
   const sender = escapeHtml((m.sender_wallet || '').toLowerCase());
   const content = encodeURIComponent(m.content || '');
-  return 'data-msg-id="' + id + '" data-slug="' + slug + '" data-sender="' + sender + '" data-content="' + content + '"';
+  const edited = m.edited ? '1' : '0';
+  return 'data-msg-id="' + id + '" data-slug="' + slug + '" data-sender="' + sender +
+    '" data-content="' + content + '" data-edited="' + edited + '"';
+}
+
+function isCommMsgAuthor(ctx) {
+  if (!wallet || !ctx) return false;
+  return !!(ctx.sender && ctx.sender === (wallet || '').toLowerCase());
 }
 
 function _commMsgMenuBtn(m) {
@@ -7943,6 +7951,7 @@ function appendCommunityMessage(m) {
   const roleLbl = displayRoleLabel(m.role);
   const role = roleLbl ? '<span class="role">' + escapeHtml(roleLbl) + '</span>' : '';
   const via = m.transport === 'p2p' ? ' · P2P' : '';
+  const edited = m.edited ? ' · edited' : '';
   const el = document.createElement('div');
   el.className = 'comm-msg';
   el.setAttribute('data-msg-id', m.id || '');
@@ -7950,7 +7959,7 @@ function appendCommunityMessage(m) {
     _commMsgMenuBtn(m) +
     '<div class="who">' + escapeHtml(m.display_name || shortenWallet(m.sender_wallet)) + role + '</div>' +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
-    '<div class="when">' + escapeHtml(when) + via + '</div></div>';
+    '<div class="when">' + escapeHtml(when) + via + edited + '</div></div>';
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -7971,13 +7980,14 @@ function renderCommunityMessages(msgs) {
     const roleLbl = displayRoleLabel(m.role);
     const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
     const via = m.transport === 'p2p' ? ' · P2P' : '';
+    const edited = m.edited ? ' · edited' : '';
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${_commMsgMenuBtn(m)}
         <div class="who">${escapeHtml(m.display_name||shortenWallet(m.sender_wallet))}${role}</div>
         <div class="body">${renderCommBodyHtml(m.content)}</div>
-        <div class="when">${escapeHtml(when)}${via}</div>
+        <div class="when">${escapeHtml(when)}${via}${edited}</div>
       </div>
     </div>`;
   }).join('');
@@ -8009,6 +8019,8 @@ function openCommMsgMenu(ev, btn) {
   const canDel = canDeleteCommMsg(_commMsgMenuCtx);
   const delBtn = document.getElementById('comm-msg-del-btn');
   if (delBtn) delBtn.style.display = canDel ? '' : 'none';
+  const editBtn = document.getElementById('comm-msg-edit-btn');
+  if (editBtn) editBtn.style.display = isCommMsgAuthor(_commMsgMenuCtx) ? '' : 'none';
   menu.classList.add('open');
   const x = Math.min(ev.clientX || 16, window.innerWidth - 180);
   const y = Math.min(ev.clientY || 16, window.innerHeight - 200);
@@ -8047,6 +8059,89 @@ function commMsgSave() {
   const gif = parseGifContent(ctx.content);
   if (!gif) { showToast('Nothing to save'); return; }
   downloadFromUrl(gif, 'lightchat-gif.gif');
+}
+
+function applyCommMsgEditLocal(id, content) {
+  if (!id) return;
+  try {
+    if (window.genChatP2P) {
+      const arr = genChatP2P.loadLocal() || [];
+      arr.forEach(function (m) {
+        if (m.id === id) {
+          m.content = content;
+          m.edited = true;
+          m.edited_at = Math.floor(Date.now() / 1000);
+        }
+      });
+      localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
+    }
+  } catch (e) {}
+  const row = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+  if (!row) return;
+  const bubble = row.querySelector('.comm-bubble');
+  const body = row.querySelector('.body');
+  const when = row.querySelector('.when');
+  if (bubble) {
+    bubble.setAttribute('data-content', encodeURIComponent(content));
+    bubble.setAttribute('data-edited', '1');
+  }
+  if (body) body.innerHTML = renderCommBodyHtml(content);
+  if (when && when.textContent.indexOf('edited') < 0) when.textContent += ' · edited';
+}
+
+async function commMsgEdit() {
+  const ctx = _commMsgMenuCtx;
+  closeCommMsgMenu();
+  if (!ctx || !isCommMsgAuthor(ctx)) { showToast('You can only edit your own messages'); return; }
+  if (!ctx.id) { showToast('Cannot edit this message'); return; }
+  let current = ctx.content || '';
+  const gif = parseGifContent(current);
+  // Editing GIFs: allow changing URL / text
+  const next = prompt('Edit message', gif ? ('[[gif]]' + gif) : current);
+  if (next === null) return;
+  let content = String(next || '').trim();
+  if (!content) { showToast('Message cannot be empty'); return; }
+  if (content.length > 4000) { showToast('Too long'); return; }
+  if (!(await enforceLinkAndTimeout(content))) return;
+
+  applyCommMsgEditLocal(ctx.id, content);
+  try {
+    if (window.genChatP2P && genChatP2P.connectedCount && genChatP2P.connectedCount() > 0) {
+      genChatP2P._broadcastEnvelope({
+        v: 1,
+        kind: 'edit',
+        id: ctx.id,
+        content: content,
+        slug: ctx.slug || 'general',
+        by: (wallet || '').toLowerCase(),
+      }, null);
+    }
+  } catch (e) {}
+
+  // Server edit (relay messages); P2P-only ids may 404 — that's OK
+  try {
+    const r = await fetch(
+      BACKEND + '/api/community/messages/' + encodeURIComponent(ctx.slug || 'general') + '/' + encodeURIComponent(ctx.id),
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet, content }),
+      }
+    );
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok && j.code === 'link_timeout') {
+      if (j.until) setLocalTimeoutUntil(j.until);
+      showToast(j.error || 'Timed out');
+      return;
+    }
+    if (!r.ok && r.status !== 404) {
+      showToast(j.error || 'Edit failed on server');
+    } else {
+      showToast('Edited');
+    }
+  } catch (e) {
+    showToast('Edited locally');
+  }
 }
 
 function removeCommMsgLocal(id) {
@@ -8323,6 +8418,9 @@ function ensureGenChatP2P() {
   };
   genChatP2P.onDelete = function(id) {
     removeCommMsgLocal(id);
+  };
+  genChatP2P.onEdit = function(id, content) {
+    applyCommMsgEditLocal(id, content);
   };
   genChatP2P.onStatus = function(st) {
     const el = document.getElementById('genchat-p2p-status');
