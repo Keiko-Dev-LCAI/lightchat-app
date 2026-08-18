@@ -2668,7 +2668,12 @@ def register_community_routes(app, socketio, get_db):
                 for did in deleted_ids:
                     socketio.emit(
                         "community_message_deleted",
-                        {"id": did, "slug": slug, "content": content},
+                        {
+                            "id": did,
+                            "slug": slug,
+                            "content": content,
+                            "sender_wallet": sender,
+                        },
                         room=f"community:{slug}",
                     )
             except Exception:
