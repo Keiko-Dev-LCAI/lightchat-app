@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-msg-menu-react">
+<meta name="lc-build" content="2026-08-18-hoverbar">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2059,6 +2059,38 @@ body {
             font-size:11px; font-weight:500; color:var(--text2); opacity:0.85;
             margin-left:2px; white-space:nowrap;
           }
+          /* Discord-style hover action bar */
+          .comm-bubble { position:relative; }
+          .comm-msg-hoverbar {
+            display:none; position:absolute; top:-16px; right:8px; z-index:5;
+            align-items:center; gap:0; padding:2px;
+            background:var(--card,#1e1f22); border:1px solid var(--border);
+            border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,0.45);
+          }
+          .comm-msg:hover .comm-msg-hoverbar,
+          .comm-msg.show-actions .comm-msg-hoverbar,
+          .comm-msg:focus-within .comm-msg-hoverbar { display:flex; }
+          .comm-msg-hoverbar button {
+            appearance:none; border:none; background:transparent; color:var(--text2);
+            width:32px; height:32px; border-radius:6px; cursor:pointer; font-size:16px;
+            line-height:1; padding:0; font-family:inherit;
+          }
+          .comm-msg-hoverbar button:hover { background:rgba(255,255,255,0.08); color:var(--text); }
+          .comm-msg-more { display:none !important; } /* superseded by hover bar */
+          #comm-quick-react {
+            display:none; position:fixed; z-index:970; gap:2px; padding:4px;
+            background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:12px;
+            box-shadow:0 8px 28px rgba(0,0,0,0.5);
+          }
+          #comm-quick-react.open { display:flex; }
+          #comm-quick-react button {
+            appearance:none; border:none; background:transparent; font-size:20px;
+            width:36px; height:36px; border-radius:8px; cursor:pointer; line-height:1;
+          }
+          #comm-quick-react button:hover { background:var(--purple-glow); }
+          @media (hover:none) {
+            .comm-msg-hoverbar { top:4px; right:4px; opacity:0.95; }
+          }
           </style>
           <div id="comm-reply-bar" class="comm-reply-bar" style="display:none">
             <div class="comm-reply-bar-text">
@@ -2986,7 +3018,7 @@ body {
   </div>
 </div>
 
-<!-- Gen Chat message actions -->
+<!-- Gen Chat message actions (⋯ more) -->
 <div id="comm-msg-menu" role="menu" aria-label="Message actions">
   <button type="button" onclick="commMsgReply()">↩ Reply</button>
   <div class="comm-msg-react-row" id="comm-msg-react-row">
@@ -3002,6 +3034,15 @@ body {
   <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
   <button type="button" class="danger" id="comm-msg-del-btn" onclick="commMsgDelete()">🗑 Delete</button>
   <button type="button" onclick="closeCommMsgMenu()">✕ Close</button>
+</div>
+<!-- Discord-style quick react popover from hover bar -->
+<div id="comm-quick-react" role="menu" aria-label="Add reaction">
+  <button type="button" onclick="quickReactPick('👍')">👍</button>
+  <button type="button" onclick="quickReactPick('😂')">😂</button>
+  <button type="button" onclick="quickReactPick('❤️')">❤️</button>
+  <button type="button" onclick="quickReactPick('🔥')">🔥</button>
+  <button type="button" onclick="quickReactPick('😮')">😮</button>
+  <button type="button" onclick="quickReactPick('😢')">😢</button>
 </div>
 
 <!-- Members moderation (mods + admins) -->
@@ -9866,8 +9907,84 @@ function isCommMsgAuthor(ctx) {
 }
 
 function _commMsgMenuBtn(m) {
+  // Kept for menu targeting; visually replaced by Discord hover bar
   return '<button type="button" class="comm-msg-more" title="Message actions" ' +
     'onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="Message menu">⋯</button>';
+}
+
+function _commMsgHoverBar(m) {
+  const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
+  if (isBot) return '';
+  const mid = escapeHtml(m.id || '');
+  const slug = escapeHtml(m.slug || _activeCommSlug || 'general');
+  const isMine = wallet && (m.sender_wallet || '').toLowerCase() === wallet.toLowerCase();
+  const editBtn = isMine
+    ? '<button type="button" title="Edit" onclick="event.stopPropagation();hoverBarEdit(this)" aria-label="Edit">✏️</button>'
+    : '';
+  return '<div class="comm-msg-hoverbar" role="toolbar" aria-label="Message actions">' +
+    '<button type="button" title="Reply" onclick="event.stopPropagation();hoverBarReply(this)" aria-label="Reply">↩</button>' +
+    '<button type="button" title="Add Reaction" onclick="event.stopPropagation();openQuickReact(event,this)" aria-label="Add reaction">😊</button>' +
+    editBtn +
+    '<button type="button" title="More" onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="More">⋯</button>' +
+    '</div>';
+}
+
+function _commMsgCtxFromBubble(bubble) {
+  if (!bubble) return null;
+  let content = '';
+  try { content = decodeURIComponent(bubble.getAttribute('data-content') || ''); } catch (e) {
+    content = bubble.getAttribute('data-content') || '';
+  }
+  let who = '';
+  try { who = decodeURIComponent(bubble.getAttribute('data-who') || ''); } catch (e) {
+    who = bubble.getAttribute('data-who') || '';
+  }
+  return {
+    id: bubble.getAttribute('data-msg-id') || '',
+    slug: bubble.getAttribute('data-slug') || _activeCommSlug || 'general',
+    sender: (bubble.getAttribute('data-sender') || '').toLowerCase(),
+    content: content,
+    who: who,
+  };
+}
+
+function hoverBarReply(btn) {
+  const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
+  const ctx = _commMsgCtxFromBubble(bubble);
+  if (!ctx || !ctx.id) return;
+  setCommReply(ctx);
+}
+
+function hoverBarEdit(btn) {
+  const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
+  _commMsgMenuCtx = _commMsgCtxFromBubble(bubble);
+  if (_commMsgMenuCtx) commMsgEdit();
+}
+
+let _quickReactMsg = null;
+function openQuickReact(ev, btn) {
+  const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
+  _quickReactMsg = _commMsgCtxFromBubble(bubble);
+  const pop = document.getElementById('comm-quick-react');
+  if (!pop || !_quickReactMsg) return;
+  pop.classList.add('open');
+  const x = Math.max(8, Math.min((ev && ev.clientX) || 16, window.innerWidth - 220));
+  let y = ((ev && ev.clientY) || 16) - 48;
+  if (y < 8) y = ((ev && ev.clientY) || 16) + 12;
+  pop.style.left = x + 'px';
+  pop.style.top = y + 'px';
+}
+
+function closeQuickReact() {
+  document.getElementById('comm-quick-react')?.classList.remove('open');
+  _quickReactMsg = null;
+}
+
+async function quickReactPick(emoji) {
+  const ctx = _quickReactMsg;
+  closeQuickReact();
+  if (!ctx || !ctx.id) return;
+  await toggleCommReaction(ctx.id, ctx.slug, emoji);
 }
 
 function _commReplyQuoteHtml(m) {
@@ -10028,14 +10145,16 @@ function appendCommunityMessage(m) {
   const el = document.createElement('div');
   el.className = 'comm-msg';
   el.setAttribute('data-msg-id', m.id || '');
-  // Discord-like: avatar · username · small time · body · reaction pills
+  // Discord-like: avatar · username · time · hover bar · body · reaction pills
   el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
+    _commMsgHoverBar(m) +
     (isBot ? '' : _commMsgMenuBtn(m)) +
     '<div class="who">' + whoName + role + timeBit + '</div>' +
     _commReplyQuoteHtml(m) +
     '<div class="body">' + renderCommBodyHtml(m.content) + '</div>' +
     _commReactionsHtml(m) +
     '</div>';
+  try { bindCommMsgTouch(el); } catch (e) {}
   box.appendChild(el);
   box.scrollTop = box.scrollHeight;
 }
@@ -10064,6 +10183,7 @@ function renderCommunityMessages(msgs) {
     return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
+        ${_commMsgHoverBar(m)}
         ${isBot ? '' : _commMsgMenuBtn(m)}
         <div class="who">${who}${role}${timeBit}</div>
         ${_commReplyQuoteHtml(m)}
@@ -10072,7 +10192,20 @@ function renderCommunityMessages(msgs) {
       </div>
     </div>`;
   }).join('');
+  try { box.querySelectorAll('.comm-msg').forEach(bindCommMsgTouch); } catch (e) {}
   box.scrollTop = box.scrollHeight;
+}
+
+function bindCommMsgTouch(el) {
+  if (!el || el._lcTouchBound) return;
+  el._lcTouchBound = true;
+  // Mobile: tap message to toggle Discord-style action bar
+  el.addEventListener('click', function (e) {
+    if (e.target.closest && (e.target.closest('.comm-msg-hoverbar') || e.target.closest('.comm-react-pill') || e.target.closest('a') || e.target.closest('button'))) return;
+    const on = el.classList.contains('show-actions');
+    document.querySelectorAll('.comm-msg.show-actions').forEach(function (n) { n.classList.remove('show-actions'); });
+    if (!on) el.classList.add('show-actions');
+  });
 }
 
 let _commMsgMenuCtx = null;
@@ -10133,7 +10266,19 @@ function canDeleteCommMsg(ctx) {
 function closeCommMsgMenu() {
   document.getElementById('comm-msg-menu')?.classList.remove('open');
   _commMsgMenuCtx = null;
+  try { closeQuickReact(); } catch (e) {}
 }
+
+document.addEventListener('click', function (e) {
+  const pop = document.getElementById('comm-quick-react');
+  if (pop && pop.classList.contains('open') && !pop.contains(e.target) && !(e.target.closest && e.target.closest('.comm-msg-hoverbar'))) {
+    closeQuickReact();
+  }
+  const menu = document.getElementById('comm-msg-menu');
+  if (menu && menu.classList.contains('open') && !menu.contains(e.target) && !(e.target.closest && e.target.closest('.comm-msg-hoverbar'))) {
+    closeCommMsgMenu();
+  }
+}, true);
 
 function commMsgCopy() {
   const ctx = _commMsgMenuCtx;
