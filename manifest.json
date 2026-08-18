@@ -1,11 +1,11 @@
 {
   "name": "LightChat",
   "short_name": "LightChat",
-  "description": "Decentralized chat on the Lightchain network",
+  "description": "Lightchain community chat \u2014 Gen Chat P2P, wallet login",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0f1a",
-  "theme_color": "#7c5fc9",
+  "background_color": "#14152C",
+  "theme_color": "#5B4BFF",
   "icons": [
     {
       "src": "lightchat-icon.png",

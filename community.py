@@ -759,6 +759,37 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"ok": True, "target": target, "role": new_role})
         finally:
             conn.close()
+    @app.route("/api/community/messages/<slug>/<msg_id>", methods=["DELETE"])
+    def api_channel_delete_msg(slug, msg_id):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet") or request.args.get("wallet", ""))
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if role not in ("owner", "admin", "mod") and not has_perm(role, "delete_messages"):
+                return jsonify({"error": "mods only"}), 403
+            ch = conn.execute(
+                "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+                (COMMUNITY_ID, slug),
+            ).fetchone()
+            if not ch:
+                return jsonify({"error": "channel not found"}), 404
+            conn.execute(
+                "DELETE FROM community_messages WHERE id=? AND channel_id=?",
+                (msg_id, ch["id"]),
+            )
+            conn.commit()
+            try:
+                socketio.emit(
+                    "community_message_deleted",
+                    {"id": msg_id, "slug": slug},
+                    room=f"community:{slug}",
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": True})
+        finally:
+            conn.close()
 
     @app.route("/api/community/channels/<slug>/mode", methods=["POST"])
     def api_channel_mode(slug):
@@ -790,6 +821,7 @@ def register_community_routes(app, socketio, get_db):
             return jsonify({"ok": True, "slug": slug, "mode": mode})
         finally:
             conn.close()
+
 
     @app.route("/api/community/owners", methods=["POST"])
     def api_owners():
