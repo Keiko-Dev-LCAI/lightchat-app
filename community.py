@@ -215,6 +215,34 @@ def init_community_db(get_db):
     except Exception:
         pass
 
+
+    # ensure media post-only channel exists
+    try:
+        row_m = conn.execute(
+            "SELECT id FROM community_channels WHERE community_id=? AND slug='media'",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if not row_m:
+            conn.execute(
+                """INSERT INTO community_channels
+                   (id, community_id, slug, name, kind, description, sort_order, readonly_members)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    f"{COMMUNITY_ID}:media",
+                    COMMUNITY_ID,
+                    "media",
+                    "Media",
+                    "media",
+                    "Share images and clips — posts only, not a chat room",
+                    2,
+                    1,
+                ),
+            )
+            # shift general sort if needed — keep as-is
+            conn.commit()
+    except Exception as e:
+        print("  [community] media channel seed:", e)
+
     # keep start-here / links read-only for members (migrate existing DBs)
     try:
         conn.execute(
@@ -359,12 +387,35 @@ def register_community_routes(app, socketio, get_db):
                 "SELECT COUNT(*) AS c FROM community_members WHERE community_id=?",
                 (COMMUNITY_ID,),
             ).fetchone()["c"]
+            # Gen Chat = only live chat room; others are guide / post-only
+            CHAT_SLUGS = {"general"}
+            POST_ONLY_SLUGS = {"announcements", "media", "links"}
+            GUIDE_SLUGS = {"start-here"}
+            PRIMARY_SLUGS = {"general", "start-here", "announcements", "media"}
+            enriched = []
+            for c in channels:
+                d = dict(c)
+                slug = d["slug"]
+                if slug in GUIDE_SLUGS:
+                    d["mode"] = "guide"       # no chat composer
+                elif slug in CHAT_SLUGS:
+                    d["mode"] = "chat"        # live Gen Chat
+                elif slug in POST_ONLY_SLUGS or d.get("readonly_members"):
+                    d["mode"] = "post"        # mods/posters write; members read
+                else:
+                    d["mode"] = "hidden"      # not critical — hide from main list
+                d["primary"] = slug in PRIMARY_SLUGS
+                enriched.append(d)
+            # ensure media channel exists
+            if not any(c["slug"] == "media" for c in enriched):
+                pass  # seeded below in migrate
             return jsonify({
                 "id": COMMUNITY_ID,
                 "name": meta["name"] if meta else "Lightchain",
                 "description": meta["description"] if meta else "",
                 "member_count": n_members,
-                "channels": [dict(c) for c in channels],
+                "channels": enriched,
+                "chat_channel": "general",
                 "start_here": START_HERE_SECTIONS,
                 "brand": {
                     "primary": "#5B4BFF",
@@ -581,7 +632,14 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
-            if ch["readonly_members"] and not has_perm(role, "post_announcements"):
+            # Only Gen Chat is open chatting; other channels are guide/post-only
+            if ch["slug"] != "general":
+                if ch["slug"] == "start-here":
+                    return jsonify({"error": "Start Here is info only — no chatting"}), 403
+                # announcements / media / links: mods (or announcement perm) only
+                if not has_perm(role, "post_announcements") and role not in ("owner", "admin", "mod"):
+                    return jsonify({"error": "this channel is post-only for mods"}), 403
+            elif ch["readonly_members"] and not has_perm(role, "post_announcements"):
                 if role not in ("owner", "admin", "mod"):
                     return jsonify({"error": "only mods can post here"}), 403
             mid = str(uuid.uuid4())

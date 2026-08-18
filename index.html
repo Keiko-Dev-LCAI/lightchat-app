@@ -7306,14 +7306,18 @@ async function loadChannelsList() {
     communityChannels = j.channels || [];
     const el = document.getElementById('channels-list');
     if (!el) return;
-    el.innerHTML = communityChannels.map(c => `
-      <div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
+    const visible = communityChannels.filter(c => c.mode !== 'hidden' && (c.primary || c.slug === 'general' || c.slug === 'start-here' || c.slug === 'announcements' || c.slug === 'media' || c.slug === 'links'));
+    el.innerHTML = visible.map(c => {
+      const mode = c.mode || (c.slug === 'general' ? 'chat' : 'post');
+      const tag = mode === 'chat' ? 'Live chat' : (mode === 'guide' ? 'Guide' : 'Posts');
+      return `<div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
         <div class="hash">#</div>
         <div class="meta">
-          <div class="n">${escapeHtml(c.name)}</div>
+          <div class="n">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text2);font-weight:500">· ${tag}</span></div>
           <div class="d">${escapeHtml(c.description||'')}</div>
         </div>
-      </div>`).join('') || '<div class="empty-text" style="padding:24px">No channels</div>';
+      </div>`;
+    }).join('') || '<div class="empty-text" style="padding:24px">No channels</div>';
   } catch(e) { console.warn(e); }
 }
 
@@ -7351,11 +7355,21 @@ async function loadCommunityChannel(slug) {
     await renderStartHereGuide(box);
     return;
   }
-  if (inputRow) inputRow.style.display = '';
-  // Hide composer on other readonly channels for non-mods
+  // Only Gen Chat is live chatting for everyone; post-only channels: mods may post
   const ch = (communityChannels || []).find(c => c.slug === slug);
-  if (inputRow && ch && ch.readonly_members && !(communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod')) {
-    inputRow.style.display = 'none';
+  const isMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
+  if (inputRow) {
+    if (slug === 'general') {
+      inputRow.style.display = '';
+      const inp = document.getElementById('genchat-input');
+      if (inp) inp.placeholder = 'Message Gen Chat…';
+    } else if ((slug === 'announcements' || slug === 'media' || slug === 'links') && isMod) {
+      inputRow.style.display = '';
+      const inp = document.getElementById('genchat-input');
+      if (inp) inp.placeholder = 'Post to #' + slug + ' (mods)…';
+    } else {
+      inputRow.style.display = 'none';
+    }
   }
   try {
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80');
