@@ -24,8 +24,8 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=7"></script>
-<script src="dm-p2p.js?v=7"></script>
+<script src="genchat-p2p.js?v=8"></script>
+<script src="dm-p2p.js?v=8"></script>
 <script>
 // OrcaVault V2 — on-chain Memories
 const ORCAVAULT_V2_ADDRESS = '0xc871C3eA5A9a6ca65A61D0415360c1F54FD4c499';
@@ -7846,8 +7846,36 @@ let communityRole = null;
 
 /** Never show @ on names/handles in the UI. */
 function stripAt(s) {
-  return String(s == null ? '' : s).replace(/^@+/, '');
+  return String(s == null ? '' : s).replace(/^@+/, '').trim();
 }
+
+/** One-time: scrub @ from old P2P local logs so history stops showing @hui */
+function migrateStripAtFromLocalLogs() {
+  try {
+    if (localStorage.getItem('lc_stripped_at_v1') === '1') return;
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.indexOf('lc_p2p_log_') === 0 || k === 'lc_genchat_p2p_log')) keys.push(k);
+    }
+    keys.forEach(function (k) {
+      try {
+        const arr = JSON.parse(localStorage.getItem(k) || '[]');
+        if (!Array.isArray(arr)) return;
+        let changed = false;
+        arr.forEach(function (m) {
+          if (m && typeof m.display_name === 'string' && m.display_name.charAt(0) === '@') {
+            m.display_name = m.display_name.replace(/^@+/, '');
+            changed = true;
+          }
+        });
+        if (changed) localStorage.setItem(k, JSON.stringify(arr));
+      } catch (e) {}
+    });
+    localStorage.setItem('lc_stripped_at_v1', '1');
+  } catch (e) {}
+}
+try { migrateStripAtFromLocalLogs(); } catch (e) {}
 
 /**
  * Format message time for THIS viewer's locale + timezone.
