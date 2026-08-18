@@ -3966,13 +3966,17 @@ function connectSocket() {
       // Silent only — never personal_sign from a socket reconnect (causes "not authorized" toasts)
       ensureSession({ silent: true }).then(() => {
         if (socket && sessionToken) socket.emit('auth', { wallet, token: sessionToken });
+        try { announceMyPresence(); } catch (e) {}
       }).catch(function (e) {
         console.warn('socket connect session', e && (e.code || e.message));
+        // Still announce presence (server accepts wallet without full auth) so Members can update
+        try { announceMyPresence(); } catch (err) {}
         try { showConnectUI(); } catch (err) {}
       });
       return;
     }
     socket.emit('auth', { wallet, token: sessionToken });
+    try { announceMyPresence(); } catch (e) {}
     if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
     socket.emit('get_groups', { wallet });
   });
@@ -11115,6 +11119,34 @@ function applyAddFriendDeepLink() {
   } catch (e) {}
 }
 
+function _dirMarkSelfOnline(members) {
+  /** Me tab Online must match Members: if we're connected and not Invisible, show self online. */
+  if (!wallet || !Array.isArray(members)) return members;
+  const me = wallet.toLowerCase();
+  const inv = window._myPresenceMode === 'invisible'
+    || (window._commProfile && window._commProfile.presence_mode === 'invisible');
+  members.forEach(function (m) {
+    if ((m.wallet || '').toLowerCase() !== me) return;
+    if (inv) {
+      m.online = false;
+      m.connected = true;
+      m.presence_mode = 'invisible';
+    } else {
+      m.online = true;
+      m.connected = true;
+      if (m.presence_mode !== 'invisible') m.presence_mode = 'online';
+    }
+  });
+  return members;
+}
+
+function announceMyPresence() {
+  if (!wallet || !socket) return;
+  const mode = (window._myPresenceMode === 'invisible') ? 'invisible'
+    : ((window._commProfile && window._commProfile.presence_mode === 'invisible') ? 'invisible' : 'online');
+  try { socket.emit('set_presence', { wallet: wallet, mode: mode }); } catch (e) {}
+}
+
 async function loadDirectory() {
   try {
     const r = await fetch(BACKEND + '/api/community/directory');
@@ -11134,6 +11166,9 @@ async function loadDirectory() {
         });
       }
     } catch (e) {}
+    _dirMarkSelfOnline(_dirMembers);
+    // Re-announce so server PRESENCE (and other clients) catch up
+    try { announceMyPresence(); } catch (e) {}
     filterDirectory();
   } catch(e) { console.warn(e); }
 }
@@ -11364,6 +11399,10 @@ function bindPresenceSocket(sock) {
       window._myPresenceMode = data.mode;
       const sel = document.getElementById('me-presence-mode');
       if (sel) sel.value = data.mode;
+    }
+    if (_dirMembers && wallet) {
+      _dirMarkSelfOnline(_dirMembers);
+      try { filterDirectory(); } catch (e) {}
     }
   });
 }
