@@ -8006,10 +8006,7 @@ function openCommMsgMenu(ev, btn) {
   const gif = parseGifContent(content);
   const saveBtn = document.getElementById('comm-msg-save-btn');
   if (saveBtn) saveBtn.style.display = gif ? '' : 'none';
-  const canDel = !!wallet && (
-    _commMsgMenuCtx.sender === (wallet || '').toLowerCase() ||
-    communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod'
-  );
+  const canDel = canDeleteCommMsg(_commMsgMenuCtx);
   const delBtn = document.getElementById('comm-msg-del-btn');
   if (delBtn) delBtn.style.display = canDel ? '' : 'none';
   menu.classList.add('open');
@@ -8017,6 +8014,16 @@ function openCommMsgMenu(ev, btn) {
   const y = Math.min(ev.clientY || 16, window.innerHeight - 200);
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
+}
+
+/** Authors: own messages. Admins + mods: any message. */
+function canDeleteCommMsg(ctx) {
+  if (!wallet || !ctx) return false;
+  const me = (wallet || '').toLowerCase();
+  const role = (communityRole || '').toLowerCase();
+  const isStaff = role === 'owner' || role === 'admin' || role === 'mod';
+  const isAuthor = !!(ctx.sender && ctx.sender === me);
+  return isStaff || isAuthor;
 }
 
 function closeCommMsgMenu() {
@@ -8042,22 +8049,39 @@ function commMsgSave() {
   downloadFromUrl(gif, 'lightchat-gif.gif');
 }
 
+function removeCommMsgLocal(id) {
+  if (!id) return;
+  try {
+    if (window.genChatP2P) {
+      const arr = (genChatP2P.loadLocal() || []).filter(function (m) { return m.id !== id; });
+      localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
+      if (genChatP2P._seenIds) genChatP2P._seenIds.delete(id);
+    }
+  } catch (e) {}
+  const el = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+  if (el) el.remove();
+}
+
 async function commMsgDelete() {
   const ctx = _commMsgMenuCtx;
   closeCommMsgMenu();
-  if (!ctx || !ctx.id) { showToast('Cannot delete this message'); return; }
+  if (!ctx) return;
+  if (!canDeleteCommMsg(ctx)) { showToast('No permission to delete'); return; }
+  if (!ctx.id) { showToast('Cannot delete this message'); return; }
   if (!confirm('Delete this message?')) return;
-  // Always remove locally (P2P log + DOM)
+  removeCommMsgLocal(ctx.id);
+  // Tell peers so P2P mesh drops it too
   try {
-    if (window.genChatP2P) {
-      const arr = (genChatP2P.loadLocal() || []).filter(function (m) { return m.id !== ctx.id; });
-      localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
-      if (genChatP2P._seenIds) genChatP2P._seenIds.delete(ctx.id);
+    if (window.genChatP2P && genChatP2P.connectedCount && genChatP2P.connectedCount() > 0) {
+      genChatP2P._broadcastEnvelope({
+        v: 1,
+        kind: 'delete',
+        id: ctx.id,
+        slug: ctx.slug || 'general',
+        by: (wallet || '').toLowerCase(),
+      }, null);
     }
   } catch (e) {}
-  const el = document.querySelector('.comm-msg[data-msg-id="' + String(ctx.id).replace(/"/g, '') + '"]');
-  if (el) el.remove();
-  // Server delete when not a pure ephemeral id — authors + mods allowed
   try {
     await modDeleteMsg(ctx.slug || 'general', ctx.id, true);
   } catch (e) {}
@@ -8231,6 +8255,9 @@ function ensureGenChatP2P() {
       if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
       else loadCommunityChannel('general');
     }
+  };
+  genChatP2P.onDelete = function(id) {
+    removeCommMsgLocal(id);
   };
   genChatP2P.onStatus = function(st) {
     const el = document.getElementById('genchat-p2p-status');
@@ -8781,6 +8808,18 @@ async function saveCommunityProfile() { return saveEditProfile(); }
           if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
           else loadCommunityChannel(_activeCommSlug || 'general');
         }
+      });
+      socket.on('community_message_deleted', (data) => {
+        const id = data && data.id;
+        if (!id) return;
+        const el = document.querySelector('.comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+        if (el) el.remove();
+        try {
+          if (window.genChatP2P) {
+            const arr = (genChatP2P.loadLocal() || []).filter(function (m) { return m.id !== id; });
+            localStorage.setItem('lc_genchat_p2p_log', JSON.stringify(arr));
+          }
+        } catch (e) {}
       });
       clearInterval(trySock);
     }

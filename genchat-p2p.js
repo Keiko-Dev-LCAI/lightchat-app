@@ -426,6 +426,23 @@
       return;
     }
 
+    if (env.kind === 'delete' && env.id) {
+      try {
+        const arr = this.loadLocal().filter(function (m) {
+          return m.id !== env.id;
+        });
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
+        this._seenIds.delete(env.id);
+      } catch (e) {}
+      if (typeof this.onDelete === 'function') this.onDelete(env.id, env.slug || 'general');
+      // Gossip delete so the whole mesh drops it
+      this._broadcastEnvelope(
+        { v: 1, kind: 'delete', id: env.id, slug: env.slug || 'general', by: env.by || fromWallet },
+        fromWallet
+      );
+      return;
+    }
+
     if (env.kind === 'chat' || env.kind === 'gossip') {
       this._ingestChat(env.msg || env, fromWallet, true);
     }
