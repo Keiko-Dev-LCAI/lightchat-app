@@ -562,11 +562,23 @@ TIMEOUT_DURATIONS = {
 }
 
 
-def can_moderate(actor_role: str, target_role: str) -> bool:
-    """Staff may act only on non-staff (members/helpers)."""
-    if not is_staff(actor_role):
+def can_moderate(actor_role: str, target_role: str, action: str = "") -> bool:
+    """Who can timeout/kick/ban/untimeout/unban whom.
+    - Admin/owner: anyone (mod or not), except cannot target another owner unless actor is owner
+    - Mod: other mods + non-mods; cannot target admin/owner
+    """
+    a = (actor_role or "").lower()
+    t = (target_role or "member").lower()
+    if a not in ("owner", "admin", "mod"):
         return False
-    if is_staff(target_role):
+    if a in ("owner", "admin"):
+        # Admins can act on mods and members; owners can act on anyone except
+        # we still block targeting a higher/equal owner from admin
+        if t == "owner" and a != "owner":
+            return False
+        return True
+    # Mod: may act on mods, helpers, members — not admins/owners
+    if t in ("owner", "admin"):
         return False
     return True
 
@@ -750,7 +762,8 @@ def register_community_routes(app, socketio, get_db):
 
     @app.route("/api/community/moderate", methods=["POST"])
     def api_moderate():
-        """Staff moderation on non-staff: timeout | kick | ban | unban | untimeout.
+        """Moderation: timeout | kick | ban | unban | untimeout.
+        Admin/owner: anyone (incl. mods). Mod: other mods + non-mods (not admins).
         Body: wallet (actor), target, action, duration? (1h|24h|1w), reason?
         """
         data = request.json or {}
@@ -769,8 +782,13 @@ def register_community_routes(app, socketio, get_db):
             if not is_staff(a_role):
                 return jsonify({"error": "mods and admins only"}), 403
             t_role = get_role(conn, target) or "member"
-            if action in ("timeout", "kick", "ban") and not can_moderate(a_role, t_role):
-                return jsonify({"error": "cannot moderate admins or mods"}), 403
+            # If banned, they have no membership — treat as member for permission checks
+            if is_banned(conn, target) and action in ("unban", "untimeout"):
+                t_role = "member"
+            if not can_moderate(a_role, t_role, action):
+                return jsonify({
+                    "error": "not allowed — admins can moderate anyone; mods can moderate mods and members only",
+                }), 403
 
             now = int(time.time())
             if action == "timeout":
@@ -800,6 +818,16 @@ def register_community_routes(app, socketio, get_db):
 
             if action == "untimeout":
                 clear_timeout(conn, target)
+                try:
+                    socketio.emit("community_timeout", {
+                        "wallet": target,
+                        "until": 0,
+                        "reason": "Timeout cleared",
+                        "remaining": 0,
+                        "by": actor,
+                    })
+                except Exception:
+                    pass
                 return jsonify({"ok": True, "action": "untimeout", "target": target})
 
             if action == "kick":
@@ -819,8 +847,6 @@ def register_community_routes(app, socketio, get_db):
                 return jsonify({"ok": True, "action": "ban", "target": target})
 
             if action == "unban":
-                if a_role not in ("owner", "admin"):
-                    return jsonify({"error": "admins only to unban"}), 403
                 clear_ban(conn, target)
                 return jsonify({"ok": True, "action": "unban", "target": target})
 

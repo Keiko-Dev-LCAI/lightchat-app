@@ -2264,7 +2264,7 @@ body {
         <strong style="color:var(--text)">Chats are not end-to-end encrypted.</strong>
         Messages, photos, and files are stored on LightChat servers so delivery and multi-device history work.
         On-chain memories use the blockchain and are permanent.
-        Prefer <strong style="color:var(--text)">Connect Wallet + sign</strong> for a stronger login; paste-address mode cannot prove you own that wallet.
+        Sign in with a wallet on <strong style="color:var(--text)">Lightchain</strong> (chain 9200) only. Other networks are not allowed.
       </div>
     </div>
 
@@ -2558,8 +2558,10 @@ body {
   <button type="button" onclick="modMemberAction('timeout','1h')">⏱ Timeout 1 hour</button>
   <button type="button" onclick="modMemberAction('timeout','24h')">⏱ Timeout 24 hours</button>
   <button type="button" onclick="modMemberAction('timeout','1w')">⏱ Timeout 1 week</button>
+  <button type="button" onclick="modMemberAction('untimeout')">✅ Remove timeout</button>
   <button type="button" onclick="modMemberAction('kick')">👢 Kick from chat</button>
   <button type="button" class="danger" onclick="modMemberAction('ban')">🚫 Ban from chat</button>
+  <button type="button" onclick="modMemberAction('unban')">♻️ Remove ban</button>
   <button type="button" onclick="closeModMemberMenu()">✕ Close</button>
 </div>
 
@@ -3045,24 +3047,26 @@ async function connectWithInjected() {
 
 async function connectWallet() {
   try {
+    if (window.ethereum) {
+      const ok = await connectWithInjected();
+      if (ok) return;
+    }
     const saved = localStorage.getItem('lc_wallet');
-    if (isValidWallet(saved)) {
+    if (isValidWallet(saved) && window.ethereum) {
       wallet = saved.toLowerCase();
+      _activeProvider = window.ethereum;
       await finishConnect();
       return;
     }
     if (isMobileDevice() && !isWalletInAppBrowser()) {
       openPasteAddressModal();
+      showToast('Open LightChat inside your wallet app on Lightchain');
       return;
-    }
-    if (window.ethereum) {
-      const ok = await connectWithInjected();
-      if (ok) return;
     }
     openPasteAddressModal();
   } catch (e) {
     console.error('connectWallet:', e);
-    showToast('Could not connect — paste your wallet address');
+    showToast(e.message || 'Connect a Lightchain wallet to sign in');
     openPasteAddressModal();
   }
 }
@@ -5860,11 +5864,24 @@ function closeWCModal() {
 async function connectPastedAddress() {
   const inp = document.getElementById('wc-addr-input');
   const raw = inp ? inp.value.trim() : '';
-  if (!isValidWallet(raw)) {
-    showToast('Please enter a valid 0x wallet address');
+  const prov = window.ethereum;
+  if (!prov) {
+    showToast('Open this site in MetaMask/Trust on Lightchain — paste-only login is off');
     return;
   }
-  wallet = raw.toLowerCase();
+  if (isValidWallet(raw)) {
+    wallet = raw.toLowerCase();
+  } else {
+    try {
+      const accounts = await requestAccountsWithTimeout(prov);
+      if (!accounts?.length) { showToast('No wallet account'); return; }
+      wallet = accounts[0].toLowerCase();
+    } catch (e) {
+      showToast('Connect cancelled');
+      return;
+    }
+  }
+  _activeProvider = prov;
   closeWCModal();
   await finishConnect();
 }
