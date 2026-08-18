@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-gif-tombstone">
+<meta name="lc-build" content="2026-08-18-pins">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -2151,7 +2151,9 @@ body {
           </div>
           <div id="genchat-status-strip" style="display:flex;align-items:center;gap:8px;padding:4px 12px 0;background:var(--card);border-top:1px solid var(--border)">
             <button type="button" class="comm-gif-btn mobile-chan-btn" onclick="switchTab('channels')" title="Channels" style="height:28px;padding:0 10px;display:none;align-items:center;font-size:12px!important">#</button>
-            <span id="genchat-channel-chip" style="font-size:12px;font-weight:700;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#gen-chat</span>
+            <span id="genchat-channel-chip" style="font-size:12px;font-weight:700;color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#gen-chat</span>
+            <button type="button" id="genchat-pins-btn" class="comm-gif-btn" onclick="openPinsSheet()" title="Pinned posts" style="height:28px;padding:0 8px;font-size:14px!important;position:relative;flex-shrink:0">📌<span id="genchat-pins-count" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;border-radius:7px;background:var(--lc-primary,#5B4BFF);color:#fff;font-size:9px;font-weight:800;line-height:14px;text-align:center;padding:0 3px">0</span></button>
+            <span style="flex:1"></span>
             <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
           <div class="comm-input-row">
@@ -3097,10 +3099,21 @@ body {
     <button type="button" onclick="commMsgReactMore()" title="All emoji &amp; custom" style="font-size:13px;font-weight:800">＋</button>
   </div>
   <button type="button" onclick="commMsgCopy()">📋 Copy</button>
+  <button type="button" id="comm-msg-pin-btn" onclick="commMsgPinToggle()">📌 Pin</button>
   <button type="button" id="comm-msg-edit-btn" onclick="commMsgEdit()">✏️ Edit</button>
   <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
   <button type="button" class="danger" id="comm-msg-del-btn" onclick="commMsgDelete()">🗑 Delete</button>
   <button type="button" onclick="closeCommMsgMenu()">✕ Close</button>
+</div>
+
+<!-- Pinned posts sheet (no top chrome — opened from 📌 beside #channel) -->
+<div id="pins-sheet-backdrop" onclick="closePinsSheet()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:449"></div>
+<div id="pins-sheet" role="dialog" aria-label="Pinned posts" style="display:none;position:fixed;left:0;right:0;bottom:0;max-height:min(72vh,560px);z-index:450;background:var(--card);border-top:1px solid var(--border);border-radius:18px 18px 0 0;flex-direction:column;box-shadow:0 -12px 40px rgba(0,0,0,0.45)">
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 14px 8px;border-bottom:1px solid var(--border)">
+    <h3 style="flex:1;margin:0;font-size:16px;font-weight:700">📌 Pinned · <span id="pins-sheet-chan">#gen-chat</span></h3>
+    <button type="button" onclick="closePinsSheet()" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;padding:6px 8px">✕</button>
+  </div>
+  <div id="pins-sheet-list" style="flex:1;overflow-y:auto;padding:8px 12px 20px;min-height:120px"></div>
 </div>
 <!-- Discord-style quick react popover from hover bar -->
 <div id="comm-quick-react" role="menu" aria-label="Add reaction">
@@ -9628,6 +9641,7 @@ function setCommunityChannelHeader(slug) {
     return;
   }
   if (p2p) p2p.style.display = isP2PChatChannel(slug) ? '' : 'none';
+  try { refreshChannelPins(slug); } catch (e) {}
   if (h) {
     if (slug === 'general') h.textContent = '# Gen Chat';
     else h.textContent = '# ' + (ch ? ch.name : slug);
@@ -10163,6 +10177,7 @@ function _commMsgHoverBar(m) {
   return '<div class="comm-msg-hoverbar" role="toolbar" aria-label="Message actions">' +
     '<button type="button" title="Reply" onclick="event.stopPropagation();hoverBarReply(this)" aria-label="Reply">↩</button>' +
     '<button type="button" title="Add Reaction" onclick="event.stopPropagation();openQuickReact(event,this)" aria-label="Add reaction">😊</button>' +
+    '<button type="button" title="Pin" onclick="event.stopPropagation();hoverBarPin(this)" aria-label="Pin">📌</button>' +
     editBtn +
     '<button type="button" title="More" onclick="event.stopPropagation();openCommMsgMenu(event,this)" aria-label="More">⋯</button>' +
     '</div>';
@@ -10204,6 +10219,12 @@ function hoverBarEdit(btn) {
   const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
   _commMsgMenuCtx = _commMsgCtxFromBubble(bubble);
   if (_commMsgMenuCtx) commMsgEdit();
+}
+
+function hoverBarPin(btn) {
+  const bubble = btn && btn.closest ? btn.closest('.comm-bubble') : null;
+  _commMsgMenuCtx = _commMsgCtxFromBubble(bubble);
+  if (_commMsgMenuCtx) commMsgPinToggle();
 }
 
 let _quickReactMsg = null;
@@ -10567,6 +10588,12 @@ function openCommMsgMenu(ev, btn) {
   if (delBtn) delBtn.style.display = canDel ? '' : 'none';
   const editBtn = document.getElementById('comm-msg-edit-btn');
   if (editBtn) editBtn.style.display = isCommMsgAuthor(_commMsgMenuCtx) ? '' : 'none';
+  const pinBtn = document.getElementById('comm-msg-pin-btn');
+  if (pinBtn) {
+    pinBtn.style.display = wallet ? '' : 'none';
+    const pinned = isMessagePinned(_commMsgMenuCtx.id);
+    pinBtn.textContent = pinned ? '📌 Unpin' : '📌 Pin';
+  }
   menu.classList.add('open');
   // Measure after open so Reply + emoji row stay on-screen (menu used to grow off the bottom)
   const mw = Math.max(menu.offsetWidth || 180, 180);
@@ -10594,6 +10621,162 @@ function closeCommMsgMenu() {
   document.getElementById('comm-msg-menu')?.classList.remove('open');
   _commMsgMenuCtx = null;
   try { closeQuickReact(); } catch (e) {}
+}
+
+/** ── Channel pins (📌 beside #channel — no top chrome) ── */
+let _channelPins = []; // current channel cache
+
+function isMessagePinned(msgId) {
+  if (!msgId) return false;
+  return (_channelPins || []).some(function (p) {
+    return p && (p.message_id === msgId || p.id === msgId);
+  });
+}
+
+function updatePinsCountBadge() {
+  const n = (_channelPins || []).length;
+  const badge = document.getElementById('genchat-pins-count');
+  const btn = document.getElementById('genchat-pins-btn');
+  if (badge) {
+    badge.textContent = String(n);
+    badge.style.display = n > 0 ? '' : 'none';
+  }
+  if (btn) btn.title = n ? ('Pinned posts · ' + n) : 'Pinned posts';
+}
+
+async function refreshChannelPins(slug) {
+  slug = slug || _activeCommSlug || 'general';
+  try {
+    const r = await fetch(BACKEND + '/api/community/pins/' + encodeURIComponent(slug));
+    if (!r.ok) return;
+    const j = await r.json();
+    if (slug !== (_activeCommSlug || slug)) return;
+    _channelPins = j.pins || [];
+    updatePinsCountBadge();
+    const sheet = document.getElementById('pins-sheet');
+    if (sheet && sheet.style.display === 'flex') renderPinsSheetList();
+  } catch (e) {}
+}
+
+function openPinsSheet() {
+  const slug = _activeCommSlug || 'general';
+  const sheet = document.getElementById('pins-sheet');
+  const bd = document.getElementById('pins-sheet-backdrop');
+  const chan = document.getElementById('pins-sheet-chan');
+  if (chan) {
+    const chip = document.getElementById('genchat-channel-chip');
+    chan.textContent = (chip && chip.textContent) || ('#' + slug);
+  }
+  if (bd) bd.style.display = 'block';
+  if (sheet) {
+    sheet.style.display = 'flex';
+  }
+  refreshChannelPins(slug).then(function () { renderPinsSheetList(); });
+}
+
+function closePinsSheet() {
+  const sheet = document.getElementById('pins-sheet');
+  const bd = document.getElementById('pins-sheet-backdrop');
+  if (sheet) sheet.style.display = 'none';
+  if (bd) bd.style.display = 'none';
+}
+
+function renderPinsSheetList() {
+  const el = document.getElementById('pins-sheet-list');
+  if (!el) return;
+  const pins = _channelPins || [];
+  if (!pins.length) {
+    el.innerHTML = '<div class="empty-text" style="padding:28px 12px;text-align:center;line-height:1.5">No pins yet.<br>Use <strong>📌</strong> on a message to save it here.</div>';
+    return;
+  }
+  el.innerHTML = pins.map(function (p) {
+    const who = escapeHtml(stripAt(p.display_name) || shortenWallet(p.sender_wallet) || 'Member');
+    const when = formatMessageTime(p.created_at);
+    let preview = String(p.content || '');
+    if (preview.indexOf('[[gif]]') === 0) preview = 'GIF';
+    else if (preview.indexOf('[[img]]') === 0) preview = '📷 Image';
+    else if (preview.indexOf('[[video]]') === 0) preview = '🎬 Video';
+    else if (preview.indexOf('[[sticker]]') === 0) preview = 'Sticker';
+    else if (preview.indexOf('[[emoji]]') === 0) preview = 'Emoji';
+    preview = escapeHtml(preview.slice(0, 160));
+    const mid = escapeHtml(p.message_id || '');
+    const pid = escapeHtml(p.id || '');
+    return '<div class="chan-item" style="align-items:flex-start" onclick="jumpToPinnedMsg(\'' + mid + '\')">' +
+      '<div class="hash">📌</div>' +
+      '<div class="meta" style="flex:1;min-width:0">' +
+      '<div class="n">' + who + (when ? ' <span style="font-size:11px;color:var(--text2);font-weight:500">' + escapeHtml(when) + '</span>' : '') + '</div>' +
+      '<div class="d" style="white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">' + preview + '</div>' +
+      '</div>' +
+      '<button type="button" title="Unpin" onclick="event.stopPropagation();unpinById(\'' + pid + '\',\'' + mid + '\')" style="background:var(--bg);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 8px;cursor:pointer;flex-shrink:0">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+function jumpToPinnedMsg(msgId) {
+  closePinsSheet();
+  if (!msgId) return;
+  const row = document.querySelector('.comm-msg[data-msg-id="' + String(msgId).replace(/"/g, '') + '"]');
+  if (row) {
+    try { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+    row.classList.add('show-actions');
+    setTimeout(function () { try { row.classList.remove('show-actions'); } catch (e2) {} }, 1800);
+    return;
+  }
+  showToast('Pin saved — original may be older than loaded history');
+}
+
+async function commMsgPinToggle() {
+  const ctx = _commMsgMenuCtx;
+  closeCommMsgMenu();
+  if (!ctx || !ctx.id) { showToast('Cannot pin this message'); return; }
+  if (!wallet) { showToast('Connect wallet first'); return; }
+  const slug = ctx.slug || _activeCommSlug || 'general';
+  if (isMessagePinned(ctx.id)) {
+    await unpinById('', ctx.id);
+    return;
+  }
+  try {
+    const r = await fetch(BACKEND + '/api/community/pins/' + encodeURIComponent(slug), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet: wallet,
+        message_id: ctx.id,
+        content: ctx.content || '',
+        sender_wallet: ctx.sender || '',
+        display_name: ctx.who || '',
+      }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { showToast(j.error || 'Could not pin'); return; }
+    showToast(j.already ? 'Already pinned' : 'Pinned');
+    await refreshChannelPins(slug);
+  } catch (e) {
+    showToast('Could not pin');
+  }
+}
+
+async function unpinById(pinId, msgId) {
+  if (!wallet) { showToast('Connect wallet first'); return; }
+  const slug = _activeCommSlug || 'general';
+  const key = pinId || msgId;
+  if (!key) return;
+  try {
+    const r = await fetch(
+      BACKEND + '/api/community/pins/' + encodeURIComponent(slug) + '/' + encodeURIComponent(key),
+      {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: wallet }),
+      }
+    );
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { showToast(j.error || 'Could not unpin'); return; }
+    showToast('Unpinned');
+    await refreshChannelPins(slug);
+  } catch (e) {
+    showToast('Could not unpin');
+  }
 }
 
 document.addEventListener('click', function (e) {
@@ -12610,6 +12793,12 @@ async function saveCommunityProfile() { return saveEditProfile(); }
         const id = data && data.id;
         if (!id && !(data && data.content)) return;
         removeCommMsgLocal(id, (data && data.content) || '', (data && data.sender_wallet) || '');
+      });
+      socket.on('community_pins_updated', (data) => {
+        data = data || {};
+        const slug = data.slug || _activeCommSlug || 'general';
+        if (slug !== (_activeCommSlug || 'general')) return;
+        refreshChannelPins(slug);
       });
       socket.on('community_timeout', (data) => {
         if (!data || !wallet) return;

@@ -404,6 +404,24 @@ def init_community_db(get_db):
         )"""
     )
     conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_pins (
+            id TEXT PRIMARY KEY,
+            community_id TEXT NOT NULL,
+            channel_slug TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            content TEXT NOT NULL DEFAULT '',
+            sender_wallet TEXT NOT NULL DEFAULT '',
+            display_name TEXT NOT NULL DEFAULT '',
+            pinned_by TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE (community_id, channel_slug, message_id)
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_community_pins_chan
+           ON community_pins(community_id, channel_slug, created_at DESC)"""
+    )
+    conn.execute(
         """CREATE TABLE IF NOT EXISTS community_tickets (
             id TEXT PRIMARY KEY,
             community_id TEXT NOT NULL,
@@ -2679,6 +2697,169 @@ def register_community_routes(app, socketio, get_db):
             except Exception:
                 pass
             return jsonify({"ok": True, "deleted_ids": deleted_ids})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/pins/<slug>", methods=["GET"])
+    def api_pins_list(slug):
+        """Pinned posts for a channel (newest pin first)."""
+        slug = (slug or "general").lower().strip() or "general"
+        conn = get_db()
+        try:
+            rows = conn.execute(
+                """SELECT id, message_id, content, sender_wallet, display_name,
+                          pinned_by, created_at, channel_slug
+                   FROM community_pins
+                   WHERE community_id=? AND channel_slug=?
+                   ORDER BY created_at DESC LIMIT 40""",
+                (COMMUNITY_ID, slug),
+            ).fetchall()
+            pins = []
+            for r in rows:
+                d = dict(r)
+                d["slug"] = d.get("channel_slug") or slug
+                pins.append(d)
+            return jsonify({"pins": pins, "count": len(pins), "slug": slug})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/pins/<slug>", methods=["POST"])
+    def api_pins_add(slug):
+        """Pin a message (any member). Stores a content snapshot for later recall."""
+        import uuid as _uuid
+
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        msg_id = (data.get("message_id") or data.get("id") or "").strip()
+        content = (data.get("content") or "").strip()
+        sender = _norm(data.get("sender_wallet") or data.get("sender") or "")
+        display_name = (data.get("display_name") or data.get("who") or "").strip().lstrip("@")
+        slug = (slug or "general").lower().strip() or "general"
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if not msg_id:
+            return jsonify({"error": "message_id required"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "join community first"}), 403
+            # Prefer live DB content when message still exists
+            ch = conn.execute(
+                "SELECT id FROM community_channels WHERE community_id=? AND slug=?",
+                (COMMUNITY_ID, slug),
+            ).fetchone()
+            if ch:
+                row = conn.execute(
+                    """SELECT content, sender_wallet FROM community_messages
+                       WHERE id=? AND channel_id=?""",
+                    (msg_id, ch["id"]),
+                ).fetchone()
+                if row:
+                    content = row["content"] or content
+                    sender = _norm(row["sender_wallet"]) or sender
+            if not content:
+                return jsonify({"error": "nothing to pin"}), 400
+            existing = conn.execute(
+                """SELECT id FROM community_pins
+                   WHERE community_id=? AND channel_slug=? AND message_id=?""",
+                (COMMUNITY_ID, slug, msg_id),
+            ).fetchone()
+            if existing:
+                return jsonify({"ok": True, "already": True, "id": existing["id"]})
+            n = conn.execute(
+                """SELECT COUNT(*) AS c FROM community_pins
+                   WHERE community_id=? AND channel_slug=?""",
+                (COMMUNITY_ID, slug),
+            ).fetchone()["c"]
+            if int(n or 0) >= 40:
+                return jsonify({"error": "pin limit (40) — unpin something first"}), 400
+            if not display_name and sender:
+                try:
+                    display_name = (profile_dict(conn, sender).get("display_name") or "")[:64]
+                except Exception:
+                    display_name = ""
+            pin_id = str(_uuid.uuid4())
+            now = int(time.time())
+            conn.execute(
+                """INSERT INTO community_pins
+                   (id, community_id, channel_slug, message_id, content,
+                    sender_wallet, display_name, pinned_by, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    pin_id,
+                    COMMUNITY_ID,
+                    slug,
+                    msg_id,
+                    content[:8000],
+                    sender,
+                    display_name[:64],
+                    wallet,
+                    now,
+                ),
+            )
+            conn.commit()
+            pin = {
+                "id": pin_id,
+                "message_id": msg_id,
+                "content": content[:8000],
+                "sender_wallet": sender,
+                "display_name": display_name[:64],
+                "pinned_by": wallet,
+                "created_at": now,
+                "slug": slug,
+            }
+            try:
+                socketio.emit(
+                    "community_pins_updated",
+                    {"slug": slug, "action": "add", "pin": pin},
+                    room=f"community:{slug}",
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": True, "pin": pin})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/pins/<slug>/<pin_or_msg_id>", methods=["DELETE"])
+    def api_pins_remove(slug, pin_or_msg_id):
+        """Unpin by pin id or message id. Pinner or staff."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        slug = (slug or "general").lower().strip() or "general"
+        key = (pin_or_msg_id or "").strip()
+        if not wallet.startswith("0x") or not key:
+            return jsonify({"error": "wallet and id required"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            row = conn.execute(
+                """SELECT * FROM community_pins
+                   WHERE community_id=? AND channel_slug=?
+                     AND (id=? OR message_id=?)""",
+                (COMMUNITY_ID, slug, key, key),
+            ).fetchone()
+            if not row:
+                return jsonify({"ok": True, "missing": True})
+            is_staff = role in ("owner", "admin", "mod") or has_perm(role, "delete_messages")
+            if _norm(row["pinned_by"]) != wallet and not is_staff:
+                return jsonify({"error": "only pinner or staff can unpin"}), 403
+            conn.execute("DELETE FROM community_pins WHERE id=?", (row["id"],))
+            conn.commit()
+            try:
+                socketio.emit(
+                    "community_pins_updated",
+                    {
+                        "slug": slug,
+                        "action": "remove",
+                        "id": row["id"],
+                        "message_id": row["message_id"],
+                    },
+                    room=f"community:{slug}",
+                )
+            except Exception:
+                pass
+            return jsonify({"ok": True, "id": row["id"]})
         finally:
             conn.close()
 
