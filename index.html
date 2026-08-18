@@ -536,7 +536,7 @@ body {
 .me-menu-arrow { margin-left: auto; color: var(--text2); font-size: 28px; flex-shrink: 0; }
 
 /* ── LightPay panel ── */
-#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #profile-edit-panel {
+#lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #owner-panel, #profile-edit-panel {
   display: none;
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -544,9 +544,9 @@ body {
   flex-direction: column;
   z-index: 200;
 }
-#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open, #stickers-panel.open, #profile-edit-panel.open { display: flex; }
+#lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open, #stickers-panel.open, #owner-panel.open, #profile-edit-panel.open { display: flex; }
 @media (min-width: 768px) {
-  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #profile-edit-panel {
+  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #owner-panel, #profile-edit-panel {
     left: var(--sidebar);
   }
 }
@@ -1713,6 +1713,9 @@ body {
           <div class="me-menu-item" onclick="openEditProfile()">
             <div class="me-menu-icon">✏️</div><div>Edit Profile</div><div class="me-menu-arrow">›</div>
           </div>
+          <div class="me-menu-item" id="me-owner-menu" style="display:none" onclick="openOwnerPanel()">
+            <div class="me-menu-icon">🛡️</div><div>Server &amp; Mods</div><div class="me-menu-arrow">›</div>
+          </div>
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">⚙️</div><div>Settings</div><div class="me-menu-arrow">›</div>
           </div>
@@ -1911,6 +1914,46 @@ body {
   </div>
 </div>
 
+
+
+<!-- ── OWNER / MODS PANEL ── -->
+<div id="owner-panel">
+  <div class="panel-header">
+    <button class="back-btn" onclick="closePanel('owner-panel')">‹</button>
+    <div class="panel-title">Server &amp; Mods</div>
+  </div>
+  <div class="panel-content">
+    <div style="font-size:14px;color:var(--text2);margin-bottom:14px;line-height:1.5">Owners control roles and can open channels to chatting as the community grows. Gen Chat stays the main live room.</div>
+    <div class="form-group">
+      <label class="form-label">Your role</label>
+      <div id="owner-my-role" style="font-weight:700;color:var(--lc-primary,#5B4BFF)">—</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">P2P status (Gen Chat)</label>
+      <div id="owner-p2p-line" style="font-size:14px;color:var(--text2)">—</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Set member role</label>
+      <input class="form-input" id="owner-target-wallet" placeholder="0x… wallet" style="margin-bottom:8px">
+      <select id="owner-role-select" class="form-input" style="margin-bottom:8px">
+        <option value="member">member</option>
+        <option value="mod">mod</option>
+        <option value="admin">admin</option>
+        <option value="owner">owner (max 2)</option>
+      </select>
+      <button class="primary-btn" type="button" onclick="ownerSetRole()">Apply role</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Open a channel to chatting</label>
+      <select id="owner-chan-select" class="form-input" style="margin-bottom:8px"></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary-btn" type="button" style="flex:1" onclick="ownerSetChanMode('chat')">Open chat</button>
+        <button class="primary-btn" type="button" style="flex:1;background:var(--card);border:1px solid var(--border);color:var(--text)" onclick="ownerSetChanMode('post')">Mods post only</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-top:16px;line-height:1.5">Start Here always stays guide-only. P2P focuses on Gen Chat.</div>
+  </div>
+</div>
 
 <!-- ── EDIT PROFILE PANEL ── -->
 <div id="profile-edit-panel">
@@ -4991,7 +5034,7 @@ let swRegistration = null;
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
-  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=p2p1'); } catch(e) {}
+  try { swRegistration = await navigator.serviceWorker.register('./sw.js?v=p2p2'); } catch(e) {}
 }
 
 // Listen for messages from the service worker (e.g. incoming call tapped from push notification)
@@ -7318,6 +7361,7 @@ async function communityJoin() {
     if (j.role) communityRole = j.role;
     if (j.profile) window._commProfile = j.profile;
     try { if (typeof updateUI === 'function') updateUI(); } catch(e) {}
+    try { refreshOwnerMenuVisibility(); } catch(e) {}
   } catch(e) { console.warn('community join', e); }
 }
 
@@ -7485,9 +7529,10 @@ function renderCommunityMessages(msgs) {
   const box = document.getElementById('genchat-msgs');
   if (!box) return;
   if (!msgs.length) {
-    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">No messages yet — say hello 👋</div>';
+    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Gen Chat is live — say hello. When two wallets are here, messages can go P2P.</div>';
     return;
   }
+  const canMod = communityRole === 'owner' || communityRole === 'admin' || communityRole === 'mod';
   box.innerHTML = msgs.map(m => {
     const letter = (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
     const av = m.has_avatar
@@ -7495,12 +7540,16 @@ function renderCommunityMessages(msgs) {
       : letter;
     const when = m.created_at ? new Date(m.created_at*1000).toLocaleString() : '';
     const role = m.role && m.role !== 'member' ? `<span class="role">${escapeHtml(m.role)}</span>` : '';
+    const via = m.transport === 'p2p' ? ' · P2P' : '';
+    const del = (canMod && m.id && !(String(m.id).startsWith('p2p-')))
+      ? ` <button type="button" onclick="event.stopPropagation();modDeleteMsg('${escapeHtml(m.slug||_activeCommSlug||'general')}','${escapeHtml(m.id)}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;margin-left:6px">Delete</button>`
+      : '';
     return `<div class="comm-msg">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble">
         <div class="who">${escapeHtml(m.display_name||shortenWallet(m.sender_wallet))}${role}</div>
         <div class="body">${escapeHtml(m.content)}</div>
-        <div class="when">${escapeHtml(when)}</div>
+        <div class="when">${escapeHtml(when)}${via}${del}</div>
       </div>
     </div>`;
   }).join('');
@@ -7565,6 +7614,77 @@ async function sendCommunityMsg(slug) {
     await loadCommunityChannel(slug);
     if (slug === 'general') showToast('Sent via relay (no P2P peers online)');
   } catch(e) { showToast('Send failed'); }
+}
+
+
+function refreshOwnerMenuVisibility() {
+  const el = document.getElementById('me-owner-menu');
+  if (!el) return;
+  const show = communityRole === 'owner' || communityRole === 'admin';
+  el.style.display = show ? '' : 'none';
+}
+
+async function openOwnerPanel() {
+  if (!wallet) { showToast('Connect wallet'); return; }
+  await communityJoin();
+  refreshOwnerMenuVisibility();
+  if (!(communityRole === 'owner' || communityRole === 'admin')) {
+    showToast('Owners/admins only'); return;
+  }
+  document.getElementById('owner-my-role').textContent = communityRole || '—';
+  const st = window.genChatP2P ? genChatP2P._emitStatus() : {mode:'relay',connected:0,peers:0};
+  document.getElementById('owner-p2p-line').textContent =
+    (st.mode === 'p2p' ? ('P2P connected to ' + st.connected + ' peer(s)') : 'Relay (no live P2P peers yet)') +
+    ' · known peers ' + (st.peers||0);
+  // fill channels
+  const sel = document.getElementById('owner-chan-select');
+  if (sel) {
+    const list = (communityChannels||[]).filter(c => c.slug !== 'start-here');
+    sel.innerHTML = list.map(c => '<option value="'+escapeHtml(c.slug)+'">#'+escapeHtml(c.name)+' ('+(c.mode||'?')+')</option>').join('');
+  }
+  document.getElementById('owner-panel').classList.add('open');
+}
+
+async function ownerSetRole() {
+  const target = (document.getElementById('owner-target-wallet')?.value||'').trim().toLowerCase();
+  const role = document.getElementById('owner-role-select')?.value || 'member';
+  if (!/^0x[a-fA-F0-9]{40}$/.test(target)) { showToast('Valid wallet required'); return; }
+  const r = await fetch(BACKEND + '/api/community/roles', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({wallet, target, role})
+  });
+  const j = await r.json();
+  if (!r.ok) { showToast(j.error||'Failed'); return; }
+  showToast('Role set: ' + role);
+  loadDirectory();
+}
+
+async function ownerSetChanMode(mode) {
+  const slug = document.getElementById('owner-chan-select')?.value;
+  if (!slug) return;
+  const r = await fetch(BACKEND + '/api/community/channels/' + encodeURIComponent(slug) + '/mode', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({wallet, mode})
+  });
+  const j = await r.json();
+  if (!r.ok) { showToast(j.error||'Failed'); return; }
+  showToast('#' + slug + ' → ' + mode);
+  await loadChannelsList();
+  openOwnerPanel();
+}
+
+
+async function modDeleteMsg(slug, id) {
+  if (!wallet || !id) return;
+  if (!confirm('Delete this message?')) return;
+  const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '/' + encodeURIComponent(id), {
+    method:'DELETE', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({wallet})
+  });
+  const j = await r.json().catch(()=>({}));
+  if (!r.ok) { showToast(j.error||'Delete failed'); return; }
+  showToast('Deleted');
+  loadCommunityChannel(slug);
 }
 
 function ensureGenChatP2P() {

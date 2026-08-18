@@ -1,23 +1,21 @@
 /**
  * Gen Chat P2P — WebRTC data channels between wallets.
- * Socket.IO is signaling ONLY (who’s online + SDP/ICE). Message bodies go peer-to-peer when connected.
- * Fallback: caller still uses Railway community API when no live P2P peers.
+ * Socket.IO = signaling ONLY. Message bodies over P2P when connected.
  */
 (function (global) {
   'use strict';
 
-  const ROOM = 'genchat_p2p';
   const LOCAL_KEY = 'lc_genchat_p2p_log';
 
   function GenChatP2P() {
     this.wallet = null;
     this.profile = null;
     this.socket = null;
-    this.peers = new Map(); // wallet -> { pc, dc, makingOffer }
-    this.onMessage = null; // (msg) => void
-    this.onStatus = null; // ({ mode, peers, connected }) => void
+    this.peers = new Map();
+    this.onMessage = null;
+    this.onStatus = null;
     this._joined = false;
-    this._iceReady = false;
+    this._seenIds = new Set();
   }
 
   GenChatP2P.prototype._emitStatus = function () {
@@ -36,8 +34,16 @@
 
   GenChatP2P.prototype.attachSocket = function (socket) {
     const self = this;
-    if (!socket || this.socket === socket) return;
+    if (!socket) return;
+    if (this.socket === socket && this._sockBound) return;
     this.socket = socket;
+    this._sockBound = true;
+
+    socket.on('connect', function () {
+      if (self.wallet && self._joined) {
+        socket.emit('genchat_p2p_join', { wallet: self.wallet });
+      }
+    });
 
     socket.on('genchat_p2p_peers', function (data) {
       const list = (data && data.peers) || [];
@@ -48,13 +54,13 @@
     });
 
     socket.on('genchat_p2p_peer_joined', function (data) {
-      const w = (data && data.wallet) || '';
+      const w = ((data && data.wallet) || '').toLowerCase();
       if (w && self.wallet && w !== self.wallet) self._ensurePeer(w, true);
       self._emitStatus();
     });
 
     socket.on('genchat_p2p_peer_left', function (data) {
-      const w = (data && data.wallet) || '';
+      const w = ((data && data.wallet) || '').toLowerCase();
       if (w) self._teardownPeer(w);
       self._emitStatus();
     });
@@ -72,21 +78,20 @@
     if (typeof loadIceServers === 'function') {
       try {
         await loadIceServers();
-        this._iceReady = true;
       } catch (e) {
         console.warn('[genchat-p2p] ICE', e);
       }
     }
 
+    this._joined = true;
     if (this.socket && this.socket.connected) {
       this.socket.emit('genchat_p2p_join', { wallet: this.wallet });
-      this._joined = true;
     }
     this._emitStatus();
   };
 
   GenChatP2P.prototype.leave = function () {
-    if (this.socket && this._joined) {
+    if (this.socket && this._joined && this.wallet) {
       try {
         this.socket.emit('genchat_p2p_leave', { wallet: this.wallet });
       } catch (e) {}
@@ -107,15 +112,14 @@
     return n;
   };
 
-  /** Send to all open datachannels. Returns number of peers that got it. */
   GenChatP2P.prototype.send = function (msg) {
-    const payload = JSON.stringify(
-      Object.assign({}, msg, {
-        v: 1,
-        transport: 'p2p',
-        ts: msg.created_at || Math.floor(Date.now() / 1000),
-      })
-    );
+    const id =
+      msg.id ||
+      'p2p-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+    msg.id = id;
+    msg.transport = 'p2p';
+    msg.created_at = msg.created_at || Math.floor(Date.now() / 1000);
+    const payload = JSON.stringify(msg);
     let n = 0;
     this.peers.forEach(function (p) {
       if (p.dc && p.dc.readyState === 'open') {
@@ -123,11 +127,14 @@
           p.dc.send(payload);
           n++;
         } catch (e) {
-          console.warn('[genchat-p2p] send fail', e);
+          console.warn('[genchat-p2p] send', e);
         }
       }
     });
-    if (n > 0) this._storeLocal(msg);
+    if (n > 0) {
+      this._seenIds.add(id);
+      this._storeLocal(msg);
+    }
     this._emitStatus();
     return n;
   };
@@ -135,8 +142,12 @@
   GenChatP2P.prototype._storeLocal = function (msg) {
     try {
       const arr = JSON.parse(localStorage.getItem(LOCAL_KEY) || '[]');
+      const id =
+        msg.id ||
+        msg.sender_wallet + ':' + msg.created_at + ':' + String(msg.content || '').slice(0, 24);
+      if (arr.some(function (m) { return m.id === id; })) return;
       arr.push(msg);
-      while (arr.length > 200) arr.shift();
+      while (arr.length > 300) arr.shift();
       localStorage.setItem(LOCAL_KEY, JSON.stringify(arr));
     } catch (e) {}
   };
@@ -150,24 +161,27 @@
   };
 
   GenChatP2P.prototype._impolite = function (remoteWallet) {
-    // Lower wallet address is impolite (makes offer) — avoids glare
     return this.wallet < remoteWallet;
   };
 
   GenChatP2P.prototype._ensurePeer = async function (remoteWallet, mayOffer) {
     remoteWallet = (remoteWallet || '').toLowerCase();
     if (!remoteWallet || remoteWallet === this.wallet) return;
+
     if (this.peers.has(remoteWallet)) {
       const existing = this.peers.get(remoteWallet);
-      if (mayOffer && this._impolite(remoteWallet) && existing.pc && !existing.makingOffer && (!existing.dc || existing.dc.readyState !== 'open')) {
+      const open = existing.dc && existing.dc.readyState === 'open';
+      if (mayOffer && this._impolite(remoteWallet) && existing.pc && !existing.makingOffer && !open) {
         await this._makeOffer(remoteWallet);
       }
       return;
     }
 
-    const pc = new RTCPeerConnection(
-      typeof rtcPeerConfig === 'function' ? rtcPeerConfig() : { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-    );
+    const cfg =
+      typeof rtcPeerConfig === 'function'
+        ? rtcPeerConfig()
+        : { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    const pc = new RTCPeerConnection(cfg);
     const entry = { pc: pc, dc: null, makingOffer: false };
     this.peers.set(remoteWallet, entry);
 
@@ -183,8 +197,10 @@
     };
 
     pc.onconnectionstatechange = function () {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
-        // keep peer entry; may recover
+      if (pc.connectionState === 'failed') {
+        try {
+          pc.restartIce();
+        } catch (e) {}
       }
       self._emitStatus();
     };
@@ -207,19 +223,27 @@
     if (!entry) return;
     entry.dc = dc;
     const self = this;
+    dc.binaryType = 'arraybuffer';
     dc.onopen = function () {
       self._emitStatus();
     };
     dc.onclose = function () {
       self._emitStatus();
     };
+    dc.onerror = function () {
+      self._emitStatus();
+    };
     dc.onmessage = function (ev) {
       try {
         const msg = JSON.parse(ev.data);
-        if (msg && msg.content) {
-          self._storeLocal(msg);
-          if (typeof self.onMessage === 'function') self.onMessage(msg);
-        }
+        if (!msg || !msg.content) return;
+        const id =
+          msg.id ||
+          msg.sender_wallet + ':' + msg.created_at + ':' + String(msg.content).slice(0, 24);
+        if (self._seenIds.has(id)) return;
+        self._seenIds.add(id);
+        self._storeLocal(msg);
+        if (typeof self.onMessage === 'function') self.onMessage(msg);
       } catch (e) {
         console.warn('[genchat-p2p] bad message', e);
       }
@@ -231,7 +255,7 @@
     if (!entry || !entry.pc) return;
     entry.makingOffer = true;
     try {
-      if (!entry.dc) {
+      if (!entry.dc || entry.dc.readyState === 'closed') {
         const dc = entry.pc.createDataChannel('genchat', { ordered: true });
         this._wireDc(remoteWallet, dc);
       }
@@ -263,6 +287,10 @@
 
     try {
       if (data.type === 'offer' && data.sdp) {
+        if (entry.makingOffer) {
+          // glare — ignore if we're impolite
+          if (this._impolite(from)) return;
+        }
         await pc.setRemoteDescription(data.sdp);
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
@@ -275,13 +303,13 @@
           });
         }
       } else if (data.type === 'answer' && data.sdp) {
-        await pc.setRemoteDescription(data.sdp);
+        if (!pc.currentRemoteDescription) {
+          await pc.setRemoteDescription(data.sdp);
+        }
       } else if (data.type === 'ice' && data.candidate) {
         try {
           await pc.addIceCandidate(data.candidate);
-        } catch (e) {
-          /* ignore */
-        }
+        } catch (e) {}
       }
     } catch (e) {
       console.warn('[genchat-p2p] signal', e);
