@@ -6,7 +6,7 @@
 <!-- Force HTTPS -->
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost')location.replace('https:'+location.href.slice(5));</script>
 <title>LightChat</title>
-<meta name="lc-build" content="2026-08-18-bot-delete">
+<meta name="lc-build" content="2026-08-18-goal-1to5">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -25,7 +25,7 @@
 </script>
 <script>try{localStorage.setItem('lc_terms_accepted','1');}catch(e){}</script>
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="genchat-p2p.js?v=12"></script>
+<script src="genchat-p2p.js?v=14"></script>
 <script src="dm-p2p.js?v=12"></script>
 <script src="genchat-holepunch.js?v=3"></script>
 <script>
@@ -231,7 +231,49 @@ body {
   .sidebar { display: none !important; }
   .desktop-main { display: contents; }
   .channel-rail { display: none !important; }
-  .comm-discord { display: block; height: 100%; }
+  /* Keep Gen Chat msgs scrollable + composer pinned above bottom nav */
+  #tab-genchat.tab.active {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .comm-discord {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+  .comm-discord > .comm-wrap {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #genchat-compose {
+    flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--card);
+  }
+  #genchat-compose .comm-input-row {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  #genchat-compose .comm-input-row input {
+    flex: 1 1 100%;
+    min-width: 0;
+    font-size: 16px; /* avoid iOS zoom on focus */
+  }
+  #genchat-compose .comm-gif-btn {
+    height: 40px !important;
+    min-width: 40px;
+  }
+  .mobile-chan-btn { display: inline-flex !important; }
 }
 
 /* ── Mobile header ── */
@@ -1843,6 +1885,7 @@ body {
             <div class="comm-sub">Everyone · Lightchain community</div>
           </div>
           <div class="comm-header-actions">
+            <button type="button" class="comm-gif-btn mobile-chan-btn" onclick="switchTab('channels')" title="Channels" style="height:34px;padding:0 12px;display:none;align-items:center;gap:4px">#</button>
             <button type="button" id="threads-toggle-btn" class="comm-gif-btn" onclick="toggleThreadsPanel()" title="Threads" style="height:34px;padding:0 12px;display:none">Threads</button>
             <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:6px 10px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
@@ -4162,6 +4205,12 @@ function connectSocket() {
     if (currentChat) socket.emit('join_chat', { wallet, contact_wallet: currentChat.wallet });
     socket.emit('get_groups', { wallet });
     try {
+      const slug = _activeCommSlug || 'general';
+      if (slug && slug !== 'start-here') {
+        socket.emit('join_community_channel', { slug: slug, wallet: wallet });
+      }
+    } catch (e) {}
+    try {
       if (window.genChatP2P) {
         genChatP2P.attachSocket(socket);
         if (isP2PChatChannel(_activeCommSlug)) ensureGenChatP2P();
@@ -5380,7 +5429,25 @@ function switchTab(name, opts) {
   }
   if (name === 'tickets') { loadTicketsList(); }
   if (name === 'channels') { loadChannelsList(); }
-  if (name === 'directory') { loadDirectory(); }
+  if (name === 'directory') {
+    loadDirectory();
+    try {
+      if (window._dirPresenceTimer) clearInterval(window._dirPresenceTimer);
+      window._dirPresenceTimer = setInterval(function () {
+        const t = document.getElementById('tab-directory');
+        if (t && t.classList.contains('active') && document.visibilityState === 'visible') {
+          loadDirectory();
+        }
+      }, 25000);
+    } catch (e) {}
+  } else {
+    try {
+      if (window._dirPresenceTimer) {
+        clearInterval(window._dirPresenceTimer);
+        window._dirPresenceTimer = null;
+      }
+    } catch (e) {}
+  }
   if (name === 'calendar') { loadCommunityEvents(); if (typeof renderCal==='function') try{ renderCal(); }catch(e){} }
   if (name === 'me' && wallet) { loadCommunityProfileForm(); }
 }
@@ -7939,6 +8006,92 @@ window.addEventListener('load', async () => {
   try { applyAddFriendDeepLink(); } catch (e) {}
 });
 
+/** Keep Gen Chat composer above the soft keyboard on mobile browsers. */
+(function bindMobileKeyboardInset() {
+  function apply() {
+    try {
+      const vv = window.visualViewport;
+      if (!vv) return;
+      const inset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      document.documentElement.style.setProperty('--kb-inset', inset + 'px');
+      const compose = document.getElementById('genchat-compose');
+      if (compose) {
+        compose.style.marginBottom = inset > 0 ? inset + 'px' : '';
+      }
+      const chatBar = document.querySelector('#chat-view.open .chat-input-bar');
+      if (chatBar) {
+        chatBar.style.marginBottom = inset > 0 ? inset + 'px' : '';
+      }
+    } catch (e) {}
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', apply);
+    window.visualViewport.addEventListener('scroll', apply);
+  }
+  window.addEventListener('focusin', function (ev) {
+    const t = ev && ev.target;
+    if (t && (t.id === 'genchat-input' || t.id === 'chat-input' || t.id === 'thread-input')) {
+      setTimeout(apply, 50);
+      setTimeout(function () {
+        try { t.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+      }, 120);
+    }
+  });
+  window.addEventListener('focusout', function () { setTimeout(apply, 80); });
+})();
+
+/** Resume after tab blur / MetaMask minimize — silent, no personal_sign. */
+function resumeLightChatSession() {
+  if (!wallet || document.visibilityState === 'hidden') return;
+  try {
+    if (_accountsEmptyTimer) { clearTimeout(_accountsEmptyTimer); _accountsEmptyTimer = null; }
+  } catch (e) {}
+  try {
+    if (_chainBlipTimer) { clearTimeout(_chainBlipTimer); _chainBlipTimer = null; }
+  } catch (e) {}
+  // Re-check accounts before treating a prior empty event as logout
+  const prov = _activeProvider || window.ethereum;
+  if (prov && prov.request) {
+    prov.request({ method: 'eth_accounts' }).then(function (accounts) {
+      if (accounts && accounts.length) {
+        const addr = String(accounts[0] || '').toLowerCase();
+        if (addr && wallet && addr === wallet.toLowerCase()) {
+          try { hideConnectUI(); } catch (e) {}
+        }
+      }
+    }).catch(function () {});
+  }
+  if (socket && socket.connected && sessionToken) {
+    try { socket.emit('auth', { wallet: wallet, token: sessionToken }); } catch (e) {}
+    try {
+      const slug = _activeCommSlug || 'general';
+      if (slug && slug !== 'start-here') {
+        socket.emit('join_community_channel', { slug: slug, wallet: wallet });
+      }
+    } catch (e) {}
+    try { if (isP2PChatChannel(_activeCommSlug)) ensureGenChatP2P(); } catch (e) {}
+    try { announceMyPresence(); } catch (e) {}
+  } else if (socket && !socket.connected) {
+    try { socket.connect(); } catch (e) {}
+  } else if (!socket && wallet) {
+    try { connectSocket(); } catch (e) {}
+  }
+}
+
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') {
+    resumeLightChatSession();
+    try {
+      const dirTab = document.getElementById('tab-directory');
+      if (dirTab && dirTab.classList.contains('active')) loadDirectory();
+    } catch (e) {}
+  }
+});
+window.addEventListener('pageshow', function (ev) {
+  // bfcache restore
+  if (ev && ev.persisted) resumeLightChatSession();
+});
+
 let _accountsEmptyTimer = null;
 if (window.ethereum) {
   window.ethereum.on?.('accountsChanged', async (accounts) => {
@@ -9544,11 +9697,13 @@ async function loadCommunityChannel(slug) {
   } catch (e) {}
   try {
     const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : ''));
+    if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
     if (!r.ok) {
       box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages ('+r.status+'). Pull to refresh or reconnect.</div>';
       return;
     }
     const j = await r.json();
+    if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
     let msgs = j.messages || [];
     if (isP2PChatChannel(slug) && window.genChatP2P) {
       try {
@@ -9572,7 +9727,14 @@ async function loadCommunityChannel(slug) {
         msgs = mergeCommunityMessages(msgs, local);
       } catch(e) { console.warn(e); }
     }
+    if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
     renderCommunityMessages(msgs);
+    // Rejoin live relay room for this channel
+    try {
+      if (socket && socket.connected && wallet) {
+        socket.emit('join_community_channel', { slug: slug, wallet: wallet });
+      }
+    } catch (e) {}
     if (!wallet) {
       const tip = document.createElement('div');
       tip.className = 'empty-text';
@@ -9582,6 +9744,7 @@ async function loadCommunityChannel(slug) {
     }
   } catch(e) {
     console.warn('loadCommunityChannel', e);
+    if (loadSeq !== _commLoadSeq) return;
     // Still show local P2P history if relay fails
     if (isP2PChatChannel(slug) && window.genChatP2P) {
       try {
@@ -10196,19 +10359,45 @@ function appendCommunityMessage(m) {
     const sid = String(m.id).replace(/"/g, '');
     if (box.querySelector('.comm-msg[data-msg-id="' + sid + '"]')) return;
   }
-  // Skip on-screen content twins (same sender+body) — stops GIF doubles from P2P+relay
+  // Content twins (same sender+body or same media): upgrade p2p-* DOM to relay id, else skip
   try {
     if (m.content && m.sender_wallet) {
       const sender = String(m.sender_wallet).toLowerCase();
-      let twin = false;
-      box.querySelectorAll('.comm-msg .comm-bubble').forEach(function (b) {
-        if (twin) return;
+      const fpNew = (window.genChatP2P && genChatP2P._mediaFingerprint)
+        ? genChatP2P._mediaFingerprint(m.content) : '';
+      const newId = String(m.id || '');
+      const newIsP2p = newId.indexOf('p2p-') === 0;
+      let twinRow = null;
+      box.querySelectorAll('.comm-msg').forEach(function (row) {
+        if (twinRow) return;
+        const b = row.querySelector('.comm-bubble');
+        if (!b) return;
         if ((b.getAttribute('data-sender') || '').toLowerCase() !== sender) return;
         let c = '';
         try { c = decodeURIComponent(b.getAttribute('data-content') || ''); } catch (e) { return; }
-        if (c === m.content) twin = true;
+        let match = c === m.content;
+        if (!match && fpNew && window.genChatP2P && genChatP2P._mediaFingerprint) {
+          const fpOld = genChatP2P._mediaFingerprint(c);
+          if (fpOld && fpOld === fpNew) match = true;
+        }
+        if (match) twinRow = row;
       });
-      if (twin) return;
+      if (twinRow) {
+        const oldId = String(twinRow.getAttribute('data-msg-id') || '');
+        const oldIsP2p = oldId.indexOf('p2p-') === 0;
+        // Prefer durable relay/server UUID over ephemeral p2p-*
+        if (newId && oldIsP2p && !newIsP2p) {
+          twinRow.setAttribute('data-msg-id', newId);
+          const bub = twinRow.querySelector('.comm-bubble');
+          if (bub) bub.setAttribute('data-msg-id', newId);
+          try {
+            if (window.genChatP2P && typeof genChatP2P._storeLocal === 'function') {
+              genChatP2P._storeLocal(m);
+            }
+          } catch (e) {}
+        }
+        return;
+      }
     }
   } catch (e) {}
   // P2P / Holepunch path has no server community_mention — alert locally
@@ -11460,7 +11649,13 @@ function ensureGenChatP2P() {
     if (_activeCommSlug === msgSlug || (!msg.slug && _activeCommSlug === slug)) {
       const tab = document.getElementById('tab-genchat');
       if (tab && tab.classList.contains('active')) appendCommunityMessage(msg);
-      else loadCommunityChannel(msgSlug);
+      else {
+        // Don't full-reload channel per inbound msg when tab is hidden — just badge
+        try {
+          const dot = document.getElementById('genchat-dot') || document.getElementById('channels-dot');
+          if (dot) dot.classList.add('show');
+        } catch (e) {}
+      }
     }
   };
   genChatP2P.onDelete = function(id) {
@@ -11786,6 +11981,32 @@ async function loadDirectory() {
     const r = await fetch(BACKEND + '/api/community/directory');
     const j = await r.json();
     _dirMembers = j.members || [];
+    // Merge authoritative live presence snapshot (Invisible excluded)
+    try {
+      const pr = await fetch(BACKEND + '/api/community/presence');
+      if (pr.ok) {
+        const pj = await pr.json();
+        const liveMap = {};
+        (pj.online || []).forEach(function (w) {
+          liveMap[String(w || '').toLowerCase()] = true;
+        });
+        _dirMembers.forEach(function (m) {
+          const w = (m.wallet || '').toLowerCase();
+          if (!w) return;
+          if (liveMap[w]) {
+            if (m.presence_mode !== 'invisible') {
+              m.online = true;
+              m.connected = true;
+            }
+          } else if (wallet && w === wallet.toLowerCase()) {
+            // Self handled by _dirMarkSelfOnline / Invisible
+          } else {
+            // Trust presence API over stale directory online flags
+            m.online = false;
+          }
+        });
+      }
+    } catch (e) {}
     // Merge live Gen Chat P2P peers as online (mesh presence)
     try {
       if (window.genChatP2P && genChatP2P.connectedWallets) {
