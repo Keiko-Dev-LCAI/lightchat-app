@@ -309,6 +309,20 @@ def init_community_db(get_db):
     except Exception:
         pass
 
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS community_stickers (
+            id TEXT PRIMARY KEY,
+            community_id TEXT NOT NULL,
+            kind TEXT NOT NULL DEFAULT 'sticker',
+            name TEXT NOT NULL DEFAULT '',
+            image_data TEXT NOT NULL,
+            image_type TEXT NOT NULL DEFAULT 'image/png',
+            uploader TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )"""
+    )
+    conn.commit()
+
 
     # ensure media post-only channel exists
     try:
@@ -432,9 +446,12 @@ _LINK_RE = re.compile(
 
 
 def content_has_link(content: str) -> bool:
-    """True if message contains a URL / invite-style link (incl. [[gif]] media)."""
+    """True if message contains a URL / invite-style link (incl. [[gif]] media).
+    Built-in/custom stickers use [[sticker]]… and are NOT treated as links."""
     c = (content or "").strip()
     if not c:
+        return False
+    if c.startswith("[[sticker]]") or c.startswith("[[emoji]]"):
         return False
     if c.startswith("[[gif]]"):
         return True
@@ -1438,6 +1455,135 @@ def register_community_routes(app, socketio, get_db):
                 (COMMUNITY_ID,),
             ).fetchall()
             return jsonify({"ok": True, "owners": [o["wallet"] for o in owners]})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/stickers")
+    def api_stickers_list():
+        kind = (request.args.get("kind") or "").lower().strip()
+        conn = get_db()
+        try:
+            if kind in ("sticker", "emoji"):
+                rows = conn.execute(
+                    """SELECT id, kind, name, image_type, uploader, created_at
+                       FROM community_stickers WHERE community_id=? AND kind=?
+                       ORDER BY created_at DESC LIMIT 200""",
+                    (COMMUNITY_ID, kind),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT id, kind, name, image_type, uploader, created_at
+                       FROM community_stickers WHERE community_id=?
+                       ORDER BY created_at DESC LIMIT 200""",
+                    (COMMUNITY_ID,),
+                ).fetchall()
+            out = []
+            for r in rows:
+                out.append({
+                    "id": r["id"],
+                    "kind": r["kind"],
+                    "name": r["name"],
+                    "image_type": r["image_type"],
+                    "uploader": r["uploader"],
+                    "created_at": r["created_at"],
+                    "url": f"/api/community/stickers/{r['id']}",
+                })
+            return jsonify({"stickers": out, "count": len(out)})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/stickers", methods=["POST"])
+    def api_stickers_upload():
+        """Any member can upload a sticker/emoji (max ~500KB)."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        name = (data.get("name") or "sticker")[:40].strip() or "sticker"
+        kind = (data.get("kind") or "sticker").lower().strip()
+        if kind not in ("sticker", "emoji"):
+            kind = "sticker"
+        raw = data.get("image_data") or ""
+        itype = (data.get("image_type") or "image/png")[:40]
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        if not raw or len(raw) > 700_000:
+            return jsonify({"error": "image missing or too large (max ~500KB)"}), 400
+        if "," in raw[:80]:
+            raw = raw.split(",", 1)[1]
+        conn = get_db()
+        try:
+            if is_banned(conn, wallet):
+                return jsonify({"error": "banned", "code": "banned"}), 403
+            role = ensure_member(conn, wallet)
+            if not role:
+                return jsonify({"error": "join community first"}), 403
+            # Cap pack size
+            n = conn.execute(
+                "SELECT COUNT(*) AS c FROM community_stickers WHERE community_id=?",
+                (COMMUNITY_ID,),
+            ).fetchone()["c"]
+            if n >= 300:
+                return jsonify({"error": "server sticker pack is full (300)"}), 400
+            sid = str(uuid.uuid4())
+            now = int(time.time())
+            conn.execute(
+                """INSERT INTO community_stickers
+                   (id, community_id, kind, name, image_data, image_type, uploader, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (sid, COMMUNITY_ID, kind, name, raw, itype, wallet, now),
+            )
+            conn.commit()
+            return jsonify({
+                "ok": True,
+                "sticker": {
+                    "id": sid,
+                    "kind": kind,
+                    "name": name,
+                    "url": f"/api/community/stickers/{sid}",
+                },
+            })
+        finally:
+            conn.close()
+
+    @app.route("/api/community/stickers/<sid>")
+    def api_sticker_image(sid):
+        conn = get_db()
+        try:
+            row = conn.execute(
+                "SELECT image_data, image_type FROM community_stickers WHERE id=? AND community_id=?",
+                (sid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            try:
+                body = base64.b64decode(row["image_data"])
+            except Exception:
+                return jsonify({"error": "bad image"}), 500
+            return Response(body, mimetype=row["image_type"] or "image/png")
+        finally:
+            conn.close()
+
+    @app.route("/api/community/stickers/<sid>", methods=["DELETE"])
+    def api_sticker_delete(sid):
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            row = conn.execute(
+                "SELECT uploader FROM community_stickers WHERE id=? AND community_id=?",
+                (sid, COMMUNITY_ID),
+            ).fetchone()
+            if not row:
+                return jsonify({"error": "not found"}), 404
+            is_uploader = _norm(row["uploader"]) == wallet
+            if not is_uploader and not is_staff(role):
+                return jsonify({"error": "only uploader or mods can delete"}), 403
+            conn.execute(
+                "DELETE FROM community_stickers WHERE id=? AND community_id=?",
+                (sid, COMMUNITY_ID),
+            )
+            conn.commit()
+            return jsonify({"ok": True})
         finally:
             conn.close()
 
