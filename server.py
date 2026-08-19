@@ -210,6 +210,16 @@ def init_db():
             shared_with TEXT NOT NULL DEFAULT '[]',
             reminder_minutes INTEGER NOT NULL DEFAULT 30
         );
+        -- Persist sign-in sessions across Railway restarts (Bearer token in localStorage)
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token TEXT PRIMARY KEY,
+            wallet TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'signed',
+            exp INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_wallet ON auth_sessions(wallet);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_exp ON auth_sessions(exp);
     ''')
     conn.commit()
     conn.close()
@@ -499,10 +509,11 @@ def send_push_notification(to_wallet, title, body, extra_data=None):
 
 
 # ══════════════════════════════════════════════════════════════════════
-# SESSION AUTH — sign-once (hard) or soft token for paste-address users
+# SESSION AUTH — sign-once (hard). Tokens live in SQLite so Railway
+# restarts / refreshes keep the user signed in (localStorage Bearer).
 # ══════════════════════════════════════════════════════════════════════
 # sid -> wallet (socket session)
-# token -> {wallet, exp, mode: 'signed'|'soft'}
+# Hot cache: token -> {wallet, exp, mode} (DB is source of truth)
 _socket_wallets = {}
 _auth_sessions = {}
 _auth_nonces = {}  # wallet -> {nonce, exp}
@@ -515,30 +526,100 @@ def _new_session_token():
     return secrets.token_urlsafe(32)
 
 
+def _auth_sessions_purge_expired(conn=None):
+    """Delete expired rows. Own connection if none passed."""
+    own = conn is None
+    if own:
+        conn = get_db()
+    try:
+        now = int(time.time())
+        conn.execute('DELETE FROM auth_sessions WHERE exp < ?', (now,))
+        if own:
+            conn.commit()
+    except Exception as e:
+        print(f'  [auth] purge failed: {e}', flush=True)
+    finally:
+        if own:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 def _store_session(wallet, mode):
     token = _new_session_token()
-    exp = int(time.time()) + _AUTH_SESSION_TTL
+    now = int(time.time())
+    exp = now + _AUTH_SESSION_TTL
+    wallet = (wallet or '').lower().strip()
+    mode = (mode or 'signed').strip() or 'signed'
+    conn = get_db()
+    try:
+        _auth_sessions_purge_expired(conn)
+        conn.execute(
+            '''INSERT INTO auth_sessions (token, wallet, mode, exp, created_at)
+               VALUES (?,?,?,?,?)''',
+            (token, wallet, mode, exp, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     with _auth_lock:
-        # drop expired
-        now = int(time.time())
-        dead = [t for t, v in _auth_sessions.items() if v.get('exp', 0) < now]
-        for t in dead:
-            del _auth_sessions[t]
-        _auth_sessions[token] = {'wallet': wallet.lower(), 'exp': exp, 'mode': mode}
+        _auth_sessions[token] = {'wallet': wallet, 'exp': exp, 'mode': mode}
     return token, exp
 
 
 def _lookup_session(token):
     if not token:
         return None
+    now = int(time.time())
     with _auth_lock:
         row = _auth_sessions.get(token)
-        if not row:
+        if row:
+            if row.get('exp', 0) < now:
+                del _auth_sessions[token]
+            else:
+                return row
+    conn = get_db()
+    try:
+        r = conn.execute(
+            'SELECT wallet, mode, exp FROM auth_sessions WHERE token=?',
+            (token,),
+        ).fetchone()
+        if not r:
             return None
-        if row.get('exp', 0) < int(time.time()):
+        if int(r['exp'] or 0) < now:
+            conn.execute('DELETE FROM auth_sessions WHERE token=?', (token,))
+            conn.commit()
+            return None
+        out = {
+            'wallet': (r['wallet'] or '').lower(),
+            'exp': int(r['exp'] or 0),
+            'mode': r['mode'] or 'signed',
+        }
+        with _auth_lock:
+            _auth_sessions[token] = out
+        return out
+    finally:
+        conn.close()
+
+
+def _revoke_session(token):
+    if not token:
+        return False
+    gone = False
+    with _auth_lock:
+        if token in _auth_sessions:
             del _auth_sessions[token]
-            return None
-        return row
+            gone = True
+    conn = get_db()
+    try:
+        cur = conn.execute('DELETE FROM auth_sessions WHERE token=?', (token,))
+        conn.commit()
+        if cur.rowcount:
+            gone = True
+    finally:
+        conn.close()
+    return gone
 
 
 def _wallet_for_sid(sid):
@@ -651,8 +732,7 @@ def api_auth_logout():
         token = auth[7:].strip()
     if not token:
         return jsonify({'ok': True, 'revoked': False})
-    with _auth_lock:
-        gone = _auth_sessions.pop(token, None) is not None
+    gone = _revoke_session(token)
     return jsonify({'ok': True, 'revoked': gone})
 
 
