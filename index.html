@@ -134,6 +134,7 @@ body {
     padding: 14px 12px; cursor: pointer; text-align: left;
   }
   .channel-rail-server-btn:hover { background: rgba(255,255,255,0.04); }
+  .channel-rail-server-btn .crs-mark { width: 22px; height: 22px; flex: none; display: block; }
   .channel-rail-server-btn .crs-chev { margin-left: auto; color: var(--text2); font-size: 12px; }
   .channel-rail-dropdown {
     display: none; position: absolute; left: 8px; right: 8px; top: 100%;
@@ -2098,6 +2099,7 @@ body {
   <aside class="channel-rail" id="channel-rail" aria-label="Channels">
     <div class="channel-rail-server">
       <button type="button" class="channel-rail-server-btn" id="channel-rail-server-btn" onclick="toggleChannelRailServerMenu(event)" aria-expanded="false">
+        <img class="crs-mark" src="brand/symbol-light.svg" alt="">
         <span>Lightchain</span>
         <span class="crs-chev" id="channel-rail-server-chev">▾</span>
       </button>
