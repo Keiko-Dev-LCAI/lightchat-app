@@ -874,6 +874,11 @@ def health():
     except Exception as e:
         db_info['error'] = str(e)[:120]
     turn_key = bool(os.environ.get('METERED_API_KEY', '').strip())
+    try:
+        from community import knowledge_sources_from_env
+        _knowledge_n = len(knowledge_sources_from_env())
+    except Exception:
+        _knowledge_n = 0
     return jsonify({
         'status': 'ok',
         'service': 'LightChat',
@@ -881,6 +886,7 @@ def health():
         'aivm_gateway': _AIVM_GATEWAY,
         'aivm_ready': bool(os.environ.get('LIGHTCHAIN_PRIVATE_KEY', '').strip()),
         'job_registry': _AIVM_JOB_REG,
+        'knowledge_sources': _knowledge_n,
         'auth': 'session-v1',
         'db': db_info,
         'media': media_backend_status(),
@@ -3323,10 +3329,125 @@ def api_voice_chat():
     return resp
 
 
+# ── #ask-ai channel bot (AIVM + optional knowledge RAG) ───────────────────────
+def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: str = "", slug: str = "ask-ai"):
+    """Background: retrieve context → run_inference → post Lightchain AI reply."""
+    from community import (
+        ask_ai_rate_ok,
+        format_chat_context_for_prompt,
+        format_knowledge_for_prompt,
+        post_channel_bot_message,
+        search_knowledge,
+        search_messages_for_context,
+        AIVM_BOT_NAME,
+    )
+
+    wallet = (wallet or "").lower().strip()
+    question = (content or "").strip()
+    slug = (slug or "ask-ai").lower().strip() or "ask-ai"
+    if not wallet or not question:
+        return
+
+    client = _get_aivm_client()
+    conn = None
+    try:
+        conn = get_db()
+        if not client:
+            # Fail-closed: stay quiet (channel still works for chat)
+            return
+        if (os.environ.get("AIVM_ASK_BOOSTER_ONLY") or "").strip().lower() in ("1", "true", "yes"):
+            # Boosting not shipped yet — deny clearly when flag flipped on
+            post_channel_bot_message(
+                conn, socketio, slug,
+                "⚠️ Booster-only mode is on for #ask-ai right now.",
+                AIVM_BOT_NAME,
+            )
+            return
+        if not ask_ai_rate_ok(wallet):
+            post_channel_bot_message(
+                conn, socketio, slug,
+                "⏳ Slow down — you've hit the per-hour Ask AI limit. Try again later.",
+                AIVM_BOT_NAME,
+            )
+            return
+
+        # Phase 1: chat history (never #mods — staff=False)
+        chat_hits, _meta = search_messages_for_context(
+            conn, question, limit=8, staff=False
+        )
+        chat_block = format_chat_context_for_prompt(chat_hits, max_chars=2800)
+
+        # Phase 2: knowledge chunks (empty when KNOWLEDGE_SOURCES unset / not ingested)
+        knowledge_hits = search_knowledge(conn, question, limit=5)
+        knowledge_block = format_knowledge_for_prompt(knowledge_hits, max_chars=2200)
+
+        session_id = f"ask-ai:{wallet}"
+        conv = _get_conversation_context(session_id)
+
+        prompt_parts = [
+            "You are Lightchain AI, the assistant in this community's #ask-ai channel.",
+            "Answer using the reference material below when relevant. If the docs cover it,",
+            "explain clearly and mention which source. If you're unsure, say so — don't invent.",
+            "",
+        ]
+        if knowledge_block:
+            prompt_parts.append("Reference — Lightchain docs:")
+            prompt_parts.append(knowledge_block)
+            prompt_parts.append("")
+        if chat_block:
+            prompt_parts.append("Reference — relevant messages from this server:")
+            prompt_parts.append(chat_block)
+            prompt_parts.append("")
+        if conv:
+            prompt_parts.append("Conversation so far:")
+            prompt_parts.append(conv)
+            prompt_parts.append("")
+        who = (display_name or "").strip() or wallet[:10]
+        prompt_parts.append(f"User ({who}): {question}")
+        prompt_parts.append("Assistant:")
+        prompt = "\n".join(prompt_parts)
+
+        try:
+            answer = client.run_inference(prompt)
+            if answer.lstrip().startswith("Assistant:"):
+                answer = answer.lstrip()[len("Assistant:"):].lstrip()
+            answer = (answer or "").strip()
+            if not answer:
+                answer = "⚠️ I couldn't answer that right now."
+        except Exception as e:
+            err = str(e)
+            print(f"  [ask-ai] inference error: {err}", flush=True)
+            low = err.lower()
+            if "balance" in low or "reverted" in low or "submitjob" in low:
+                answer = "⚠️ The AI's LCAI balance is empty — boost the server to refill it."
+            else:
+                answer = "⚠️ I couldn't answer that right now."
+
+        # Cap bot reply length for chat readability
+        if len(answer) > 3500:
+            answer = answer[:3497] + "…"
+        post_channel_bot_message(conn, socketio, slug, answer, AIVM_BOT_NAME)
+        try:
+            _save_to_session(session_id, question, answer)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"  [ask-ai] worker failed: {e}", flush=True)
+    finally:
+        try:
+            if conn is not None:
+                conn.close()
+        except Exception:
+            pass
+
+
 # ── Community layer (official Lightchain server, channels, roles, profiles) ──
 try:
-    from community import register_community_routes
+    from community import register_community_routes, set_ask_ai_runner, knowledge_sources_from_env
     register_community_routes(app, socketio, get_db)
+    set_ask_ai_runner(_ask_ai_worker)
+    _ks = knowledge_sources_from_env()
+    print(f"  [ask-ai] runner registered · knowledge sources: {len(_ks)}")
 except Exception as _comm_err:
     print(f"  [community] FAILED to load: {_comm_err}")
 
