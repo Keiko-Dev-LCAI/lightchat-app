@@ -1327,6 +1327,11 @@ body {
 .comm-msgs { flex:1; overflow-y:auto; padding:8px 12px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
 .comm-msg { display:flex; gap:12px; max-width:100%; padding:2px 8px; border-radius:4px; margin:0 -4px; }
 .comm-msg:hover { background:rgba(255,255,255,0.03); }
+/* Discord-style grouping: continuation keeps avatar column indent */
+.comm-msg--cont { margin-top:0; padding-top:1px; }
+.comm-msg--cont .comm-av { visibility:hidden; pointer-events:none; }
+.comm-msg--cont .who { display:none !important; }
+.comm-msg--cont .comm-msg-time { display:none !important; }
 .comm-av { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; margin-top:2px; }
 .comm-av img { width:100%; height:100%; object-fit:cover; }
 .comm-bubble { background:transparent; border:none; border-radius:0; padding:0; max-width:min(720px,100%); flex:1; min-width:0; }
@@ -1597,6 +1602,11 @@ body {
 .comm-msgs { flex:1; overflow-y:auto; padding:8px 12px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
 .comm-msg { display:flex; gap:12px; max-width:100%; padding:2px 8px; border-radius:4px; margin:0 -4px; }
 .comm-msg:hover { background:rgba(255,255,255,0.03); }
+/* Discord-style grouping: continuation keeps avatar column indent */
+.comm-msg--cont { margin-top:0; padding-top:1px; }
+.comm-msg--cont .comm-av { visibility:hidden; pointer-events:none; }
+.comm-msg--cont .who { display:none !important; }
+.comm-msg--cont .comm-msg-time { display:none !important; }
 .comm-av { width:40px; height:40px; border-radius:50%; background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary)); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; flex-shrink:0; overflow:hidden; margin-top:2px; }
 .comm-av img { width:100%; height:100%; object-fit:cover; }
 .comm-bubble { background:transparent; border:none; border-radius:0; padding:0; max-width:min(720px,100%); flex:1; min-width:0; }
@@ -10307,8 +10317,48 @@ function _commMsgAttr(m) {
   const content = encodeURIComponent(m.content || '');
   const edited = m.edited ? '1' : '0';
   const who = encodeURIComponent(stripAt(m.display_name || '') || shortenWallet(m.sender_wallet || ''));
+  const created = String(Number(m.created_at || 0) || 0);
   return 'data-msg-id="' + id + '" data-slug="' + slug + '" data-sender="' + sender +
-    '" data-content="' + content + '" data-edited="' + edited + '" data-who="' + who + '"';
+    '" data-content="' + content + '" data-edited="' + edited + '" data-who="' + who +
+    '" data-created="' + escapeHtml(created) + '"';
+}
+
+/** Normalize message created_at to ms (server uses unix seconds). */
+function _commMsgTsMs(ts) {
+  const t = Number(ts || 0);
+  if (!t) return 0;
+  return t < 1e12 ? t * 1000 : t;
+}
+
+const COMM_GROUP_GAP_MS = 7 * 60 * 1000;
+
+/** Same author + same channel + <7 min → continuation (Discord-style). */
+function _commMsgIsContinuation(prev, cur) {
+  if (!prev || !cur) return false;
+  const a = String(prev.sender_wallet || prev.sender || '').toLowerCase();
+  const b = String(cur.sender_wallet || cur.sender || '').toLowerCase();
+  if (!a || !b || a !== b) return false;
+  const sa = String(prev.slug || (typeof _activeCommSlug !== 'undefined' ? _activeCommSlug : '') || '').toLowerCase();
+  const sb = String(cur.slug || (typeof _activeCommSlug !== 'undefined' ? _activeCommSlug : '') || '').toLowerCase();
+  if (sa && sb && sa !== sb) return false;
+  const ta = _commMsgTsMs(prev.created_at != null ? prev.created_at : prev.created);
+  const tb = _commMsgTsMs(cur.created_at != null ? cur.created_at : cur.created);
+  if (!ta || !tb) return false;
+  return (tb - ta) >= 0 && (tb - ta) < COMM_GROUP_GAP_MS;
+}
+
+function _commMsgPrevFromDom(box) {
+  if (!box) return null;
+  const rows = box.querySelectorAll('.comm-msg');
+  if (!rows.length) return null;
+  const row = rows[rows.length - 1];
+  const bub = row.querySelector('.comm-bubble');
+  if (!bub) return null;
+  return {
+    sender_wallet: (bub.getAttribute('data-sender') || '').toLowerCase(),
+    slug: bub.getAttribute('data-slug') || '',
+    created_at: Number(bub.getAttribute('data-created') || 0) || 0,
+  };
 }
 
 function isCommMsgAuthor(ctx) {
@@ -10651,8 +10701,9 @@ function appendCommunityMessage(m) {
     ? '<span class="comm-msg-time" title="' + escapeHtml(when) + (m.edited ? ' · edited' : '') + '">' +
       escapeHtml(when) + (m.edited ? ' · edited' : '') + '</span>'
     : '';
+  const cont = _commMsgIsContinuation(_commMsgPrevFromDom(box), m);
   const el = document.createElement('div');
-  el.className = 'comm-msg';
+  el.className = 'comm-msg' + (cont ? ' comm-msg--cont' : '');
   el.setAttribute('data-msg-id', m.id || '');
   // Discord-like: avatar · username · time · hover bar · body · reaction pills
   const staff = typeof isCommStaff === 'function' && isCommStaff();
@@ -10676,7 +10727,9 @@ function renderCommunityMessages(msgs) {
     box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Gen Chat is live — say hello. When two wallets are here, messages can go P2P.</div>';
     return;
   }
-  box.innerHTML = msgs.map(m => {
+  box.innerHTML = msgs.map(function (m, i) {
+    const prev = i > 0 ? msgs[i - 1] : null;
+    const cont = _commMsgIsContinuation(prev, m);
     const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
     const letter = isBot ? '🤖' : (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
     const av = (!isBot && m.has_avatar)
@@ -10691,7 +10744,7 @@ function renderCommunityMessages(msgs) {
       ? `<span class="comm-msg-time" title="${tip}">${escapeHtml(when)}${m.edited ? ' · edited' : ''}</span>`
       : '';
     const staff = typeof isCommStaff === 'function' && isCommStaff();
-    return `<div class="comm-msg" data-msg-id="${escapeHtml(m.id||'')}">
+    return `<div class="comm-msg${cont ? ' comm-msg--cont' : ''}" data-msg-id="${escapeHtml(m.id||'')}">
       <div class="comm-av">${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${_commMsgHoverBar(m)}
