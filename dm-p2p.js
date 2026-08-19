@@ -344,6 +344,21 @@
     }
   };
 
+  DmP2P.prototype.removeLocalFriend = function (friendWallet) {
+    friendWallet = (friendWallet || '').toLowerCase();
+    if (!friendWallet) return;
+    let list = [];
+    try {
+      list = JSON.parse(localStorage.getItem('lc_p2p_friends') || '[]');
+    } catch (e) {}
+    list = list.filter(function (f) {
+      return (f.wallet || f || '').toLowerCase() !== friendWallet;
+    });
+    try {
+      localStorage.setItem('lc_p2p_friends', JSON.stringify(list));
+    } catch (e) {}
+  };
+
   global.DmP2P = DmP2P;
   global.dmP2P = global.dmP2P || new DmP2P();
 })(window);

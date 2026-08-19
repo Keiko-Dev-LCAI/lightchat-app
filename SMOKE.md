@@ -27,6 +27,10 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 | 18 | Server Settings Roles/Bans show **short** wallets only; click copies full | ☐ |
 | 19 | Backgrounded user with push on: @mention in a channel → web push; @everyone → no mass push | ☐ |
 | 20 | Ticket reply: other party gets push; sender does not | ☐ |
+| 21 | #ask-ai: "what's LCAI at?" → live USD; balance of a 0x… → LCAI amount | ☐ |
+| 22 | #ask-ai: liquidity/pool → N/A or reserves (DEX may have 0 pairs); never invent | ☐ |
+| 23 | Add friend → clear storage / other device same wallet → friend still listed | ☐ |
+| 24 | save-friend does not notify the other party; un-friend clears server + local | ☐ |
 
 ### Notes
 

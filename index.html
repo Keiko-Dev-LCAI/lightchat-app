@@ -5576,8 +5576,16 @@ async function loadContacts() {
     local.forEach(function (f) {
       const w = (f.wallet || f || '').toLowerCase();
       if (!w || have[w]) return;
-      contacts.push({ wallet: w, handle: f.handle || '', status: 'approved', p2p_local: true });
+      contacts.push({ wallet: w, handle: f.handle || '', status: 'saved', p2p_local: true });
       have[w] = true;
+      // Best-effort migrate local → server (private save-friend; no notify)
+      try {
+        fetch(BACKEND + '/save-friend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: wallet, contact_wallet: w, handle: f.handle || '' }),
+        }).catch(function () {});
+      } catch (e2) {}
     });
   } catch (e) {}
   renderContacts(); updateChatList();
@@ -5585,7 +5593,8 @@ async function loadContacts() {
 
 function renderContacts() {
   const pending = contacts.filter(c => c.status === 'pending');
-  const approved = contacts.filter(c => c.status === 'approved');
+  // Friends = approved OR saved (one-directional server bookmark) OR local P2P
+  const approved = contacts.filter(c => c.status === 'approved' || c.status === 'saved' || c.p2p_local);
 
   document.getElementById('pending-list').innerHTML = pending.length === 0
     ? '<div style="padding:12px 22px;color:var(--text2);font-size:17px">No pending requests</div>'
@@ -5608,7 +5617,7 @@ function renderContacts() {
       <div class="contact-item" onclick="openChat('${c.wallet}','${(c.handle||'').replace(/'/g,'\\u0027')}')">
         <div class="chat-avatar" style="width:46px;height:46px;font-size:20px">${avatarLetter(c.handle)}</div>
         <div style="flex:1">
-          <div style="font-size:18px;font-weight:600">${stripAt(c.handle) || shortenWallet(c.wallet)}${c.p2p_local ? ' <span style="font-size:11px;color:var(--text2)">· P2P</span>' : ''}</div>
+          <div style="font-size:18px;font-weight:600">${stripAt(c.handle) || shortenWallet(c.wallet)}${(c.p2p_local || c.status === 'saved') ? ' <span style="font-size:11px;color:var(--text2)">· P2P</span>' : ''}</div>
           <div style="font-size:14px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
         </div>
         <button onclick="event.stopPropagation();deleteContact('${c.wallet}')" style="background:none;border:none;color:var(--red);font-size:26px;cursor:pointer;padding:8px 12px;margin-left:4px;line-height:1" title="Remove contact">🗑</button>
@@ -5617,7 +5626,7 @@ function renderContacts() {
 }
 
 function updateChatList() {
-  const approved = contacts.filter(c => c.status === 'approved');
+  const approved = contacts.filter(c => c.status === 'approved' || c.status === 'saved' || c.p2p_local);
   if (approved.length === 0) {
     document.getElementById('chat-list').style.display = 'none';
     document.getElementById('chat-list-empty').style.display = 'flex';
@@ -5647,6 +5656,18 @@ async function approveContact(cw) {
 async function deleteContact(contactWallet) {
   if (!wallet) return;
   if (!confirm('Remove this contact? This removes them from both sides.')) return;
+  contactWallet = (contactWallet || '').toLowerCase();
+  // Drop local P2P cache so they don't resurrect on reload
+  try {
+    if (window.dmP2P && typeof dmP2P.removeLocalFriend === 'function') {
+      dmP2P.removeLocalFriend(contactWallet);
+    } else {
+      const list = JSON.parse(localStorage.getItem('lc_p2p_friends') || '[]').filter(function (f) {
+        return (f.wallet || f || '').toLowerCase() !== contactWallet;
+      });
+      localStorage.setItem('lc_p2p_friends', JSON.stringify(list));
+    }
+  } catch (e) {}
   const resp = await fetch(BACKEND + '/delete-contact', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -14105,7 +14126,7 @@ function warnFriendOrDmSafety(kind) {
   }
 }
 
-/** P2P-first friend: local list + optional server contact request */
+/** P2P-first friend: local list + server save-friend (private) + optional contact-request */
 function addP2PFriend(friendWallet, handle) {
   friendWallet = (friendWallet || '').toLowerCase();
   if (!friendWallet || !wallet) return;
@@ -14114,6 +14135,12 @@ function addP2PFriend(friendWallet, handle) {
     ensureDmP2P();
     dmP2P.addLocalFriend(friendWallet, { handle: handle || '' });
   }
+  // Persist one-directional bookmark server-side (no notify to them)
+  fetch(BACKEND + '/save-friend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet: wallet, contact_wallet: friendWallet, handle: handle || '' }),
+  }).catch(function () { /* offline OK — localStorage is cache */ });
   // Also try classic server friend request when online (hybrid until LC cutover)
   fetch(BACKEND + '/contact-request', {
     method: 'POST',
