@@ -3385,7 +3385,8 @@ body {
 </div>
 
 <script>
-const BACKEND = 'https://web-production-bc64f.up.railway.app';
+// Configurable API host: inject window.__LIGHTCHAT_BACKEND__ before this script, or leave default.
+const BACKEND = (window.__LIGHTCHAT_BACKEND__ || 'https://web-production-bc64f.up.railway.app').replace(/\/$/, '');
 
 
 const APP_URL = window.location.origin + window.location.pathname.replace('index.html','');
