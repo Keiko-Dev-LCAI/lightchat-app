@@ -9910,7 +9910,7 @@ function formatMessageTime(tsSeconds) {
 /** Display labels — less “centralized owner” feel. Internal role stays owner. */
 function displayRoleLabel(role) {
   const r = (role || 'member').toLowerCase();
-  if (r === 'owner') return 'Admin';
+  if (r === 'owner') return 'Orca In Charge';
   if (r === 'admin') return 'Admin';
   if (r === 'mod') return 'Mod';
   if (r === 'helper') return 'Helper';
@@ -13572,7 +13572,7 @@ function filterDirectory() {
 
 /* ── Right-side members rail (online-only + total count) ── */
 const _MEMBERS_RAIL_GROUP = {
-  owner: 'OWNER',
+  owner: 'ORCA IN CHARGE',
   admin: 'ADMINS',
   mod: 'MODS',
   helper: 'HELPERS',
