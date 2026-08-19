@@ -1541,11 +1541,49 @@ _ask_ai_runner = None
 _ask_ai_hits: dict = {}
 _ask_ai_rate_lock = threading.Lock()
 
+# Web push sender (registered from server.py — same hook pattern as ask-ai)
+_push_sender = None
+
 
 def set_ask_ai_runner(fn):
     """server.py registers the AIVM background worker here."""
     global _ask_ai_runner
     _ask_ai_runner = fn
+
+
+def set_push_sender(fn):
+    """server.py registers send_push_notification here (avoids circular import)."""
+    global _push_sender
+    _push_sender = fn
+
+
+def _try_push(to_wallet: str, title: str, body: str, extra=None, socketio=None):
+    """Background web push; no-op if push disabled / hook unset. Never raises."""
+    sender = _push_sender
+    if not sender:
+        return
+    to_wallet = _norm(to_wallet)
+    if not to_wallet or not to_wallet.startswith("0x"):
+        return
+    title = (title or "")[:80]
+    body = (body or "")[:80]
+
+    def _run():
+        try:
+            sender(to_wallet, title, body, extra)
+        except Exception as e:
+            print(f"  [push] send failed: {e}", flush=True)
+
+    try:
+        if socketio is not None and hasattr(socketio, "start_background_task"):
+            socketio.start_background_task(_run)
+        else:
+            threading.Thread(target=_run, daemon=True).start()
+    except Exception:
+        try:
+            threading.Thread(target=_run, daemon=True).start()
+        except Exception:
+            pass
 
 
 def ask_ai_channel_slug() -> str:
@@ -1641,7 +1679,11 @@ def emit_community_message_deleted(socketio, payload: dict, slug: str) -> None:
 
 
 def emit_community_mentions(socketio, conn, msg: dict, everyone: bool, wallets: list, sender: str):
-    """Alert mentioned members (wallet rooms). @everyone → all members except sender."""
+    """Alert mentioned members (wallet rooms). @everyone → all members except sender.
+
+    Web push: direct @wallet mentions only (v1). @everyone stays socket-only
+    to avoid server-wide push spam. Never push for #mods to non-staff.
+    """
     payload = {
         "message_id": msg.get("id"),
         "slug": msg.get("slug"),
@@ -1657,11 +1699,34 @@ def emit_community_mentions(socketio, conn, msg: dict, everyone: bool, wallets: 
         if w:
             targets.add(_norm(w))
     targets.discard(_norm(sender))
+    slug = (msg.get("slug") or "").lower().strip()
+    # Never notify non-staff about #mods (and never push them)
+    if slug == "mods":
+        targets = {w for w in targets if is_staff(get_role(conn, w))}
     for w in targets:
         try:
             socketio.emit("community_mention", payload, room=w)
         except Exception:
             pass
+    # Direct @mentions → web push (not @everyone fan-out)
+    if not everyone and wallets:
+        from_name = (msg.get("display_name") or "Someone").strip() or "Someone"
+        preview = (msg.get("content") or "").replace("\n", " ").strip()[:80]
+        chan = slug if slug and not slug.startswith("ticket:") else (slug or "chat")
+        title = f"{from_name} mentioned you in #{chan}" if not chan.startswith("ticket:") else f"{from_name} mentioned you"
+        for w in wallets:
+            tw = _norm(w)
+            if not tw or tw == _norm(sender):
+                continue
+            if tw not in targets:
+                continue  # filtered out (e.g. mods visibility)
+            _try_push(
+                tw,
+                title,
+                preview or "Open LightChat to read",
+                {"type": "mention", "slug": slug, "message_id": msg.get("id")},
+                socketio=socketio,
+            )
 
 
 def get_timeout_until(conn, wallet: str) -> int:
@@ -4434,6 +4499,39 @@ def register_community_routes(app, socketio, get_db):
                 socketio.emit("community_ticket_message", msg, room=_norm(t["opener_wallet"]))
             except Exception:
                 pass
+            # Push the other party (not the sender). Staff reply → opener; opener reply → staff room only via socket;
+            # if we have no assignee, staff still get socket — push opener only when staff replies.
+            try:
+                opener = _norm(t.get("opener_wallet") or "")
+                preview = (content or "").replace("\n", " ").strip()[:80] or "Open LightChat to read"
+                if is_staff(role) and opener and opener != wallet:
+                    _try_push(
+                        opener,
+                        "New reply on your ticket",
+                        preview,
+                        {"type": "ticket", "ticket_id": tid},
+                        socketio=socketio,
+                    )
+                elif is_opener and not is_staff(role):
+                    # Notify staff individually who are currently online in staff room is hard —
+                    # push all staff members (bounded) who can see tickets.
+                    staff_rows = conn.execute(
+                        """SELECT wallet, role FROM community_members
+                           WHERE community_id=? AND role IN ('owner','admin','mod') LIMIT 40""",
+                        (COMMUNITY_ID,),
+                    ).fetchall()
+                    for sr in staff_rows:
+                        sw = _norm(sr["wallet"])
+                        if sw and sw != wallet:
+                            _try_push(
+                                sw,
+                                "New ticket reply",
+                                preview,
+                                {"type": "ticket", "ticket_id": tid},
+                                socketio=socketio,
+                            )
+            except Exception as e:
+                print(f"  [push] ticket reply: {e}", flush=True)
             if mention_everyone or mention_wallets:
                 emit_community_mentions(
                     socketio, conn, msg, mention_everyone, mention_wallets, wallet

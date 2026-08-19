@@ -3756,11 +3756,18 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
 
 # ── Community layer (official Lightchain server, channels, roles, profiles) ──
 try:
-    from community import register_community_routes, set_ask_ai_runner, knowledge_sources_from_env
+    from community import (
+        register_community_routes,
+        set_ask_ai_runner,
+        set_push_sender,
+        knowledge_sources_from_env,
+    )
     register_community_routes(app, socketio, get_db)
     set_ask_ai_runner(_ask_ai_worker)
+    set_push_sender(send_push_notification)
     _ks = knowledge_sources_from_env()
     print(f"  [ask-ai] runner registered · knowledge sources: {len(_ks)}")
+    print("  [push] community mention/ticket sender registered")
     try:
         start_dao_poller()
     except Exception as _dao_err:
