@@ -3937,6 +3937,7 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
     """Background: retrieve context → run_inference → post Lightchain AI reply."""
     from community import (
         ask_ai_rate_ok,
+        emit_aivm_thinking,
         format_chat_context_for_prompt,
         format_knowledge_for_prompt,
         format_dao_proposals_for_prompt,
@@ -3954,6 +3955,10 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
     question = (content or "").strip()
     slug = (slug or "ask-ai").lower().strip() or "ask-ai"
     if not wallet or not question:
+        try:
+            emit_aivm_thinking(socketio, slug, done=True)
+        except Exception:
+            pass
         return
 
     client = _get_aivm_client()
@@ -3962,6 +3967,10 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
         conn = get_db()
         if not client:
             # Fail-closed: stay quiet (channel still works for chat)
+            try:
+                emit_aivm_thinking(socketio, slug, done=True)
+            except Exception:
+                pass
             return
         if (os.environ.get("AIVM_ASK_BOOSTER_ONLY") or "").strip().lower() in ("1", "true", "yes"):
             # Boosting not shipped yet — deny clearly when flag flipped on
@@ -4097,6 +4106,10 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
             pass
     except Exception as e:
         print(f"  [ask-ai] worker failed: {e}", flush=True)
+        try:
+            emit_aivm_thinking(socketio, slug, done=True)
+        except Exception:
+            pass
     finally:
         try:
             if conn is not None:
