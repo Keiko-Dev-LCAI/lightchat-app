@@ -243,6 +243,21 @@ body {
   }
   .channel-rail-user .cru-icon-btn:hover { color: var(--text); background: var(--purple-glow); }
   .comm-discord > .comm-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  /* Discord-style right members rail (desktop) */
+  .members-rail {
+    width: 240px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: rgba(0,0,0,0.22);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .members-rail-backdrop { display: none !important; }
+  .members-rail-close { display: none !important; }
+  .members-toggle-btn { display: none !important; }
   #tab-genchat.tab.active {
     display: flex;
     flex-direction: column;
@@ -339,6 +354,30 @@ body {
     padding: 2px 10px 0 !important;
   }
   .mobile-chan-btn { display: inline-flex !important; }
+  .members-toggle-btn { display: inline-flex !important; }
+  /* Members rail = overlay drawer on mobile (don't shift chat layout) */
+  .members-rail {
+    display: none;
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: min(280px, 85vw);
+    z-index: 880;
+    border-left: 1px solid var(--border);
+    background: var(--card, #1e1f22);
+    flex-direction: column;
+    box-shadow: -12px 0 40px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .members-rail.open { display: flex; }
+  .members-rail-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 879;
+  }
+  .members-rail-backdrop.open { display: block; }
+  .members-rail-close { display: inline-flex !important; }
 
   /* Compact chrome — reclaim chat height */
   .mobile-header {
@@ -2505,6 +2544,7 @@ body {
             <span id="genchat-channel-chip" style="font-size:12px;font-weight:700;color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#gen-chat</span>
             <button type="button" id="genchat-pins-btn" class="comm-gif-btn" onclick="openPinsSheet()" title="Pinned posts" style="height:28px;padding:0 8px;font-size:14px!important;position:relative;flex-shrink:0">📌<span id="genchat-pins-count" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;border-radius:7px;background:var(--lc-primary,#5B4BFF);color:#fff;font-size:9px;font-weight:800;line-height:14px;text-align:center;padding:0 3px">0</span></button>
             <span style="flex:1"></span>
+            <button type="button" class="comm-gif-btn members-toggle-btn" id="members-toggle-btn" onclick="toggleMembersRail()" title="Members" aria-label="Members" style="height:28px;padding:0 8px;font-size:14px!important;flex-shrink:0">👥</button>
             <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
           <div class="comm-input-row">
@@ -2522,8 +2562,97 @@ body {
           </div>
         </div>
       </div>
+      <aside class="members-rail" id="members-rail" aria-label="Online members">
+        <div class="members-rail-head">
+          <div class="members-rail-head-text">
+            <div class="members-rail-title" id="members-rail-title">MEMBERS — 0</div>
+            <div class="members-rail-online-sub" id="members-rail-online-sub"></div>
+          </div>
+          <button type="button" class="members-rail-close" onclick="closeMembersRail()" aria-label="Close members">✕</button>
+        </div>
+        <div class="members-rail-scroll" id="members-rail-list"></div>
+      </aside>
+      <div class="members-rail-backdrop" id="members-rail-backdrop" onclick="closeMembersRail()"></div>
       </div><!-- /comm-discord -->
     </div>
+    <style>
+    /* Members right-rail shared chrome (layout in desktop/mobile media queries) */
+    .members-rail-head {
+      flex-shrink: 0; padding: 14px 12px 10px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .members-rail-head-text { flex: 1; min-width: 0; }
+    .members-rail-title {
+      font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text2);
+    }
+    .members-rail-online-sub { font-size: 11px; color: var(--text2); margin-top: 4px; opacity: 0.85; }
+    .members-rail-close {
+      appearance: none; border: none; background: transparent; color: var(--text2);
+      font-size: 16px; cursor: pointer; padding: 2px 6px; line-height: 1; display: none;
+    }
+    .members-rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 16px; }
+    .members-rail-group {
+      font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--text2); padding: 12px 8px 4px;
+    }
+    .members-rail-row {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      appearance: none; border: none; background: transparent; color: var(--text);
+      font-family: inherit; text-align: left; padding: 6px 8px; border-radius: 8px; cursor: pointer;
+    }
+    .members-rail-row:hover { background: var(--purple-glow); }
+    .members-rail-dot { width: 8px; height: 8px; border-radius: 50%; background: #23a559; flex-shrink: 0; }
+    .members-rail-av {
+      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+      background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
+      display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+    }
+    .members-rail-av img { width: 100%; height: 100%; object-fit: cover; }
+    .members-rail-name {
+      flex: 1; min-width: 0; font-size: 14px; font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .members-rail-role { font-size: 11px; font-weight: 700; flex-shrink: 0; margin-left: 4px; }
+    .members-rail-role.owner, .members-rail-role.admin { color: #f0b232; }
+    .members-rail-role.mod { color: #5B4BFF; }
+    .members-rail-role.helper { color: #23a559; }
+    .members-rail-empty { padding: 16px 10px; font-size: 13px; color: var(--text2); text-align: center; }
+    .members-toggle-btn { display: none; align-items: center; justify-content: center; }
+    #member-action-menu {
+      display: none; position: fixed; z-index: 970; min-width: 180px;
+      background: rgba(18,18,38,0.98); border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: 0 10px 36px rgba(0,0,0,0.55); padding: 6px; flex-direction: column; gap: 2px;
+    }
+    #member-action-menu.open { display: flex; }
+    #member-action-menu button {
+      background: none; border: none; color: var(--text); text-align: left; padding: 12px 14px;
+      font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer; font-family: inherit;
+    }
+    #member-action-menu button:hover { background: var(--purple-glow); }
+    #member-profile-pop {
+      display: none; position: fixed; z-index: 971; width: min(300px, 92vw);
+      background: rgba(18,18,38,0.98); border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.55); padding: 16px;
+    }
+    #member-profile-pop.open { display: block; }
+    #member-profile-pop .mp-top { display: flex; gap: 12px; align-items: flex-start; }
+    #member-profile-pop .mp-av {
+      width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
+      display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800;
+    }
+    #member-profile-pop .mp-av img { width: 100%; height: 100%; object-fit: cover; }
+    #member-profile-pop .mp-name { font-size: 17px; font-weight: 800; color: #fff; }
+    #member-profile-pop .mp-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+    #member-profile-pop .mp-bio { font-size: 13px; color: var(--text); margin-top: 12px; line-height: 1.45; }
+    #member-profile-pop .mp-close {
+      appearance: none; border: none; background: transparent; color: var(--text2);
+      font-size: 16px; cursor: pointer; margin-left: auto; padding: 2px 4px;
+    }
+    .comm-av.comm-av-clickable { cursor: pointer; }
+    .comm-av.comm-av-clickable:hover { outline: 2px solid rgba(91,75,255,0.45); outline-offset: 1px; }
+    </style>
 
     <!-- Channels (mobile list; desktop uses left rail) -->
     <div class="tab" id="tab-channels">
@@ -3523,6 +3652,27 @@ body {
   <button type="button" class="danger" onclick="modMemberAction('ban')">🚫 Ban from chat</button>
   <button type="button" onclick="modMemberAction('unban')">♻️ Remove ban</button>
   <button type="button" onclick="closeModMemberMenu()">✕ Close</button>
+</div>
+
+<!-- Member list / avatar tap menu (Message · Friend · Profile · Mod View) -->
+<div id="member-action-menu" role="menu" aria-label="Member actions">
+  <div id="member-action-title" style="padding:10px 14px 6px;font-size:12px;color:var(--text2);font-weight:700"></div>
+  <button type="button" id="member-action-msg" onclick="memberActionMessage()">💬 Message</button>
+  <button type="button" id="member-action-friend" onclick="memberActionAddFriend()">➕ Add Friend</button>
+  <button type="button" id="member-action-profile" onclick="memberActionViewProfile()">👤 View Profile</button>
+  <button type="button" id="member-action-mod" onclick="memberActionModView()" style="display:none">🛡 Mod View</button>
+  <button type="button" onclick="closeMemberActionMenu()">✕ Close</button>
+</div>
+<div id="member-profile-pop" role="dialog" aria-label="Member profile">
+  <div class="mp-top">
+    <div class="mp-av" id="member-profile-av">?</div>
+    <div style="flex:1;min-width:0">
+      <div class="mp-name" id="member-profile-name">—</div>
+      <div class="mp-sub" id="member-profile-sub"></div>
+    </div>
+    <button type="button" class="mp-close" onclick="closeMemberProfilePop()" aria-label="Close">✕</button>
+  </div>
+  <div class="mp-bio" id="member-profile-bio" style="display:none"></div>
 </div>
 
 <!-- ── VIDEO CALL OVERLAYS ── -->
@@ -6159,6 +6309,8 @@ function switchTab(name, opts) {
       loadCommunityChannel(opts.slug || 'general');
     }
     showScamWarnIfNeeded();
+    try { loadDirectory(); } catch (e) {}
+    try { ensureMembersRailPoll(); } catch (e) {}
   }
   if (name === 'tickets') { loadTicketsList(); }
   if (name === 'channels') { loadChannelsList(); }
@@ -9767,6 +9919,9 @@ function displayRoleLabel(role) {
   return r === 'member' ? '' : r;
 }
 let _dirMembers = [];
+let _dirTotalCount = 0;
+let _membersRailPollTimer = null;
+let _memberActionCtx = null;
 let _activeCommSlug = 'general';
 /** Live channels that use WebRTC P2P mesh (same as Gen Chat). */
 const P2P_CHAT_CHANNELS = { general: true, 'off-topic': true, dev: true, nodes: true, mods: true };
@@ -11281,7 +11436,13 @@ function appendCommunityMessage(m) {
   el.setAttribute('data-msg-id', m.id || '');
   // Discord-like: avatar · username · time · hover bar · body · reaction pills
   const staff = typeof isCommStaff === 'function' && isCommStaff();
-  el.innerHTML = '<div class="comm-av">' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
+  const sw = String(m.sender_wallet || '').toLowerCase();
+  const avClick = (!isBot && sw)
+    ? ('comm-av comm-av-clickable" role="button" tabindex="0" data-wallet="' + escapeHtml(sw) +
+      '" data-name="' + whoName + '" data-role="' + escapeHtml(String(m.role || 'member').toLowerCase()) +
+      '" onclick="onCommAvatarClick(event)"')
+    : 'comm-av"';
+  el.innerHTML = '<div class="' + avClick + '>' + av + '</div><div class="comm-bubble" ' + _commMsgAttr(m) + '>' +
     _commMsgHoverBar(m) +
     ((isBot && !staff) ? '' : _commMsgMenuBtn(m)) +
     '<div class="who">' + whoName + role + timeBit + '</div>' +
@@ -11318,8 +11479,12 @@ function renderCommunityMessages(msgs) {
       ? `<span class="comm-msg-time" title="${tip}">${escapeHtml(when)}${m.edited ? ' · edited' : ''}</span>`
       : '';
     const staff = typeof isCommStaff === 'function' && isCommStaff();
+    const sw = String(m.sender_wallet || '').toLowerCase();
+    const avAttrs = (!isBot && sw)
+      ? ` class="comm-av comm-av-clickable" role="button" tabindex="0" data-wallet="${escapeHtml(sw)}" data-name="${who}" data-role="${escapeHtml(String(m.role || 'member').toLowerCase())}" onclick="onCommAvatarClick(event)"`
+      : ' class="comm-av"';
     return `<div class="comm-msg${cont ? ' comm-msg--cont' : ''}" data-msg-id="${escapeHtml(m.id||'')}">
-      <div class="comm-av">${av}</div>
+      <div${avAttrs}>${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${_commMsgHoverBar(m)}
         ${(isBot && !staff) ? '' : _commMsgMenuBtn(m)}
@@ -11339,7 +11504,7 @@ function bindCommMsgTouch(el) {
   el._lcTouchBound = true;
   // Mobile: tap message to toggle Discord-style action bar
   el.addEventListener('click', function (e) {
-    if (e.target.closest && (e.target.closest('.comm-msg-hoverbar') || e.target.closest('.comm-react-pill') || e.target.closest('a') || e.target.closest('button'))) return;
+    if (e.target.closest && (e.target.closest('.comm-msg-hoverbar') || e.target.closest('.comm-react-pill') || e.target.closest('a') || e.target.closest('button') || e.target.closest('.comm-av-clickable'))) return;
     const on = el.classList.contains('show-actions');
     document.querySelectorAll('.comm-msg.show-actions').forEach(function (n) { n.classList.remove('show-actions'); });
     if (!on) el.classList.add('show-actions');
@@ -11769,6 +11934,16 @@ document.addEventListener('click', function (e) {
   const modMenu = document.getElementById('mod-member-menu');
   if (modMenu && modMenu.classList.contains('open')) {
     if (!modMenu.contains(e.target)) closeModMemberMenu();
+  }
+  const memMenu = document.getElementById('member-action-menu');
+  if (memMenu && memMenu.classList.contains('open')) {
+    if (!memMenu.contains(e.target) && !(e.target && e.target.closest && (e.target.closest('.members-rail-row') || e.target.closest('.comm-av-clickable')))) {
+      closeMemberActionMenu();
+    }
+  }
+  const memPop = document.getElementById('member-profile-pop');
+  if (memPop && memPop.classList.contains('open')) {
+    if (!memPop.contains(e.target)) closeMemberProfilePop();
   }
 });
 
@@ -13028,6 +13203,7 @@ async function loadDirectory() {
     const r = await fetch(BACKEND + '/api/community/directory');
     const j = await r.json();
     _dirMembers = j.members || [];
+    _dirTotalCount = (typeof j.count === 'number') ? j.count : _dirMembers.length;
     // Merge authoritative live presence snapshot (Invisible excluded)
     try {
       const pr = await fetch(BACKEND + '/api/community/presence');
@@ -13072,6 +13248,8 @@ async function loadDirectory() {
     // Re-announce so server PRESENCE (and other clients) catch up
     try { announceMyPresence(); } catch (e) {}
     filterDirectory();
+    try { renderMembersRail(); } catch (e) {}
+    try { ensureMembersRailPoll(); } catch (e) {}
   } catch(e) { console.warn(e); }
 }
 
@@ -13391,6 +13569,238 @@ function filterDirectory() {
     html = '<div class="empty-text" style="padding:24px;text-align:center">No members yet — connect and join</div>';
   }
   el.innerHTML = html;
+  try { renderMembersRail(); } catch (e) {}
+}
+
+/* ── Right-side members rail (online-only + total count) ── */
+const _MEMBERS_RAIL_GROUP = {
+  owner: 'OWNER',
+  admin: 'ADMINS',
+  mod: 'MODS',
+  helper: 'HELPERS',
+  member: 'MEMBERS'
+};
+
+function ensureMembersRailPoll() {
+  if (_membersRailPollTimer) return;
+  _membersRailPollTimer = setInterval(function () {
+    try { loadDirectory(); } catch (e) {}
+  }, 30000);
+}
+
+function toggleMembersRail() {
+  const rail = document.getElementById('members-rail');
+  if (!rail) return;
+  if (rail.classList.contains('open')) closeMembersRail();
+  else openMembersRail();
+}
+
+function openMembersRail() {
+  document.getElementById('members-rail')?.classList.add('open');
+  document.getElementById('members-rail-backdrop')?.classList.add('open');
+  try { renderMembersRail(); } catch (e) {}
+  try { if (!_dirMembers.length) loadDirectory(); } catch (e) {}
+}
+
+function closeMembersRail() {
+  document.getElementById('members-rail')?.classList.remove('open');
+  document.getElementById('members-rail-backdrop')?.classList.remove('open');
+}
+
+function renderMembersRail() {
+  const listEl = document.getElementById('members-rail-list');
+  const titleEl = document.getElementById('members-rail-title');
+  const subEl = document.getElementById('members-rail-online-sub');
+  if (!listEl) return;
+  const total = _dirTotalCount || (_dirMembers ? _dirMembers.length : 0);
+  if (titleEl) titleEl.textContent = 'MEMBERS — ' + total;
+  // Prefer already role-sorted online walk (directory order / _dirRoleSort)
+  const online = (_dirMembers || []).filter(function (m) { return !!m.online; }).slice().sort(_dirRoleSort);
+  if (subEl) {
+    subEl.textContent = online.length ? (online.length + ' online') : '';
+  }
+  if (!online.length) {
+    listEl.innerHTML = '<div class="members-rail-empty">No one online right now.</div>';
+    return;
+  }
+  let html = '';
+  let lastRole = null;
+  online.forEach(function (m) {
+    const role = (m.role || 'member').toLowerCase();
+    const group = _MEMBERS_RAIL_GROUP[role] || 'MEMBERS';
+    if (role !== lastRole) {
+      html += '<div class="members-rail-group">' + group + '</div>';
+      lastRole = role;
+    }
+    html += _membersRailRow(m);
+  });
+  listEl.innerHTML = html;
+}
+
+function _membersRailRow(m) {
+  const w = (m.wallet || '').toLowerCase();
+  const dn = stripAt(m.display_name || m.handle || shortenWallet(w) || '?');
+  const letter = (dn || '?').charAt(0).toUpperCase();
+  const av = m.has_avatar
+    ? '<img src="' + BACKEND + '/api/community/avatar/' + escapeHtml(w) + '" alt="">'
+    : escapeHtml(letter);
+  const role = (m.role || 'member').toLowerCase();
+  const roleLbl = displayRoleLabel(role);
+  const roleHtml = (role === 'owner' || role === 'admin' || role === 'mod' || role === 'helper') && roleLbl
+    ? '<span class="members-rail-role ' + escapeHtml(role) + '">' + escapeHtml(roleLbl) + '</span>'
+    : '';
+  return '<button type="button" class="members-rail-row" data-wallet="' + escapeHtml(w) +
+    '" data-name="' + escapeHtml(dn) + '" data-role="' + escapeHtml(role) +
+    '" onclick="onMembersRailRowClick(event)">' +
+    '<span class="members-rail-dot" title="Online" aria-hidden="true"></span>' +
+    '<span class="members-rail-av">' + av + '</span>' +
+    '<span class="members-rail-name">' + escapeHtml(dn) + '</span>' +
+    roleHtml +
+    '</button>';
+}
+
+function onMembersRailRowClick(ev) {
+  const btn = ev && ev.currentTarget;
+  if (!btn) return;
+  openMemberActionMenu(ev, btn.getAttribute('data-wallet'), btn.getAttribute('data-name'), btn.getAttribute('data-role'));
+}
+
+function onCommAvatarClick(ev) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  const el = ev && (ev.currentTarget || (ev.target && ev.target.closest && ev.target.closest('.comm-av-clickable')));
+  if (!el) return;
+  openMemberActionMenu(ev, el.getAttribute('data-wallet'), el.getAttribute('data-name'), el.getAttribute('data-role'));
+}
+
+function openMemberActionMenu(ev, targetWallet, displayName, role) {
+  if (ev && ev.stopPropagation) ev.stopPropagation();
+  if (ev && ev.preventDefault) ev.preventDefault();
+  const w = String(targetWallet || '').toLowerCase();
+  if (!w || w.indexOf('bot:') === 0) return;
+  closeMemberProfilePop();
+  closeCommMsgMenu();
+  _memberActionCtx = {
+    wallet: w,
+    name: displayName || shortenWallet(w),
+    role: (role || 'member').toLowerCase(),
+    member: (_dirMembers || []).find(function (m) { return (m.wallet || '').toLowerCase() === w; }) || null
+  };
+  const menu = document.getElementById('member-action-menu');
+  const title = document.getElementById('member-action-title');
+  if (title) title.textContent = _memberActionCtx.name;
+  const isSelf = !!(wallet && w === wallet.toLowerCase());
+  const msgBtn = document.getElementById('member-action-msg');
+  const friendBtn = document.getElementById('member-action-friend');
+  if (msgBtn) msgBtn.style.display = isSelf ? 'none' : '';
+  if (friendBtn) friendBtn.style.display = isSelf ? 'none' : '';
+  const modBtn = document.getElementById('member-action-mod');
+  if (modBtn) {
+    let showMod = false;
+    if (isCommStaff() && !isSelf) {
+      const myRole = (communityRole || '').toLowerCase();
+      const theirRole = _memberActionCtx.role;
+      if (myRole === 'owner' || myRole === 'admin') showMod = true;
+      else if (myRole === 'mod' && theirRole !== 'owner' && theirRole !== 'admin') showMod = true;
+    }
+    modBtn.style.display = showMod ? '' : 'none';
+  }
+  if (!menu) return;
+  menu.classList.add('open');
+  const mw = Math.max(menu.offsetWidth || 180, 180);
+  const mh = Math.max(menu.offsetHeight || 160, 120);
+  let x = (ev && ev.clientX) || 16;
+  let y = (ev && ev.clientY) || 16;
+  x = Math.max(8, Math.min(x, window.innerWidth - mw - 8));
+  if (y + mh > window.innerHeight - 8) y = Math.max(8, window.innerHeight - mh - 8);
+  else y = Math.max(8, y);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+
+function closeMemberActionMenu() {
+  document.getElementById('member-action-menu')?.classList.remove('open');
+  _memberActionCtx = null;
+}
+
+function memberActionMessage() {
+  const ctx = _memberActionCtx;
+  closeMemberActionMenu();
+  if (!ctx || !ctx.wallet) return;
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  try { switchTab('contacts'); } catch (e) {}
+  openChat(ctx.wallet, ctx.name);
+}
+
+function memberActionAddFriend() {
+  const ctx = _memberActionCtx;
+  closeMemberActionMenu();
+  if (!ctx || !ctx.wallet) return;
+  if (!wallet) { showToast('Connect your wallet first'); return; }
+  addP2PFriend(ctx.wallet, ctx.name || '');
+}
+
+function memberActionViewProfile() {
+  const ctx = _memberActionCtx;
+  closeMemberActionMenu();
+  if (!ctx || !ctx.wallet) return;
+  openMemberProfilePop(ctx);
+}
+
+function memberActionModView() {
+  const ctx = _memberActionCtx;
+  closeMemberActionMenu();
+  if (!ctx || !ctx.wallet) return;
+  openModMemberMenu({ clientX: window.innerWidth - 40, clientY: 80 }, ctx.wallet, ctx.name);
+}
+
+function openMemberProfilePop(ctx) {
+  const pop = document.getElementById('member-profile-pop');
+  if (!pop || !ctx) return;
+  const m = ctx.member || (_dirMembers || []).find(function (x) {
+    return (x.wallet || '').toLowerCase() === ctx.wallet;
+  }) || {};
+  const dn = stripAt(m.display_name || ctx.name || '?');
+  const letter = (dn || '?').charAt(0).toUpperCase();
+  const avEl = document.getElementById('member-profile-av');
+  if (avEl) {
+    if (m.has_avatar) {
+      avEl.innerHTML = '<img src="' + BACKEND + '/api/community/avatar/' + escapeHtml(ctx.wallet) + '" alt="">';
+    } else {
+      avEl.textContent = letter;
+    }
+  }
+  const nameEl = document.getElementById('member-profile-name');
+  if (nameEl) nameEl.textContent = dn;
+  const roleLbl = displayRoleLabel(m.role || ctx.role) || (m.role || ctx.role || 'member');
+  const handle = String(m.handle || '').replace(/^@/, '');
+  const bits = [];
+  if (handle) bits.push('@' + handle);
+  if (roleLbl) bits.push(roleLbl);
+  if (!m.hide_wallet) bits.push(shortenWallet(ctx.wallet));
+  const subEl = document.getElementById('member-profile-sub');
+  if (subEl) subEl.textContent = bits.join(' · ');
+  const bioEl = document.getElementById('member-profile-bio');
+  if (bioEl) {
+    const bio = (m.bio || '').trim();
+    if (bio) {
+      bioEl.style.display = '';
+      bioEl.textContent = bio;
+    } else {
+      bioEl.style.display = 'none';
+      bioEl.textContent = '';
+    }
+  }
+  pop.classList.add('open');
+  const pw = Math.max(pop.offsetWidth || 280, 240);
+  const ph = Math.max(pop.offsetHeight || 120, 100);
+  let x = Math.max(12, (window.innerWidth - pw) / 2);
+  let y = Math.max(12, Math.min(120, window.innerHeight - ph - 12));
+  pop.style.left = x + 'px';
+  pop.style.top = y + 'px';
+}
+
+function closeMemberProfilePop() {
+  document.getElementById('member-profile-pop')?.classList.remove('open');
 }
 
 function setMyPresence(mode) {
@@ -13458,8 +13868,10 @@ function bindPresenceSocket(sock) {
         else m.connected = true;
       }
     });
-    if (found) filterDirectory();
-    else loadDirectory();
+    if (found) {
+      filterDirectory();
+      try { renderMembersRail(); } catch (e) {}
+    } else loadDirectory();
   });
   sock.on('auth_ok', function () {
     const mode = window._myPresenceMode
@@ -13477,6 +13889,7 @@ function bindPresenceSocket(sock) {
     if (_dirMembers && wallet) {
       _dirMarkSelfOnline(_dirMembers);
       try { filterDirectory(); } catch (e) {}
+      try { renderMembersRail(); } catch (e) {}
     }
   });
 }
