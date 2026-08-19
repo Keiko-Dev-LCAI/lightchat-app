@@ -887,6 +887,7 @@ def health():
         'aivm_ready': bool(os.environ.get('LIGHTCHAIN_PRIVATE_KEY', '').strip()),
         'job_registry': _AIVM_JOB_REG,
         'knowledge_sources': _knowledge_n,
+        'dao_governor': (os.environ.get('DAO_GOVERNOR_ADDRESS') or _DAO_GOVERNOR_DEFAULT),
         'auth': 'session-v1',
         'db': db_info,
         'media': media_backend_status(),
@@ -3329,6 +3330,271 @@ def api_voice_chat():
     return resp
 
 
+# ── Lightchain Governor proposals (read-only, cache + poll) ──────────────────
+_DAO_GOVERNOR_DEFAULT = "0xD216A0c0050EdC3a9E0449EcFDf178A1652b4b68"
+_DAO_POLL_THREAD = None
+_DAO_POLL_LOCK = threading.Lock()
+
+_DAO_GOVERNOR_ABI = [
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": False, "name": "proposalId", "type": "uint256"},
+            {"indexed": False, "name": "proposer", "type": "address"},
+            {"indexed": False, "name": "targets", "type": "address[]"},
+            {"indexed": False, "name": "values", "type": "uint256[]"},
+            {"indexed": False, "name": "signatures", "type": "string[]"},
+            {"indexed": False, "name": "calldatas", "type": "bytes[]"},
+            {"indexed": False, "name": "voteStart", "type": "uint256"},
+            {"indexed": False, "name": "voteEnd", "type": "uint256"},
+            {"indexed": False, "name": "description", "type": "string"},
+        ],
+        "name": "ProposalCreated",
+        "type": "event",
+    },
+    {
+        "inputs": [{"name": "proposalId", "type": "uint256"}],
+        "name": "state",
+        "outputs": [{"type": "uint8"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "proposalId", "type": "uint256"}],
+        "name": "proposalVotes",
+        "outputs": [
+            {"name": "againstVotes", "type": "uint256"},
+            {"name": "forVotes", "type": "uint256"},
+            {"name": "abstainVotes", "type": "uint256"},
+        ],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "proposalId", "type": "uint256"}],
+        "name": "proposalSnapshot",
+        "outputs": [{"type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "proposalId", "type": "uint256"}],
+        "name": "proposalDeadline",
+        "outputs": [{"type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+]
+
+
+def _dao_governor_address() -> str:
+    from web3 import Web3
+    raw = (os.environ.get("DAO_GOVERNOR_ADDRESS") or _DAO_GOVERNOR_DEFAULT).strip()
+    try:
+        return Web3.to_checksum_address(raw)
+    except Exception:
+        return Web3.to_checksum_address(_DAO_GOVERNOR_DEFAULT)
+
+
+def _dao_web3():
+    """Reuse the same Lightchain RPC as AIVM (public reads — no key)."""
+    from web3 import Web3
+    return Web3(Web3.HTTPProvider(_AIVM_RPC, request_kwargs={"timeout": 45}))
+
+
+def _dao_contract(w3=None):
+    from web3 import Web3
+    w3 = w3 or _dao_web3()
+    return w3, w3.eth.contract(address=_dao_governor_address(), abi=_DAO_GOVERNOR_ABI)
+
+
+def dao_refresh_proposal_live(conn, proposal_id: str) -> dict | None:
+    """Force a live state/votes refresh for one proposal; updates cache."""
+    from community import DAO_TERMINAL_STATES, dao_upsert_proposal, dao_list_proposals
+    try:
+        w3, gov = _dao_contract()
+        pid = int(str(proposal_id))
+        state = int(gov.functions.state(pid).call())
+        against_w, for_w, abstain_w = gov.functions.proposalVotes(pid).call()
+        try:
+            snap = int(gov.functions.proposalSnapshot(pid).call())
+        except Exception:
+            snap = 0
+        try:
+            deadline = int(gov.functions.proposalDeadline(pid).call())
+        except Exception:
+            deadline = 0
+        # Keep existing title/description from cache if present
+        existing = None
+        for r in dao_list_proposals(conn, active_only=False, limit=500):
+            if str(r.get("proposal_id")) == str(proposal_id):
+                existing = r
+                break
+        row = {
+            "proposal_id": str(pid),
+            "short_id": str(pid)[:6],
+            "proposer": (existing or {}).get("proposer") or "",
+            "title": (existing or {}).get("title") or "",
+            "description": (existing or {}).get("description") or "",
+            "state": state,
+            "for_wei": str(for_w),
+            "against_wei": str(against_w),
+            "abstain_wei": str(abstain_w),
+            "snapshot_block": snap,
+            "deadline_block": deadline,
+            "created_at": (existing or {}).get("created_at") or int(time.time()),
+        }
+        dao_upsert_proposal(conn, row)
+        return row
+    except Exception as e:
+        print(f"  [dao] live refresh failed: {e}", flush=True)
+        return None
+
+
+def dao_scan_and_refresh(get_db_fn=None) -> dict:
+    """Incremental ProposalCreated log scan + refresh non-terminal proposal states."""
+    from community import (
+        DAO_TERMINAL_STATES,
+        dao_get_scan_value,
+        dao_set_scan_value,
+        dao_upsert_proposal,
+        dao_list_proposals,
+        init_community_db,
+    )
+    get_db_fn = get_db_fn or get_db
+    init_community_db(get_db_fn)
+    conn = get_db_fn()
+    stats = {"new_logs": 0, "refreshed": 0, "error": None}
+    try:
+        w3, gov = _dao_contract()
+        latest = int(w3.eth.block_number)
+        start_env = (os.environ.get("DAO_SCAN_FROM_BLOCK") or "").strip()
+        last = dao_get_scan_value(conn, "last_scanned_block", "")
+        if last.isdigit():
+            from_block = int(last) + 1
+        elif start_env.isdigit():
+            from_block = int(start_env)
+        else:
+            # First run: look back ~250k blocks (~enough for current proposals)
+            from_block = max(0, latest - 250000)
+        if from_block > latest:
+            from_block = latest
+        topic = "0x" + w3.keccak(
+            text="ProposalCreated(uint256,address,address[],uint256[],string[],bytes[],uint256,uint256,string)"
+        ).hex()
+        if topic.startswith("0x0x"):
+            topic = topic[2:]
+        # Page in chunks (RPC range limits)
+        cursor = from_block
+        chunk = 5000
+        while cursor <= latest:
+            end = min(latest, cursor + chunk - 1)
+            try:
+                logs = w3.eth.get_logs({
+                    "address": _dao_governor_address(),
+                    "fromBlock": cursor,
+                    "toBlock": end,
+                    "topics": [topic],
+                })
+            except Exception as e:
+                # Shrink chunk on range errors
+                if chunk > 500:
+                    chunk = max(500, chunk // 2)
+                    continue
+                stats["error"] = str(e)[:160]
+                print(f"  [dao] get_logs fail {cursor}-{end}: {e}", flush=True)
+                break
+            for lg in logs:
+                try:
+                    ev = gov.events.ProposalCreated().process_log(lg)
+                    args = ev["args"]
+                    pid = int(args["proposalId"])
+                    desc = args.get("description") or ""
+                    title = (desc.split("\n")[0] if desc else "").strip() or f"Proposal {str(pid)[:6]}"
+                    proposer_s = Web3_to_str_addr(args.get("proposer"))
+                    state = int(gov.functions.state(pid).call())
+                    against_w, for_w, abstain_w = gov.functions.proposalVotes(pid).call()
+                    try:
+                        snap = int(gov.functions.proposalSnapshot(pid).call())
+                    except Exception:
+                        snap = int(args.get("voteStart") or 0)
+                    try:
+                        deadline = int(gov.functions.proposalDeadline(pid).call())
+                    except Exception:
+                        deadline = int(args.get("voteEnd") or 0)
+                    dao_upsert_proposal(conn, {
+                        "proposal_id": str(pid),
+                        "short_id": str(pid)[:6],
+                        "proposer": proposer_s,
+                        "title": title,
+                        "description": desc,
+                        "state": state,
+                        "for_wei": str(for_w),
+                        "against_wei": str(against_w),
+                        "abstain_wei": str(abstain_w),
+                        "snapshot_block": snap,
+                        "deadline_block": deadline,
+                    })
+                    stats["new_logs"] += 1
+                except Exception as e:
+                    print(f"  [dao] decode/upsert fail: {e}", flush=True)
+            dao_set_scan_value(conn, "last_scanned_block", str(end))
+            cursor = end + 1
+
+        # Refresh non-terminal cached proposals
+        for r in dao_list_proposals(conn, active_only=False, limit=100):
+            st = int(r.get("state") if r.get("state") is not None else -1)
+            if st in DAO_TERMINAL_STATES:
+                continue
+            if dao_refresh_proposal_live(conn, str(r.get("proposal_id"))):
+                stats["refreshed"] += 1
+        dao_set_scan_value(conn, "last_poll_at", str(int(time.time())))
+        print(f"  [dao] scan ok · new={stats['new_logs']} refreshed={stats['refreshed']} tip={latest}", flush=True)
+    except Exception as e:
+        stats["error"] = str(e)[:200]
+        print(f"  [dao] scan error: {e}", flush=True)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return stats
+
+
+def Web3_to_str_addr(addr) -> str:
+    try:
+        from web3 import Web3
+        return Web3.to_checksum_address(addr)
+    except Exception:
+        return str(addr)
+
+
+def start_dao_poller():
+    """Background ~5min poller. Read-only; fail-open on errors."""
+    global _DAO_POLL_THREAD
+    with _DAO_POLL_LOCK:
+        if _DAO_POLL_THREAD and _DAO_POLL_THREAD.is_alive():
+            return
+
+        def _loop():
+            # Initial delay so boot isn't blocked
+            time.sleep(8)
+            while True:
+                try:
+                    dao_scan_and_refresh(get_db)
+                except Exception as e:
+                    print(f"  [dao] poller tick error: {e}", flush=True)
+                try:
+                    secs = int(os.environ.get("DAO_POLL_SECONDS", "300") or 300)
+                except Exception:
+                    secs = 300
+                time.sleep(max(60, secs))
+
+        _DAO_POLL_THREAD = threading.Thread(target=_loop, daemon=True, name="dao-poller")
+        _DAO_POLL_THREAD.start()
+        print("  [dao] poller started", flush=True)
+
+
 # ── #ask-ai channel bot (AIVM + optional knowledge RAG) ───────────────────────
 def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: str = "", slug: str = "ask-ai"):
     """Background: retrieve context → run_inference → post Lightchain AI reply."""
@@ -3336,6 +3602,11 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
         ask_ai_rate_ok,
         format_chat_context_for_prompt,
         format_knowledge_for_prompt,
+        format_dao_proposals_for_prompt,
+        dao_question_looks_governance,
+        dao_list_proposals,
+        dao_find_proposal,
+        dao_get_scan_value,
         post_channel_bot_message,
         search_knowledge,
         search_messages_for_context,
@@ -3381,6 +3652,43 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
         knowledge_hits = search_knowledge(conn, question, limit=5)
         knowledge_block = format_knowledge_for_prompt(knowledge_hits, max_chars=2200)
 
+        # Live DAO proposals (read-only cache; fail-open if empty/stale)
+        dao_block = ""
+        if dao_question_looks_governance(question):
+            try:
+                # Prefer a specific match; else list active
+                qlow = (question or "").lower()
+                specific = dao_find_proposal(conn, question)
+                want_one = bool(
+                    specific
+                    and (
+                        re.search(r"#\d{4,}", question or "")
+                        or "explain" in qlow
+                        or "about" in qlow
+                        or "how's" in qlow
+                        or "how is" in qlow
+                    )
+                )
+                if want_one and specific:
+                    live = dao_refresh_proposal_live(conn, str(specific.get("proposal_id")))
+                    row = live or specific
+                    dao_block = format_dao_proposals_for_prompt([row], full=True, max_chars=3500)
+                else:
+                    active = dao_list_proposals(conn, active_only=True, limit=8)
+                    if not active:
+                        active = dao_list_proposals(conn, active_only=False, limit=8)
+                    dao_block = format_dao_proposals_for_prompt(active, full=False, max_chars=2800)
+                if not dao_block:
+                    last = dao_get_scan_value(conn, "last_poll_at", "")
+                    dao_block = (
+                        "No cached governance proposals yet "
+                        "(poller may still be warming up)."
+                        + (f" last_poll={last}" if last else "")
+                    )
+            except Exception as e:
+                print(f"  [ask-ai] dao context error: {e}", flush=True)
+                dao_block = "Governance data temporarily unavailable — answer without inventing proposal details."
+
         session_id = f"ask-ai:{wallet}"
         conv = _get_conversation_context(session_id)
 
@@ -3388,8 +3696,13 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
             "You are Lightchain AI, the assistant in this community's #ask-ai channel.",
             "Answer using the reference material below when relevant. If the docs cover it,",
             "explain clearly and mention which source. If you're unsure, say so — don't invent.",
+            "For governance questions, use ONLY the on-chain proposal data provided — never invent tallies or titles.",
             "",
         ]
+        if dao_block:
+            prompt_parts.append("Reference — Lightchain governance (on-chain):")
+            prompt_parts.append(dao_block)
+            prompt_parts.append("")
         if knowledge_block:
             prompt_parts.append("Reference — Lightchain docs:")
             prompt_parts.append(knowledge_block)
@@ -3448,6 +3761,10 @@ try:
     set_ask_ai_runner(_ask_ai_worker)
     _ks = knowledge_sources_from_env()
     print(f"  [ask-ai] runner registered · knowledge sources: {len(_ks)}")
+    try:
+        start_dao_poller()
+    except Exception as _dao_err:
+        print(f"  [dao] poller failed to start: {_dao_err}")
 except Exception as _comm_err:
     print(f"  [community] FAILED to load: {_comm_err}")
 

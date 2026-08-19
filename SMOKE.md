@@ -19,6 +19,8 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 | 10 | **#off-topic**: send a message | ☐ |
 | 11 | **Log off** → Connect Wallet shows; reconnect works | ☐ |
 | 12 | `GET /health` → `status=ok`, `media.ready=true`, `db.exists=true` | ☐ |
+| 13 | **#ask-ai**: "what proposals are live?" → lists real DAO titles/tallies (matches dao.lightchain.ai) | ☐ |
+| 14 | **#ask-ai**: "explain #375517" or Safety Framework → grounded description + For/Against LCAI | ☐ |
 
 ### Notes
 
