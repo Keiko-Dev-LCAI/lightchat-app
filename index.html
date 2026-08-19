@@ -1424,6 +1424,70 @@ body {
 }
 #comm-msg-menu button:hover { background:var(--purple-glow); }
 #comm-msg-menu button.danger { color:#ff6b6b; }
+
+/* ── Mod View panel (staff) ── */
+#modview-panel {
+  display:none; position:fixed; top:0; right:0; bottom:0; width:min(400px,100%);
+  background:var(--card); border-left:1px solid var(--border); z-index:920;
+  flex-direction:column; box-shadow:-12px 0 40px rgba(0,0,0,0.45);
+}
+#modview-panel.open { display:flex; }
+#modview-backdrop {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:919;
+}
+#modview-backdrop.open { display:block; }
+.modview-head {
+  display:flex; align-items:flex-start; gap:12px; padding:16px 16px 12px;
+  border-bottom:1px solid var(--border);
+}
+.modview-av {
+  width:56px; height:56px; border-radius:50%; flex-shrink:0; overflow:hidden;
+  background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary));
+  display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800;
+}
+.modview-av img { width:100%; height:100%; object-fit:cover; }
+.modview-head-meta { flex:1; min-width:0; }
+.modview-name { font-size:18px; font-weight:800; color:#fff; }
+.modview-role { font-size:12px; font-weight:700; color:var(--lc-secondary); text-transform:uppercase; margin-top:2px; }
+.modview-wallet { font-size:12px; color:var(--text2); margin-top:4px; word-break:break-all; }
+.modview-close {
+  appearance:none; border:none; background:transparent; color:var(--text2);
+  font-size:20px; cursor:pointer; padding:4px 8px;
+}
+.modview-body { flex:1; overflow-y:auto; padding:12px 16px 24px; }
+.modview-sec { margin-bottom:16px; }
+.modview-sec-title {
+  font-size:11px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--text2); margin-bottom:8px;
+}
+.modview-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.modview-stat {
+  background:rgba(0,0,0,0.22); border:1px solid var(--border); border-radius:10px;
+  padding:12px 8px; text-align:center; cursor:pointer;
+}
+.modview-stat:hover { border-color:var(--lc-primary); }
+.modview-stat .n { font-size:20px; font-weight:800; color:#fff; }
+.modview-stat .l { font-size:11px; color:var(--text2); margin-top:2px; }
+.modview-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.modview-actions button {
+  appearance:none; border:1px solid var(--border); background:var(--bg); color:var(--text);
+  border-radius:10px; padding:10px 12px; font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit;
+}
+.modview-actions button.danger { color:#ff6b6b; border-color:rgba(255,107,107,0.35); }
+.modview-actions button:disabled { opacity:0.45; cursor:not-allowed; }
+.modview-history { list-style:none; margin:0; padding:0; }
+.modview-history li {
+  padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);
+  font-size:13px; color:var(--text); line-height:1.4;
+}
+.modview-history .mh-meta { font-size:11px; color:var(--text2); margin-bottom:4px; }
+.modview-role-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.modview-role-row select {
+  flex:1; min-width:120px; background:var(--bg); border:1px solid var(--border);
+  color:var(--text); border-radius:10px; padding:10px 12px; font-family:inherit; font-size:13px;
+}
+
 #mod-member-menu {
   display:none; position:fixed; z-index:960; min-width:200px;
   background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
@@ -1699,6 +1763,70 @@ body {
 }
 #comm-msg-menu button:hover { background:var(--purple-glow); }
 #comm-msg-menu button.danger { color:#ff6b6b; }
+
+/* ── Mod View panel (staff) ── */
+#modview-panel {
+  display:none; position:fixed; top:0; right:0; bottom:0; width:min(400px,100%);
+  background:var(--card); border-left:1px solid var(--border); z-index:920;
+  flex-direction:column; box-shadow:-12px 0 40px rgba(0,0,0,0.45);
+}
+#modview-panel.open { display:flex; }
+#modview-backdrop {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:919;
+}
+#modview-backdrop.open { display:block; }
+.modview-head {
+  display:flex; align-items:flex-start; gap:12px; padding:16px 16px 12px;
+  border-bottom:1px solid var(--border);
+}
+.modview-av {
+  width:56px; height:56px; border-radius:50%; flex-shrink:0; overflow:hidden;
+  background:linear-gradient(135deg,var(--lc-primary),var(--lc-secondary));
+  display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:800;
+}
+.modview-av img { width:100%; height:100%; object-fit:cover; }
+.modview-head-meta { flex:1; min-width:0; }
+.modview-name { font-size:18px; font-weight:800; color:#fff; }
+.modview-role { font-size:12px; font-weight:700; color:var(--lc-secondary); text-transform:uppercase; margin-top:2px; }
+.modview-wallet { font-size:12px; color:var(--text2); margin-top:4px; word-break:break-all; }
+.modview-close {
+  appearance:none; border:none; background:transparent; color:var(--text2);
+  font-size:20px; cursor:pointer; padding:4px 8px;
+}
+.modview-body { flex:1; overflow-y:auto; padding:12px 16px 24px; }
+.modview-sec { margin-bottom:16px; }
+.modview-sec-title {
+  font-size:11px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
+  color:var(--text2); margin-bottom:8px;
+}
+.modview-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.modview-stat {
+  background:rgba(0,0,0,0.22); border:1px solid var(--border); border-radius:10px;
+  padding:12px 8px; text-align:center; cursor:pointer;
+}
+.modview-stat:hover { border-color:var(--lc-primary); }
+.modview-stat .n { font-size:20px; font-weight:800; color:#fff; }
+.modview-stat .l { font-size:11px; color:var(--text2); margin-top:2px; }
+.modview-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.modview-actions button {
+  appearance:none; border:1px solid var(--border); background:var(--bg); color:var(--text);
+  border-radius:10px; padding:10px 12px; font-size:13px; font-weight:700; cursor:pointer;
+  font-family:inherit;
+}
+.modview-actions button.danger { color:#ff6b6b; border-color:rgba(255,107,107,0.35); }
+.modview-actions button:disabled { opacity:0.45; cursor:not-allowed; }
+.modview-history { list-style:none; margin:0; padding:0; }
+.modview-history li {
+  padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);
+  font-size:13px; color:var(--text); line-height:1.4;
+}
+.modview-history .mh-meta { font-size:11px; color:var(--text2); margin-bottom:4px; }
+.modview-role-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.modview-role-row select {
+  flex:1; min-width:120px; background:var(--bg); border:1px solid var(--border);
+  color:var(--text); border-radius:10px; padding:10px 12px; font-family:inherit; font-size:13px;
+}
+
 #mod-member-menu {
   display:none; position:fixed; z-index:960; min-width:200px;
   background:rgba(18,18,38,0.98); border:1px solid var(--border); border-radius:14px;
@@ -3296,6 +3424,7 @@ body {
   <button type="button" id="comm-msg-pin-btn" onclick="commMsgPinToggle()">📌 Pin</button>
   <button type="button" id="comm-msg-edit-btn" onclick="commMsgEdit()">✏️ Edit</button>
   <button type="button" id="comm-msg-save-btn" onclick="commMsgSave()">⬇️ Save</button>
+  <button type="button" id="comm-msg-modview-btn" onclick="commMsgOpenModView()" style="display:none">👁 Mod View</button>
   <button type="button" class="danger" id="comm-msg-del-btn" onclick="commMsgDelete()">🗑 Delete</button>
   <button type="button" onclick="closeCommMsgMenu()">✕ Close</button>
 </div>
@@ -3320,9 +3449,66 @@ body {
   <button type="button" title="More emoji &amp; custom" onclick="quickReactOpenFull()" style="font-size:14px;font-weight:700">＋</button>
 </div>
 
+
+<div id="modview-backdrop" onclick="closeModView()"></div>
+<div id="modview-panel" aria-label="Mod View">
+  <div class="modview-head">
+    <div class="modview-av" id="modview-av">?</div>
+    <div class="modview-head-meta">
+      <div class="modview-name" id="modview-name">—</div>
+      <div class="modview-role" id="modview-role"></div>
+      <div class="modview-wallet" id="modview-wallet"></div>
+    </div>
+    <button type="button" class="modview-close" onclick="closeModView()" aria-label="Close">✕</button>
+  </div>
+  <div class="modview-body">
+    <div class="modview-sec">
+      <div class="modview-sec-title">Server activity (Gen Chat)</div>
+      <div class="modview-stats">
+        <button type="button" class="modview-stat" onclick="modViewShowHistory()" title="Recent messages">
+          <div class="n" id="modview-stat-msgs">0</div>
+          <div class="l">Messages</div>
+        </button>
+        <div class="modview-stat" style="cursor:default">
+          <div class="n" id="modview-stat-links">0</div>
+          <div class="l">Links</div>
+        </div>
+        <div class="modview-stat" style="cursor:default">
+          <div class="n" id="modview-stat-media">0</div>
+          <div class="l">Media</div>
+        </div>
+      </div>
+    </div>
+    <div class="modview-sec">
+      <div class="modview-sec-title">Roles</div>
+      <div class="modview-role-row" id="modview-role-row">
+        <span id="modview-role-current" style="font-weight:700"></span>
+        <select id="modview-role-select" style="display:none">
+          <option value="member">member</option>
+          <option value="helper">helper</option>
+          <option value="mod">mod</option>
+          <option value="admin">admin</option>
+          <option value="owner">owner</option>
+        </select>
+        <button type="button" id="modview-role-save" style="display:none" onclick="modViewSetRole()">Save role</button>
+      </div>
+    </div>
+    <div class="modview-sec">
+      <div class="modview-sec-title">Status</div>
+      <div id="modview-status" style="font-size:13px;color:var(--text2);margin-bottom:10px">—</div>
+      <div class="modview-actions" id="modview-actions"></div>
+    </div>
+    <div class="modview-sec" id="modview-history-sec" style="display:none">
+      <div class="modview-sec-title">Recent Gen Chat</div>
+      <ul class="modview-history" id="modview-history"></ul>
+    </div>
+  </div>
+</div>
+
 <!-- Members moderation (mods + admins) -->
 <div id="mod-member-menu" role="menu" aria-label="Moderate member">
   <div id="mod-member-title" style="padding:10px 14px 6px;font-size:12px;color:var(--text2);font-weight:700"></div>
+  <button type="button" onclick="modMemberOpenView()">👁 Mod View</button>
   <button type="button" onclick="modMemberAction('timeout','1h')">⏱ Timeout 1 hour</button>
   <button type="button" onclick="modMemberAction('timeout','24h')">⏱ Timeout 24 hours</button>
   <button type="button" onclick="modMemberAction('timeout','1w')">⏱ Timeout 1 week</button>
@@ -11004,6 +11190,11 @@ function openCommMsgMenu(ev, btn) {
     const pinned = isMessagePinned(_commMsgMenuCtx.id);
     pinBtn.textContent = pinned ? '📌 Unpin' : '📌 Pin';
   }
+  const mvBtn = document.getElementById('comm-msg-modview-btn');
+  if (mvBtn) {
+    const showMv = isCommStaff() && _commMsgMenuCtx.sender && _commMsgMenuCtx.sender.indexOf('bot:') !== 0;
+    mvBtn.style.display = showMv ? '' : 'none';
+  }
   menu.classList.add('open');
   // Measure after open so Reply + emoji row stay on-screen (menu used to grow off the bottom)
   const mw = Math.max(menu.offsetWidth || 180, 180);
@@ -12728,7 +12919,8 @@ function _dirMemberRow(m) {
     else if (myRole === 'mod' && role !== 'owner' && role !== 'admin') showMod = true;
   }
   const modBtn = showMod
-    ? `<button type="button" title="Moderate" onclick="event.stopPropagation();openModMemberMenu(event,'${w}','${dn.replace(/'/g, "\\'")}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">🛡</button>`
+    ? `<button type="button" title="Mod View" onclick="event.stopPropagation();openModView('${w}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">👁</button>`
+      + `<button type="button" title="Quick moderate" onclick="event.stopPropagation();openModMemberMenu(event,'${w}','${dn.replace(/'/g, "\\'")}')" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0">🛡</button>`
     : '';
   return `<div class="dir-item">
     <div class="dir-av-wrap" onclick="if(wallet){ openChat('${w}', '${dn.replace(/'/g, "\\'")}') }"><div class="comm-av">${av}</div>${dot}</div>
@@ -12761,6 +12953,177 @@ function openModMemberMenu(ev, targetWallet, displayName) {
 function closeModMemberMenu() {
   document.getElementById('mod-member-menu')?.classList.remove('open');
   _modMemberTarget = null;
+}
+
+function modMemberOpenView() {
+  const t = _modMemberTarget;
+  closeModMemberMenu();
+  if (t && t.wallet) openModView(t.wallet);
+}
+
+function commMsgOpenModView() {
+  const ctx = _commMsgMenuCtx;
+  closeCommMsgMenu();
+  if (ctx && ctx.sender) openModView(ctx.sender);
+}
+
+let _modViewTarget = null;
+let _modViewData = null;
+
+function closeModView() {
+  document.getElementById('modview-panel')?.classList.remove('open');
+  document.getElementById('modview-backdrop')?.classList.remove('open');
+  _modViewTarget = null;
+  _modViewData = null;
+}
+
+async function openModView(targetWallet) {
+  if (!isCommStaff() || !wallet) { showToast('Staff only'); return; }
+  const target = String(targetWallet || '').toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(target)) { showToast('Invalid wallet'); return; }
+  _modViewTarget = target;
+  document.getElementById('modview-backdrop')?.classList.add('open');
+  document.getElementById('modview-panel')?.classList.add('open');
+  document.getElementById('modview-history-sec').style.display = 'none';
+  document.getElementById('modview-name').textContent = 'Loading…';
+  document.getElementById('modview-role').textContent = '';
+  document.getElementById('modview-wallet').textContent = target;
+  document.getElementById('modview-av').textContent = '?';
+  try {
+    const r = await fetch(BACKEND + '/api/community/modview/' + encodeURIComponent(target) +
+      '?wallet=' + encodeURIComponent(wallet));
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      showToast(j.error || 'Could not load Mod View');
+      closeModView();
+      return;
+    }
+    _modViewData = j;
+    renderModView(j);
+  } catch (e) {
+    showToast('Could not load Mod View');
+    closeModView();
+  }
+}
+
+function renderModView(j) {
+  if (!j) return;
+  const name = stripAt(j.display_name || j.handle || '') || shortenWallet(j.wallet);
+  document.getElementById('modview-name').textContent = name;
+  document.getElementById('modview-role').textContent = displayRoleLabel(j.role) || j.role || 'member';
+  document.getElementById('modview-wallet').textContent = j.wallet || '';
+  const av = document.getElementById('modview-av');
+  if (j.has_avatar && j.wallet) {
+    av.innerHTML = '<img src="' + BACKEND + '/api/community/avatar/' + j.wallet + '" alt="">';
+  } else {
+    av.textContent = (name || '?').charAt(0).toUpperCase();
+  }
+  const act = j.activity || {};
+  document.getElementById('modview-stat-msgs').textContent = String(act.message_count || 0);
+  document.getElementById('modview-stat-links').textContent = String(act.link_count || 0);
+  document.getElementById('modview-stat-media').textContent = String(act.media_count || 0);
+  document.getElementById('modview-role-current').textContent = (displayRoleLabel(j.role) || j.role || 'member');
+  const can = j.can_act || {};
+  const sel = document.getElementById('modview-role-select');
+  const save = document.getElementById('modview-role-save');
+  if (can.set_role) {
+    sel.style.display = '';
+    save.style.display = '';
+    sel.value = j.role || 'member';
+  } else {
+    sel.style.display = 'none';
+    save.style.display = 'none';
+  }
+  let status = '';
+  if (j.banned) status = 'Banned' + (j.ban_reason ? (': ' + j.ban_reason) : '');
+  else if (j.timed_out_until && j.timed_out_until > Math.floor(Date.now() / 1000)) {
+    const mins = Math.max(1, Math.ceil((j.timed_out_until - Date.now() / 1000) / 60));
+    status = 'Timed out · ~' + mins + ' min left' + (j.timeout_reason ? (' · ' + j.timeout_reason) : '');
+  } else {
+    status = 'Active' + (j.joined_at ? (' · joined ' + formatMessageTime(j.joined_at)) : '');
+  }
+  document.getElementById('modview-status').textContent = status;
+  const actions = document.getElementById('modview-actions');
+  const btns = [];
+  if (can.timeout) {
+    btns.push('<button type="button" onclick="modViewAct(\'timeout\',\'1h\')">⏱ 1h</button>');
+    btns.push('<button type="button" onclick="modViewAct(\'timeout\',\'24h\')">⏱ 24h</button>');
+    btns.push('<button type="button" onclick="modViewAct(\'timeout\',\'1w\')">⏱ 1w</button>');
+  }
+  if (can.untimeout) btns.push('<button type="button" onclick="modViewAct(\'untimeout\')">✅ Untimeout</button>');
+  if (can.kick) btns.push('<button type="button" onclick="modViewAct(\'kick\')">👢 Kick</button>');
+  if (can.ban) btns.push('<button type="button" class="danger" onclick="modViewAct(\'ban\')">🚫 Ban</button>');
+  if (can.unban) btns.push('<button type="button" onclick="modViewAct(\'unban\')">♻️ Unban</button>');
+  actions.innerHTML = btns.join('') || '<span style="color:var(--text2);font-size:13px">No actions available for this member</span>';
+}
+
+async function modViewShowHistory() {
+  if (!_modViewTarget || !wallet) return;
+  const sec = document.getElementById('modview-history-sec');
+  const ul = document.getElementById('modview-history');
+  sec.style.display = '';
+  ul.innerHTML = '<li style="color:var(--text2)">Loading…</li>';
+  try {
+    const r = await fetch(BACKEND + '/api/community/modview/' + encodeURIComponent(_modViewTarget) +
+      '/messages?limit=50&wallet=' + encodeURIComponent(wallet));
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { ul.innerHTML = '<li style="color:#ff6b6b">' + escapeHtml(j.error || 'Failed') + '</li>'; return; }
+    const msgs = j.messages || [];
+    if (!msgs.length) { ul.innerHTML = '<li style="color:var(--text2)">No public Gen Chat messages</li>'; return; }
+    ul.innerHTML = msgs.map(function (m) {
+      return '<li><div class="mh-meta">#' + escapeHtml(m.slug || '?') + ' · ' +
+        escapeHtml(formatMessageTime(m.created_at)) + '</div>' +
+        '<div>' + escapeHtml(m.content || '') + '</div></li>';
+    }).join('');
+  } catch (e) {
+    ul.innerHTML = '<li style="color:#ff6b6b">Failed to load</li>';
+  }
+}
+
+async function modViewAct(action, duration) {
+  if (!_modViewTarget || !wallet) return;
+  if (action === 'ban' && !confirm('BAN this member from chat?')) return;
+  if (action !== 'ban' && !confirm('Really ' + action + (duration ? (' ' + duration) : '') + '?')) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/moderate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        wallet: wallet,
+        target: _modViewTarget,
+        action: action,
+        duration: duration || '1h',
+        reason: '',
+      }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { showToast(j.error || 'Action failed'); return; }
+    showToast(action + ' ok');
+    openModView(_modViewTarget);
+    try { loadDirectory(); } catch (e) {}
+  } catch (e) {
+    showToast('Action failed');
+  }
+}
+
+async function modViewSetRole() {
+  if (!_modViewTarget || !wallet) return;
+  const role = document.getElementById('modview-role-select').value;
+  if (!confirm('Set role to ' + role + '?')) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/roles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet: wallet, target: _modViewTarget, role: role }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { showToast(j.error || 'Role change failed'); return; }
+    showToast('Role → ' + role);
+    openModView(_modViewTarget);
+    try { loadDirectory(); } catch (e) {}
+  } catch (e) {
+    showToast('Role change failed');
+  }
 }
 
 async function modMemberAction(action, duration) {
