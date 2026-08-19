@@ -31,6 +31,8 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 | 22 | #ask-ai: liquidity/pool → N/A or reserves (DEX may have 0 pairs); never invent | ☐ |
 | 23 | Add friend → clear storage / other device same wallet → friend still listed | ☐ |
 | 24 | save-friend does not notify the other party; un-friend clears server + local | ☐ |
+| 25 | #ask-ai: ask → "thinking…" shows → answer clears it; media/bot post → no spinner | ☐ |
+| 26 | #ask-ai: leave channel / ~200s timeout → no stuck thinking row | ☐ |
 
 ### Notes
 
