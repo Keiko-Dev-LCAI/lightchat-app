@@ -1604,6 +1604,24 @@ def ask_ai_rate_ok(wallet: str) -> bool:
         return True
 
 
+def emit_aivm_thinking(socketio, slug: str, *, done: bool = False, display_name: str = ""):
+    """Lightweight thinking indicator for #ask-ai — same rooms as community_message."""
+    slug = (slug or ask_ai_channel_slug()).lower().strip() or "ask-ai"
+    payload = {
+        "slug": slug,
+        "done": bool(done),
+        "display_name": display_name or "",
+    }
+    try:
+        socketio.emit("aivm_thinking", payload, room=f"community:{slug}")
+    except Exception as e:
+        print(f"  [ask-ai] thinking emit room {slug}: {e}", flush=True)
+    try:
+        socketio.emit("aivm_thinking", payload, room="community:all")
+    except Exception as e:
+        print(f"  [ask-ai] thinking emit community:all: {e}", flush=True)
+
+
 def maybe_enqueue_ask_ai(get_db, socketio, slug: str, wallet: str, content: str, display_name: str = ""):
     """After a human posts in #ask-ai, kick off background AIVM answer (non-blocking)."""
     slug = (slug or "").lower().strip()
@@ -1617,6 +1635,11 @@ def maybe_enqueue_ask_ai(get_db, socketio, slug: str, wallet: str, content: str,
     runner = _ask_ai_runner
     if not runner:
         return
+    # Only emit when a job is actually starting (same rooms as community_message)
+    try:
+        emit_aivm_thinking(socketio, slug, done=False, display_name=display_name or "")
+    except Exception as e:
+        print(f"  [ask-ai] thinking emit failed: {e}", flush=True)
     try:
         threading.Thread(
             target=runner,
@@ -1632,6 +1655,10 @@ def maybe_enqueue_ask_ai(get_db, socketio, slug: str, wallet: str, content: str,
         ).start()
     except Exception as e:
         print(f"  [ask-ai] enqueue failed: {e}", flush=True)
+        try:
+            emit_aivm_thinking(socketio, slug, done=True)
+        except Exception:
+            pass
 
 
 def all_member_wallets(conn) -> list[str]:
