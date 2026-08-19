@@ -2314,12 +2314,13 @@ _TURN_FALLBACK = [
 
 @app.route('/api/turn-credentials')
 def api_turn_credentials():
-    """Return ICE servers. Uses existing Metered key if set; never requires a new paid account."""
+    """Return ICE servers. Uses Metered when METERED_SUBDOMAIN + METERED_API_KEY set; else free STUN/TURN."""
     api_key = os.environ.get('METERED_API_KEY', '').strip()
-    if api_key and _REQUESTS_AVAILABLE:
+    metered_sub = (os.environ.get('METERED_SUBDOMAIN') or '').strip()
+    if api_key and metered_sub and _REQUESTS_AVAILABLE:
         try:
             resp = _requests.get(
-                f'https://lightchat.metered.live/api/v1/turn/credentials?apiKey={api_key}',
+                f'https://{metered_sub}.metered.live/api/v1/turn/credentials?apiKey={api_key}',
                 timeout=10
             )
             resp.raise_for_status()
