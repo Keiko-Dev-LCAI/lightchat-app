@@ -3918,6 +3918,19 @@ body {
   font-size: 12px; font-weight: 600; padding: 0; cursor: pointer; text-decoration: underline dotted;
 }
 .ss-wallet-chip:hover { color: var(--text); }
+/* #ask-ai thinking indicator (not a real answer) */
+.aivm-thinking-row { opacity: 0.78; }
+.aivm-thinking-bubble .body { font-style: italic; color: var(--text2); }
+.aivm-thinking-spin {
+  display: inline-block; margin-right: 6px;
+  animation: aivmThinkSpin 1.1s linear infinite;
+}
+@keyframes aivmThinkSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.aivm-thinking-row.aivm-thinking-soft { opacity: 0.65; }
+.aivm-thinking-row.aivm-thinking-soft .aivm-thinking-spin { animation: none; }
 </style>
 
 <!-- Gen Chat message search (Discord-style) -->
@@ -11263,6 +11276,7 @@ async function loadCommunityChannel(slug) {
   const compose = document.getElementById('genchat-compose');
   if (!box) return;
   closeMentionAc();
+  try { clearAivmThinking({ soft: false }); } catch (e) {}
   setCommunityChannelHeader(slug);
   resetCommHistoryState(slug);
   box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;color:var(--text2)">Loading…</div>';
@@ -12054,6 +12068,12 @@ function appendCommunityMessage(m) {
   if (!box || !m) return;
   const empty = box.querySelector('.empty-text');
   if (empty && box.children.length === 1) box.innerHTML = '';
+  // Clear #ask-ai thinking row when Lightchain AI (or any bot) answer lands
+  try {
+    const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
+    const msgSlug = (m.slug || _activeCommSlug || '').toLowerCase();
+    if (isBot && msgSlug === (_aivmThinkingSlug || msgSlug)) clearAivmThinking({ soft: false });
+  } catch (e) {}
   if (m.id) {
     const sid = String(m.id).replace(/"/g, '');
     if (box.querySelector('.comm-msg[data-msg-id="' + sid + '"]')) return;
@@ -12139,6 +12159,9 @@ function appendCommunityMessage(m) {
   try { bindCommMsgTouch(el); } catch (e) {}
   const stick = isCommNearBottom(box);
   box.appendChild(el);
+  // Keep thinking indicator pinned under the latest message
+  const think = document.getElementById('aivm-thinking-row');
+  if (think && think.parentNode === box) box.appendChild(think);
   if (stick) box.scrollTop = box.scrollHeight;
   else showCommNewMsgPill();
 }
@@ -15156,6 +15179,77 @@ function refreshMeAvatarFromProfile() {
 
 async function saveCommunityProfile() { return saveEditProfile(); }
 
+/* ── #ask-ai "Lightchain AI is thinking…" indicator ── */
+let _aivmThinkingTimer = null;
+let _aivmThinkingSlug = null;
+const _AIVM_THINKING_TIMEOUT_MS = 200000; // a bit above AIVM max (~360s jobs; UI soft-clears at 200s per spec)
+
+function clearAivmThinking(opts) {
+  opts = opts || {};
+  if (_aivmThinkingTimer) {
+    clearTimeout(_aivmThinkingTimer);
+    _aivmThinkingTimer = null;
+  }
+  const row = document.getElementById('aivm-thinking-row');
+  if (!row) {
+    _aivmThinkingSlug = null;
+    return;
+  }
+  if (opts.soft) {
+    row.classList.add('aivm-thinking-soft');
+    const t = row.querySelector('.aivm-thinking-text');
+    if (t) t.textContent = 'Still working — Lightchain AI can take a couple minutes.';
+    const spin = row.querySelector('.aivm-thinking-spin');
+    if (spin) spin.style.animation = 'none';
+    return;
+  }
+  row.remove();
+  _aivmThinkingSlug = null;
+}
+
+function showAivmThinking(slug) {
+  slug = (slug || 'ask-ai').toLowerCase();
+  const active = (_activeCommSlug || '').toLowerCase();
+  if (active !== slug) return;
+  const box = document.getElementById('genchat-msgs');
+  if (!box) return;
+  _aivmThinkingSlug = slug;
+  let row = document.getElementById('aivm-thinking-row');
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'aivm-thinking-row';
+    row.className = 'comm-msg aivm-thinking-row';
+    row.setAttribute('aria-live', 'polite');
+    row.innerHTML =
+      '<div class="comm-av" aria-hidden="true">🤖</div>' +
+      '<div class="comm-bubble aivm-thinking-bubble">' +
+      '<div class="who">Lightchain AI <span class="role">Bot</span></div>' +
+      '<div class="body aivm-thinking-text"><span class="aivm-thinking-spin" aria-hidden="true">⏳</span> Lightchain AI is thinking…</div>' +
+      '</div>';
+    box.appendChild(row);
+  } else {
+    row.classList.remove('aivm-thinking-soft');
+    const t = row.querySelector('.aivm-thinking-text');
+    if (t) t.innerHTML = '<span class="aivm-thinking-spin" aria-hidden="true">⏳</span> Lightchain AI is thinking…';
+  }
+  try { box.scrollTop = box.scrollHeight; } catch (e) {}
+  if (_aivmThinkingTimer) clearTimeout(_aivmThinkingTimer);
+  _aivmThinkingTimer = setTimeout(function () {
+    clearAivmThinking({ soft: true });
+  }, _AIVM_THINKING_TIMEOUT_MS);
+}
+
+function onAivmThinkingEvent(data) {
+  data = data || {};
+  const slug = (data.slug || '').toLowerCase();
+  if (!slug) return;
+  if (data.done) {
+    if (!_aivmThinkingSlug || _aivmThinkingSlug === slug) clearAivmThinking({ soft: false });
+    return;
+  }
+  showAivmThinking(slug);
+}
+
 function onLiveCommunityMessage(msg) {
   if (!msg) return;
   const slug = msg.slug || 'general';
@@ -15323,6 +15417,9 @@ function bindCommunitySocket(sock) {
   sock._lcCommunityBound = true;
   sock.on('community_message', (msg) => {
     onLiveCommunityMessage(msg);
+  });
+  sock.on('aivm_thinking', function (data) {
+    try { onAivmThinkingEvent(data); } catch (e) {}
   });
   sock.on('community_reaction', (data) => {
     if (!data || !data.id) return;
