@@ -2541,6 +2541,14 @@ body {
             <button type="button" class="comm-gif-btn mobile-chan-btn" onclick="switchTab('channels')" title="Channels" style="height:28px;padding:0 10px;display:none;align-items:center;font-size:12px!important">#</button>
             <span id="genchat-channel-chip" style="font-size:12px;font-weight:700;color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">#gen-chat</span>
             <button type="button" id="genchat-pins-btn" class="comm-gif-btn" onclick="openPinsSheet()" title="Pinned posts" style="height:28px;padding:0 8px;font-size:14px!important;position:relative;flex-shrink:0">📌<span id="genchat-pins-count" style="display:none;position:absolute;top:-4px;right:-4px;min-width:14px;height:14px;border-radius:7px;background:var(--lc-primary,#5B4BFF);color:#fff;font-size:9px;font-weight:800;line-height:14px;text-align:center;padding:0 3px">0</span></button>
+            <div class="comm-search-wrap" id="comm-search-wrap">
+              <input type="search" id="comm-search-input" placeholder="Search" autocomplete="off"
+                onfocus="onCommSearchFocus()"
+                oninput="onCommSearchInput()"
+                onkeydown="return onCommSearchKeydown(event)"
+                aria-label="Search messages">
+              <button type="button" class="comm-search-go" onclick="commSearchGoClick()" title="Search">🔍</button>
+            </div>
             <span style="flex:1"></span>
             <button type="button" class="comm-gif-btn members-toggle-btn" id="members-toggle-btn" onclick="toggleMembersRail()" title="Members" aria-label="Members" style="height:28px;padding:0 8px;font-size:14px!important;flex-shrink:0">👥</button>
             <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
@@ -2650,6 +2658,119 @@ body {
     }
     .comm-av.comm-av-clickable { cursor: pointer; }
     .comm-av.comm-av-clickable:hover { outline: 2px solid rgba(91,75,255,0.45); outline-offset: 1px; }
+    /* Channel search + scroll-back history */
+    .comm-search-wrap {
+      display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; max-width: 280px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0 4px 0 8px;
+    }
+    .comm-search-wrap input {
+      flex: 1; min-width: 0; border: none; background: transparent; color: var(--text);
+      font-size: 13px; font-family: inherit; padding: 6px 0; outline: none;
+    }
+    .comm-search-wrap .comm-search-go {
+      appearance: none; border: none; background: transparent; color: var(--text2);
+      cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 8px;
+    }
+    .comm-search-wrap .comm-search-go:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+    #comm-search-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 900;
+    }
+    #comm-search-backdrop.open { display: block; }
+    #comm-search-panel {
+      display: none; position: fixed; z-index: 901; top: 56px; right: 12px;
+      width: min(420px, 94vw); max-height: min(70vh, 560px);
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5); flex-direction: column; overflow: hidden;
+    }
+    #comm-search-panel.open { display: flex; }
+    #comm-search-panel .csp-head {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border);
+    }
+    #comm-search-panel .csp-head input {
+      flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-size: 14px; font-family: inherit; padding: 10px 12px;
+    }
+    #comm-search-panel .csp-close {
+      appearance: none; border: none; background: transparent; color: var(--text2);
+      font-size: 16px; cursor: pointer; padding: 6px 8px;
+    }
+    #comm-search-panel .csp-hints {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border);
+    }
+    #comm-search-panel .csp-hints button {
+      appearance: none; border: 1px solid var(--border); background: rgba(91,75,255,0.12);
+      color: var(--text); font-size: 12px; font-weight: 700; border-radius: 999px;
+      padding: 5px 10px; cursor: pointer; font-family: inherit;
+    }
+    #comm-search-panel .csp-recent { padding: 6px 12px; border-bottom: 1px solid var(--border); }
+    #comm-search-panel .csp-recent:empty { display: none; }
+    #comm-search-panel .csp-recent-label {
+      font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--text2); display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+    }
+    #comm-search-panel .csp-recent-label button {
+      appearance: none; border: none; background: transparent; color: var(--text2);
+      cursor: pointer; font-size: 12px; margin-left: auto; padding: 2px 4px;
+    }
+    #comm-search-panel .csp-recent button.csp-recent-item {
+      display: block; width: 100%; text-align: left; appearance: none; border: none;
+      background: transparent; color: var(--text); font-size: 13px; font-weight: 600;
+      padding: 8px 6px; border-radius: 8px; cursor: pointer; font-family: inherit;
+    }
+    #comm-search-panel .csp-recent button.csp-recent-item:hover { background: var(--purple-glow); }
+    #comm-search-panel .csp-status {
+      padding: 8px 14px; font-size: 13px; color: var(--text2); display: none;
+    }
+    #comm-search-panel .csp-status.show { display: block; }
+    #comm-search-panel .csp-results { flex: 1; overflow-y: auto; padding: 4px 8px 12px; min-height: 80px; }
+    .csp-hit {
+      display: flex; gap: 10px; width: 100%; text-align: left; appearance: none; border: none;
+      background: transparent; color: var(--text); padding: 10px 8px; border-radius: 10px;
+      cursor: pointer; font-family: inherit;
+    }
+    .csp-hit:hover { background: var(--purple-glow); }
+    .csp-hit-av {
+      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+      background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
+      display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+    }
+    .csp-hit-av img { width: 100%; height: 100%; object-fit: cover; }
+    .csp-hit-meta { flex: 1; min-width: 0; }
+    .csp-hit-who { font-size: 13px; font-weight: 700; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+    .csp-hit-who .ch { color: var(--text2); font-weight: 600; font-size: 12px; }
+    .csp-hit-who .tm { color: var(--text2); font-weight: 500; font-size: 11px; margin-left: auto; }
+    .csp-hit-snip { font-size: 13px; color: var(--text2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .csp-hit-snip mark { background: rgba(91,75,255,0.35); color: #fff; border-radius: 3px; padding: 0 2px; }
+    #comm-new-msg-pill {
+      position: fixed; bottom: 88px; left: 50%; transform: translateX(-50%); z-index: 70;
+      appearance: none; border: 1px solid var(--border); background: var(--lc-primary, #5B4BFF);
+      color: #fff; font-weight: 700; font-size: 13px; font-family: inherit;
+      padding: 8px 14px; border-radius: 999px; cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .comm-history-top, .comm-history-begin {
+      text-align: center; font-size: 12px; color: var(--text2); padding: 10px 12px; font-weight: 600;
+    }
+    .comm-msg.comm-msg-flash {
+      animation: commMsgFlash 1.4s ease;
+    }
+    @keyframes commMsgFlash {
+      0%, 100% { background: transparent; }
+      20%, 55% { background: rgba(91,75,255,0.22); }
+    }
+    @media (max-width: 767px) {
+      .comm-search-wrap { max-width: none; flex: 0 0 auto; background: transparent; border: none; padding: 0; }
+      .comm-search-wrap input { display: none; }
+      .comm-search-wrap .comm-search-go {
+        height: 28px; min-width: 28px; width: 28px; padding: 0; font-size: 14px;
+        border: 1px solid var(--border); border-radius: 8px; background: transparent;
+      }
+      #comm-search-panel {
+        top: 0; right: 0; left: 0; bottom: 0; width: 100%; max-height: none;
+        border-radius: 0; border: none;
+      }
+      #comm-new-msg-pill { bottom: 120px; }
+    }
     </style>
 
     <!-- Channels (mobile list; desktop uses left rail) -->
@@ -3651,6 +3772,27 @@ body {
   <button type="button" onclick="modMemberAction('unban')">♻️ Remove ban</button>
   <button type="button" onclick="closeModMemberMenu()">✕ Close</button>
 </div>
+
+<!-- Gen Chat message search (Discord-style) -->
+<div id="comm-search-backdrop" onclick="closeCommSearchPanel()"></div>
+<div id="comm-search-panel" role="dialog" aria-label="Message search">
+  <div class="csp-head">
+    <input type="search" id="comm-search-panel-input" placeholder="Search · from:name · in:channel" autocomplete="off"
+      oninput="onCommSearchInput()"
+      onkeydown="return onCommSearchKeydown(event)"
+      aria-label="Search messages">
+    <button type="button" class="csp-close" onclick="closeCommSearchPanel()" aria-label="Close">✕</button>
+  </div>
+  <div class="csp-hints" id="comm-search-hints">
+    <button type="button" onclick="insertCommSearchToken('from:')">from:</button>
+    <button type="button" onclick="insertCommSearchToken('in:')">in:</button>
+    <button type="button" onclick="insertCommSearchToken('has:')" title="Coming soon">has:</button>
+  </div>
+  <div class="csp-recent" id="comm-search-recent"></div>
+  <div class="csp-status" id="comm-search-status"></div>
+  <div class="csp-results" id="comm-search-results"></div>
+</div>
+<button type="button" id="comm-new-msg-pill" onclick="jumpCommToBottom()" style="display:none">↓ New messages</button>
 
 <!-- Member list / avatar tap menu (Message · Friend · Profile · Mod View) -->
 <div id="member-action-menu" role="menu" aria-label="Member actions">
@@ -10572,6 +10714,64 @@ function openCommunityChannel(slug) {
 }
 
 let _commLoadSeq = 0;
+/** Scroll-back paging state (session-only). */
+let _commHistory = { slug: '', oldestAt: null, oldestId: null, hasMore: true, loading: false };
+let _commSearchRecent = []; // session-only recent searches
+let _commSearchLastQ = '';
+let _commSearchHasMore = false;
+let _commSearchBefore = null;
+let _commSearchBeforeId = null;
+
+function resetCommHistoryState(slug) {
+  _commHistory = { slug: slug || '', oldestAt: null, oldestId: null, hasMore: true, loading: false };
+  hideCommNewMsgPill();
+}
+
+function updateCommHistoryFromMsgs(slug, msgs, hasMore) {
+  msgs = msgs || [];
+  _commHistory.slug = slug || _activeCommSlug || '';
+  if (typeof hasMore === 'boolean') _commHistory.hasMore = hasMore;
+  if (msgs.length) {
+    const first = msgs[0];
+    _commHistory.oldestAt = first.created_at != null ? first.created_at : _commHistory.oldestAt;
+    _commHistory.oldestId = first.id || _commHistory.oldestId;
+  } else if (hasMore === false) {
+    _commHistory.hasMore = false;
+  }
+}
+
+function isCommNearBottom(box) {
+  if (!box) return true;
+  return (box.scrollHeight - box.scrollTop - box.clientHeight) < 140;
+}
+
+function showCommNewMsgPill() {
+  const pill = document.getElementById('comm-new-msg-pill');
+  if (pill) pill.style.display = '';
+}
+
+function hideCommNewMsgPill() {
+  const pill = document.getElementById('comm-new-msg-pill');
+  if (pill) pill.style.display = 'none';
+}
+
+function jumpCommToBottom() {
+  const box = document.getElementById('genchat-msgs');
+  if (box) box.scrollTop = box.scrollHeight;
+  hideCommNewMsgPill();
+}
+
+function ensureCommHistoryScrollBound(box) {
+  if (!box || box._lcHistoryBound) return;
+  box._lcHistoryBound = true;
+  box.addEventListener('scroll', function () {
+    if (isCommNearBottom(box)) hideCommNewMsgPill();
+    if (box.scrollTop < 120) {
+      try { loadOlderCommunityMessages(); } catch (e) {}
+    }
+  });
+}
+
 async function loadCommunityChannel(slug) {
   slug = slug || _activeCommSlug || 'general';
   _activeCommSlug = slug;
@@ -10581,6 +10781,7 @@ async function loadCommunityChannel(slug) {
   if (!box) return;
   closeMentionAc();
   setCommunityChannelHeader(slug);
+  resetCommHistoryState(slug);
   box.innerHTML = '<div class="empty-text" style="padding:24px;text-align:center;color:var(--text2)">Loading…</div>';
   if (wallet) {
     try { await communityJoin(); } catch(e) { console.warn('join', e); }
@@ -10650,7 +10851,7 @@ async function loadCommunityChannel(slug) {
     if (tp) tp.style.display = 'none';
   } catch (e) {}
   try {
-    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=80' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : ''));
+    const r = await fetch(BACKEND + '/api/community/messages/' + encodeURIComponent(slug) + '?limit=120' + (wallet ? ('&wallet=' + encodeURIComponent(wallet)) : ''));
     if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
     if (!r.ok) {
       box.innerHTML = '<div class="empty-text" style="padding:24px;color:var(--red)">Could not load messages ('+r.status+'). Pull to refresh or reconnect.</div>';
@@ -10659,6 +10860,7 @@ async function loadCommunityChannel(slug) {
     const j = await r.json();
     if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
     let msgs = j.messages || [];
+    const serverOnly = (j.messages || []).slice();
     if (isP2PChatChannel(slug) && window.genChatP2P) {
       try {
         ensureGenChatP2P();
@@ -10693,6 +10895,9 @@ async function loadCommunityChannel(slug) {
     if (loadSeq !== _commLoadSeq || slug !== (_activeCommSlug || slug)) return;
     try { reconcileCommunityWithServer(slug, j.messages || msgs || []); } catch (eR2) {}
     renderCommunityMessages(msgs);
+    updateCommHistoryFromMsgs(slug, serverOnly.length ? serverOnly : msgs, !!j.has_more);
+    ensureCommHistoryScrollBound(box);
+    ensureCommHistoryTopMarker(box);
     // Rejoin live relay room for this channel
     try {
       if (socket && socket.connected && wallet) {
@@ -11449,39 +11654,33 @@ function appendCommunityMessage(m) {
     _commReactionsHtml(m) +
     '</div>';
   try { bindCommMsgTouch(el); } catch (e) {}
+  const stick = isCommNearBottom(box);
   box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
+  if (stick) box.scrollTop = box.scrollHeight;
+  else showCommNewMsgPill();
 }
 
-function renderCommunityMessages(msgs) {
-  const box = document.getElementById('genchat-msgs');
-  if (!box) return;
-  if (!msgs.length) {
-    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Gen Chat is live — say hello. When two wallets are here, messages can go P2P.</div>';
-    return;
-  }
-  box.innerHTML = msgs.map(function (m, i) {
-    const prev = i > 0 ? msgs[i - 1] : null;
-    const cont = _commMsgIsContinuation(prev, m);
-    const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
-    const letter = isBot ? '🤖' : (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
-    const av = (!isBot && m.has_avatar)
-      ? `<img src="${BACKEND}/api/community/avatar/${m.sender_wallet}" alt="">`
-      : letter;
-    const when = formatMessageTime(m.created_at);
-    const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
-    const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
-    const who = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
-    const tip = escapeHtml(when) + (m.edited ? ' · edited' : '');
-    const timeBit = when
-      ? `<span class="comm-msg-time" title="${tip}">${escapeHtml(when)}${m.edited ? ' · edited' : ''}</span>`
-      : '';
-    const staff = typeof isCommStaff === 'function' && isCommStaff();
-    const sw = String(m.sender_wallet || '').toLowerCase();
-    const avAttrs = (!isBot && sw)
-      ? ` class="comm-av comm-av-clickable" role="button" tabindex="0" data-wallet="${escapeHtml(sw)}" data-name="${who}" data-role="${escapeHtml(String(m.role || 'member').toLowerCase())}" onclick="onCommAvatarClick(event)"`
-      : ' class="comm-av"';
-    return `<div class="comm-msg${cont ? ' comm-msg--cont' : ''}" data-msg-id="${escapeHtml(m.id||'')}">
+function _commMsgRowHtml(m, prev) {
+  const cont = _commMsgIsContinuation(prev, m);
+  const isBot = !!(m.bot || m.role === 'bot' || String(m.sender_wallet || '').indexOf('bot:') === 0);
+  const letter = isBot ? '🤖' : (m.display_name||'?').replace('@','').charAt(0).toUpperCase();
+  const av = (!isBot && m.has_avatar)
+    ? `<img src="${BACKEND}/api/community/avatar/${m.sender_wallet}" alt="">`
+    : letter;
+  const when = formatMessageTime(m.created_at);
+  const roleLbl = isBot ? 'Bot' : displayRoleLabel(m.role);
+  const role = roleLbl ? `<span class="role">${escapeHtml(roleLbl)}</span>` : '';
+  const who = escapeHtml(stripAt(m.display_name) || (isBot ? 'Bot' : shortenWallet(m.sender_wallet)));
+  const tip = escapeHtml(when) + (m.edited ? ' · edited' : '');
+  const timeBit = when
+    ? `<span class="comm-msg-time" title="${tip}">${escapeHtml(when)}${m.edited ? ' · edited' : ''}</span>`
+    : '';
+  const staff = typeof isCommStaff === 'function' && isCommStaff();
+  const sw = String(m.sender_wallet || '').toLowerCase();
+  const avAttrs = (!isBot && sw)
+    ? ` class="comm-av comm-av-clickable" role="button" tabindex="0" data-wallet="${escapeHtml(sw)}" data-name="${who}" data-role="${escapeHtml(String(m.role || 'member').toLowerCase())}" onclick="onCommAvatarClick(event)"`
+    : ' class="comm-av"';
+  return `<div class="comm-msg${cont ? ' comm-msg--cont' : ''}" data-msg-id="${escapeHtml(m.id||'')}">
       <div${avAttrs}>${av}</div>
       <div class="comm-bubble" ${_commMsgAttr(m)}>
         ${_commMsgHoverBar(m)}
@@ -11492,9 +11691,355 @@ function renderCommunityMessages(msgs) {
         ${_commReactionsHtml(m)}
       </div>
     </div>`;
+}
+
+function renderCommunityMessages(msgs) {
+  const box = document.getElementById('genchat-msgs');
+  if (!box) return;
+  if (!msgs.length) {
+    box.innerHTML = '<div class="empty-text" style="padding:40px;text-align:center;color:var(--text2)">Gen Chat is live — say hello. When two wallets are here, messages can go P2P.</div>';
+    return;
+  }
+  box.innerHTML = msgs.map(function (m, i) {
+    return _commMsgRowHtml(m, i > 0 ? msgs[i - 1] : null);
   }).join('');
   try { box.querySelectorAll('.comm-msg').forEach(bindCommMsgTouch); } catch (e) {}
   box.scrollTop = box.scrollHeight;
+  ensureCommHistoryScrollBound(box);
+}
+
+function ensureCommHistoryTopMarker(box) {
+  box = box || document.getElementById('genchat-msgs');
+  if (!box) return;
+  let top = box.querySelector('#comm-history-top');
+  if (!top) {
+    top = document.createElement('div');
+    top.id = 'comm-history-top';
+    top.className = 'comm-history-top';
+    box.insertBefore(top, box.firstChild);
+  }
+  if (_commHistory.hasMore) {
+    top.textContent = _commHistory.loading ? 'Loading earlier messages…' : '';
+    top.style.display = _commHistory.loading ? '' : 'none';
+  } else {
+    const slug = _activeCommSlug || 'general';
+    top.className = 'comm-history-begin';
+    top.style.display = '';
+    top.textContent = 'Beginning of #' + slug;
+  }
+}
+
+async function loadOlderCommunityMessages() {
+  const slug = _activeCommSlug || 'general';
+  if (slug === 'start-here' || slug === 'links' || slug === 'announcements') return;
+  if (_commHistory.loading || !_commHistory.hasMore) return;
+  if (_commHistory.oldestAt == null && !_commHistory.oldestId) return;
+  const box = document.getElementById('genchat-msgs');
+  if (!box) return;
+  _commHistory.loading = true;
+  ensureCommHistoryTopMarker(box);
+  try {
+    let url = BACKEND + '/api/community/messages/' + encodeURIComponent(slug) +
+      '?limit=80&before=' + encodeURIComponent(String(_commHistory.oldestAt));
+    if (_commHistory.oldestId) url += '&before_id=' + encodeURIComponent(String(_commHistory.oldestId));
+    if (wallet) url += '&wallet=' + encodeURIComponent(wallet);
+    const r = await fetch(url);
+    if (!r.ok) { _commHistory.hasMore = false; return; }
+    const j = await r.json();
+    if (slug !== (_activeCommSlug || slug)) return;
+    const older = j.messages || [];
+    _commHistory.hasMore = !!j.has_more;
+    if (!older.length) {
+      _commHistory.hasMore = false;
+      return;
+    }
+    // Dedupe against what's already on screen
+    const existing = {};
+    box.querySelectorAll('.comm-msg[data-msg-id]').forEach(function (n) {
+      existing[n.getAttribute('data-msg-id')] = true;
+    });
+    const fresh = older.filter(function (m) { return m && m.id && !existing[String(m.id)]; });
+    if (!fresh.length) {
+      if (!j.has_more) _commHistory.hasMore = false;
+      else {
+        // Advance cursor anyway to avoid stuck loop
+        updateCommHistoryFromMsgs(slug, older, !!j.has_more);
+      }
+      return;
+    }
+    const prevH = box.scrollHeight;
+    const prevT = box.scrollTop;
+    const html = fresh.map(function (m, i) {
+      return _commMsgRowHtml(m, i > 0 ? fresh[i - 1] : null);
+    }).join('');
+    let top = box.querySelector('#comm-history-top');
+    if (!top) {
+      ensureCommHistoryTopMarker(box);
+      top = box.querySelector('#comm-history-top');
+    }
+    if (top) top.insertAdjacentHTML('afterend', html);
+    else box.insertAdjacentHTML('afterbegin', html);
+    try {
+      box.querySelectorAll('.comm-msg').forEach(function (el) {
+        if (!el._lcTouchBound) bindCommMsgTouch(el);
+      });
+    } catch (e) {}
+    box.scrollTop = prevT + (box.scrollHeight - prevH);
+    updateCommHistoryFromMsgs(slug, fresh, !!j.has_more);
+  } catch (e) {
+    console.warn('loadOlderCommunityMessages', e);
+  } finally {
+    _commHistory.loading = false;
+    ensureCommHistoryTopMarker(box);
+  }
+}
+
+/* ── Discord-style channel search (session-only recent) ── */
+function parseCommSearchQuery(raw) {
+  raw = String(raw || '').trim();
+  let from = '';
+  let inn = '';
+  const words = [];
+  raw.split(/\s+/).forEach(function (tok) {
+    const low = tok.toLowerCase();
+    if (low.indexOf('from:') === 0) from = tok.slice(5);
+    else if (low.indexOf('in:') === 0) inn = tok.slice(3).replace(/^#/, '');
+    else if (low.indexOf('has:') === 0 || low.indexOf('mentions:') === 0) { /* v1 reserved */ }
+    else if (tok) words.push(tok);
+  });
+  return { q: words.join(' '), from: from, in: inn, raw: raw };
+}
+
+function openCommSearchPanel() {
+  document.getElementById('comm-search-backdrop')?.classList.add('open');
+  document.getElementById('comm-search-panel')?.classList.add('open');
+  const strip = document.getElementById('comm-search-input');
+  const panel = document.getElementById('comm-search-panel-input');
+  if (strip && panel && strip.value && !panel.value) panel.value = strip.value;
+  renderCommSearchRecent();
+  setTimeout(function () { panel && panel.focus(); }, 30);
+}
+
+function commSearchGoClick() {
+  openCommSearchPanel();
+  const panel = document.getElementById('comm-search-panel-input');
+  const strip = document.getElementById('comm-search-input');
+  const raw = ((panel && panel.value) || (strip && strip.value) || '').trim();
+  if (raw) runCommSearch();
+}
+
+function closeCommSearchPanel() {
+  document.getElementById('comm-search-backdrop')?.classList.remove('open');
+  document.getElementById('comm-search-panel')?.classList.remove('open');
+}
+
+function onCommSearchFocus() {
+  openCommSearchPanel();
+}
+
+function onCommSearchInput() {
+  const strip = document.getElementById('comm-search-input');
+  const panel = document.getElementById('comm-search-panel-input');
+  const src = document.activeElement === panel ? panel : strip;
+  if (strip && panel && src) {
+    if (src === strip) panel.value = strip.value;
+    else strip.value = panel.value;
+  }
+}
+
+function onCommSearchKeydown(ev) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    runCommSearch();
+    return false;
+  }
+  if (ev.key === 'Escape') {
+    closeCommSearchPanel();
+    return false;
+  }
+  return true;
+}
+
+function insertCommSearchToken(tok) {
+  const panel = document.getElementById('comm-search-panel-input');
+  const strip = document.getElementById('comm-search-input');
+  const el = panel || strip;
+  if (!el) return;
+  const v = (el.value || '').trim();
+  el.value = (v ? v + ' ' : '') + tok;
+  el.focus();
+  openCommSearchPanel();
+}
+
+function rememberCommSearch(raw) {
+  raw = String(raw || '').trim();
+  if (!raw) return;
+  _commSearchRecent = [raw].concat(_commSearchRecent.filter(function (x) { return x !== raw; })).slice(0, 8);
+}
+
+function clearCommSearchRecent() {
+  _commSearchRecent = [];
+  renderCommSearchRecent();
+}
+
+function renderCommSearchRecent() {
+  const el = document.getElementById('comm-search-recent');
+  if (!el) return;
+  if (!_commSearchRecent.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="csp-recent-label">Recent <button type="button" title="Clear" onclick="clearCommSearchRecent()">🗑</button></div>' +
+    _commSearchRecent.map(function (q) {
+      return '<button type="button" class="csp-recent-item" onclick="applyCommSearchRecent(this)">' + escapeHtml(q) + '</button>';
+    }).join('');
+}
+
+function applyCommSearchRecent(btn) {
+  const q = (btn && btn.textContent) || '';
+  const panel = document.getElementById('comm-search-panel-input');
+  const strip = document.getElementById('comm-search-input');
+  if (panel) panel.value = q;
+  if (strip) strip.value = q;
+  runCommSearch();
+}
+
+function setCommSearchStatus(text, show) {
+  const el = document.getElementById('comm-search-status');
+  if (!el) return;
+  el.textContent = text || '';
+  if (show) el.classList.add('show');
+  else el.classList.remove('show');
+}
+
+async function runCommSearch(opts) {
+  opts = opts || {};
+  openCommSearchPanel();
+  const panel = document.getElementById('comm-search-panel-input');
+  const strip = document.getElementById('comm-search-input');
+  const raw = ((panel && panel.value) || (strip && strip.value) || '').trim();
+  const parsed = parseCommSearchQuery(raw);
+  if (!parsed.q && !parsed.from) {
+    setCommSearchStatus('Try a word, or from:name', true);
+    renderCommSearchRecent();
+    return;
+  }
+  rememberCommSearch(raw);
+  renderCommSearchRecent();
+  const resultsEl = document.getElementById('comm-search-results');
+  if (!opts.append) {
+    if (resultsEl) resultsEl.innerHTML = '';
+    _commSearchLastQ = raw;
+    _commSearchBefore = null;
+    _commSearchBeforeId = null;
+    _commSearchHasMore = false;
+  }
+  setCommSearchStatus('Searching…', true);
+  try {
+    const params = new URLSearchParams();
+    if (parsed.q) params.set('q', parsed.q);
+    if (parsed.from) params.set('from', parsed.from);
+    if (parsed.in) params.set('in', parsed.in);
+    else if (_activeCommSlug && _activeCommSlug !== 'start-here') {
+      // default: current channel is fine to leave open — search all unless in: set
+    }
+    if (wallet) params.set('wallet', wallet);
+    params.set('limit', '40');
+    if (opts.append && _commSearchBefore != null) {
+      params.set('before', String(_commSearchBefore));
+      if (_commSearchBeforeId) params.set('before_id', String(_commSearchBeforeId));
+    }
+    const r = await fetch(BACKEND + '/api/community/search?' + params.toString());
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      setCommSearchStatus(j.error || 'Search failed', true);
+      return;
+    }
+    const hits = j.results || [];
+    _commSearchHasMore = !!j.has_more;
+    if (hits.length) {
+      _commSearchBefore = hits[hits.length - 1].created_at;
+      _commSearchBeforeId = hits[hits.length - 1].id;
+    }
+    if (!hits.length && !opts.append) {
+      setCommSearchStatus('No messages found.', true);
+      if (resultsEl) resultsEl.innerHTML = '';
+      return;
+    }
+    if (!hits.length && opts.append) setCommSearchStatus('No more results.', true);
+    else setCommSearchStatus('', false);
+    // Drop previous "Load more" button before appending
+    if (resultsEl && opts.append) {
+      const moreBtn = resultsEl.querySelector('[data-csp-more]');
+      if (moreBtn) moreBtn.remove();
+    }
+    const html = hits.map(function (h) { return _commSearchHitHtml(h, parsed.q); }).join('');
+    if (resultsEl) {
+      if (opts.append) resultsEl.insertAdjacentHTML('beforeend', html);
+      else resultsEl.innerHTML = html;
+      if (_commSearchHasMore) {
+        resultsEl.insertAdjacentHTML('beforeend',
+          '<button type="button" class="csp-hit" data-csp-more style="justify-content:center;font-weight:700" onclick="runCommSearch({append:true})">Load more results</button>');
+      }
+    }
+  } catch (e) {
+    setCommSearchStatus('Search failed', true);
+  }
+}
+
+function _commSearchHitHtml(h, qWords) {
+  const dn = stripAt(h.display_name || '') || shortenWallet(h.sender_wallet);
+  const letter = (dn || '?').charAt(0).toUpperCase();
+  const av = h.has_avatar
+    ? '<img src="' + BACKEND + '/api/community/avatar/' + escapeHtml(h.sender_wallet) + '" alt="">'
+    : escapeHtml(letter);
+  const roleLbl = displayRoleLabel(h.role);
+  const when = formatMessageTime(h.created_at);
+  const ch = h.slug ? ('#' + h.slug) : '';
+  let snip = String(h.content || '').replace(/\s+/g, ' ').slice(0, 160);
+  snip = escapeHtml(snip);
+  (String(qWords || '').split(/\s+/).filter(Boolean)).forEach(function (w) {
+    try {
+      const re = new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+      snip = snip.replace(re, '<mark>$1</mark>');
+    } catch (e) {}
+  });
+  return '<button type="button" class="csp-hit" data-id="' + escapeHtml(h.id || '') +
+    '" data-slug="' + escapeHtml(h.slug || '') +
+    '" data-at="' + escapeHtml(String(h.created_at || '')) +
+    '" onclick="jumpToCommSearchHit(this)">' +
+    '<span class="csp-hit-av">' + av + '</span>' +
+    '<span class="csp-hit-meta"><span class="csp-hit-who">' + escapeHtml(dn) +
+    (roleLbl ? (' <span class="role">' + escapeHtml(roleLbl) + '</span>') : '') +
+    (ch ? (' <span class="ch">' + escapeHtml(ch) + '</span>') : '') +
+    (when ? (' <span class="tm">' + escapeHtml(when) + '</span>') : '') +
+    '</span><div class="csp-hit-snip">' + snip + '</div></span></button>';
+}
+
+async function jumpToCommSearchHit(btn) {
+  const id = btn && btn.getAttribute('data-id');
+  const slug = (btn && btn.getAttribute('data-slug')) || _activeCommSlug || 'general';
+  if (!id) return;
+  closeCommSearchPanel();
+  if (slug !== (_activeCommSlug || '')) {
+    try { switchTab('genchat', { slug: slug }); } catch (e) {
+      try { await loadCommunityChannel(slug); } catch (e2) {}
+    }
+    // wait briefly for channel load
+    await new Promise(function (res) { setTimeout(res, 400); });
+  }
+  let node = document.querySelector('#genchat-msgs .comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+  let guard = 0;
+  while (!node && _commHistory.hasMore && guard < 40) {
+    guard++;
+    await loadOlderCommunityMessages();
+    node = document.querySelector('#genchat-msgs .comm-msg[data-msg-id="' + String(id).replace(/"/g, '') + '"]');
+  }
+  if (!node) {
+    showToast('Message not in loaded history');
+    return;
+  }
+  node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  node.classList.remove('comm-msg-flash');
+  void node.offsetWidth;
+  node.classList.add('comm-msg-flash');
 }
 
 function bindCommMsgTouch(el) {

@@ -422,6 +422,11 @@ def init_community_db(get_db):
         """CREATE INDEX IF NOT EXISTS idx_community_pins_chan
            ON community_pins(community_id, channel_slug, created_at DESC)"""
     )
+    # Channel history paging + search (scroll-back / from: filters)
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_comm_msg_chan_created
+           ON community_messages(channel_id, created_at)"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_tickets (
             id TEXT PRIMARY KEY,
@@ -849,6 +854,29 @@ def is_media_only_content(content: str) -> bool:
 _MENTION_RE = re.compile(r"@([A-Za-z0-9_]{2,40}|everyone)\b", re.I)
 
 
+def resolve_member_token(conn, token: str):
+    """Resolve wallet / @handle / display_name → wallet (or None). Same lookup as mentions."""
+    token = (token or "").strip().lstrip("@").lower()
+    if not token:
+        return None
+    if token.startswith("0x") and len(token) == 42:
+        return _norm(token)
+    row = conn.execute(
+        "SELECT wallet FROM handles WHERE handle = ? OR handle = ?",
+        (token, "@" + token),
+    ).fetchone()
+    if row:
+        return _norm(row["wallet"])
+    row = conn.execute(
+        """SELECT wallet FROM community_profiles
+           WHERE lower(display_name) = ? OR lower(display_name) = ? LIMIT 1""",
+        (token, "@" + token),
+    ).fetchone()
+    if row:
+        return _norm(row["wallet"])
+    return None
+
+
 def parse_mentions(conn, content: str) -> tuple[bool, list[str]]:
     """Return (everyone, [wallets]). Resolves @handle / @display_name (no leading @ in DB)."""
     everyone = False
@@ -860,26 +888,9 @@ def parse_mentions(conn, content: str) -> tuple[bool, list[str]]:
         if token == "everyone":
             everyone = True
             continue
-        # handle match (with or without legacy @)
-        row = conn.execute(
-            "SELECT wallet FROM handles WHERE handle = ? OR handle = ?",
-            (token, "@" + token),
-        ).fetchone()
-        if row:
-            wallets.add(_norm(row["wallet"]))
-            continue
-        # display_name match (case-insensitive)
-        row = conn.execute(
-            """SELECT wallet FROM community_profiles
-               WHERE lower(display_name) = ? OR lower(display_name) = ? LIMIT 1""",
-            (token, "@" + token),
-        ).fetchone()
-        if row:
-            wallets.add(_norm(row["wallet"]))
-            continue
-        # raw 0x wallet mention @0xabc… (first 6+ chars unique enough — skip unless full)
-        if token.startswith("0x") and len(token) == 42:
-            wallets.add(_norm(token))
+        resolved = resolve_member_token(conn, token)
+        if resolved:
+            wallets.add(resolved)
     return everyone, list(wallets)
 
 
@@ -2448,6 +2459,14 @@ def register_community_routes(app, socketio, get_db):
     def api_channel_messages(slug):
         limit = min(int(request.args.get("limit", 80)), 200)
         viewer = _norm(request.args.get("wallet", ""))
+        before_raw = request.args.get("before")
+        before_id = (request.args.get("before_id") or "").strip()
+        before_ts = None
+        if before_raw not in (None, ""):
+            try:
+                before_ts = int(before_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "invalid before"}), 400
         conn = get_db()
         try:
             if slug == "mods":
@@ -2461,26 +2480,41 @@ def register_community_routes(app, socketio, get_db):
             if not ch:
                 return jsonify({"error": "channel not found"}), 404
             messages_ensure_extras(conn)
+            where = "channel_id=?"
+            params = [ch["id"]]
+            if before_ts is not None:
+                # Page older than (created_at, id) cursor — race-safe tiebreak
+                where += " AND (created_at < ? OR (created_at = ? AND id < ?))"
+                params.extend([before_ts, before_ts, before_id])
+            order_limit = " ORDER BY created_at DESC, id DESC LIMIT ?"
+            params_lim = list(params) + [limit]
             try:
                 rows = conn.execute(
                     """SELECT id, sender_wallet, content, created_at, edited_at, reply_to
                        FROM community_messages
-                       WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
-                    (ch["id"], limit),
+                       WHERE """ + where + order_limit,
+                    params_lim,
                 ).fetchall()
             except Exception:
                 try:
                     rows = conn.execute(
                         """SELECT id, sender_wallet, content, created_at, edited_at FROM community_messages
-                           WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
-                        (ch["id"], limit),
+                           WHERE """ + where + order_limit,
+                        params_lim,
                     ).fetchall()
                 except Exception:
+                    # Legacy schema: no edited_at / reply_to; drop id tiebreak if needed
+                    where_legacy = "channel_id=?"
+                    params_legacy = [ch["id"]]
+                    if before_ts is not None:
+                        where_legacy += " AND created_at < ?"
+                        params_legacy.append(before_ts)
                     rows = conn.execute(
                         """SELECT id, sender_wallet, content, created_at FROM community_messages
-                           WHERE channel_id=? ORDER BY created_at DESC LIMIT ?""",
-                        (ch["id"], limit),
+                           WHERE """ + where_legacy + " ORDER BY created_at DESC LIMIT ?",
+                        params_legacy + [limit],
                     ).fetchall()
+            has_more = len(rows) >= limit
             msgs = []
             for r in reversed(list(rows)):
                 sw = r["sender_wallet"] or ""
@@ -2524,7 +2558,132 @@ def register_community_routes(app, socketio, get_db):
                     "reply_to": reply_to,
                 }
                 msgs.append(enrich_channel_message(conn, msg, viewer))
-            return jsonify({"messages": msgs, "channel_id": ch["id"], "slug": slug})
+            return jsonify({
+                "messages": msgs,
+                "channel_id": ch["id"],
+                "slug": slug,
+                "has_more": has_more,
+            })
+        finally:
+            conn.close()
+
+    @app.route("/api/community/search")
+    def api_community_search():
+        """Discord-style channel search: q (words) + from: + in: back to day one.
+
+        v1 uses plain LIKE (no FTS5 yet). Staff-only channels (#mods) never
+        leak to non-staff. Optional has:/mentions:/date params reserved for later.
+        """
+        q = (request.args.get("q") or "").strip()
+        from_tok = (request.args.get("from") or "").strip()
+        in_slug = (request.args.get("in") or "").strip().lstrip("#").lower()
+        viewer = _norm(request.args.get("wallet", ""))
+        limit = min(int(request.args.get("limit", 40) or 40), 100)
+        before_raw = request.args.get("before")
+        before_id = (request.args.get("before_id") or "").strip()
+        before_ts = None
+        if before_raw not in (None, ""):
+            try:
+                before_ts = int(before_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "invalid before"}), 400
+        # has / mentions reserved (accepted, ignored in v1)
+        _ = request.args.get("has")
+        _ = request.args.get("mentions")
+        if not q and not from_tok:
+            return jsonify({"error": "q or from required", "results": [], "has_more": False}), 400
+        conn = get_db()
+        try:
+            viewer_role = get_role(conn, viewer) if viewer else None
+            staff = is_staff(viewer_role)
+            # Visible channels
+            ch_rows = conn.execute(
+                "SELECT id, slug, name FROM community_channels WHERE community_id=?",
+                (COMMUNITY_ID,),
+            ).fetchall()
+            visible = []
+            for cr in ch_rows:
+                slug = (cr["slug"] or "").lower()
+                if slug == "mods" and not staff:
+                    continue
+                visible.append(cr)
+            if in_slug:
+                if in_slug == "mods" and not staff:
+                    return jsonify({"error": "Mods channel is staff only", "code": "staff_only"}), 403
+                visible = [c for c in visible if (c["slug"] or "").lower() == in_slug]
+                if not visible:
+                    return jsonify({"error": "channel not found", "results": [], "has_more": False}), 404
+            chan_ids = [c["id"] for c in visible]
+            if not chan_ids:
+                return jsonify({"results": [], "has_more": False, "count": 0})
+            id_to_meta = {c["id"]: c for c in visible}
+
+            sender = None
+            if from_tok:
+                sender = resolve_member_token(conn, from_tok)
+                if not sender:
+                    return jsonify({"results": [], "has_more": False, "count": 0, "from_resolved": None})
+
+            messages_ensure_extras(conn)
+            where = ["m.community_id=?", "m.channel_id IN (" + ",".join("?" * len(chan_ids)) + ")"]
+            params = [COMMUNITY_ID] + list(chan_ids)
+            if sender:
+                where.append("m.sender_wallet=?")
+                params.append(sender)
+            words = [w for w in re.split(r"\s+", q) if w] if q else []
+            for w in words:
+                where.append("m.content LIKE ?")
+                params.append("%" + w + "%")
+            if before_ts is not None:
+                where.append("(m.created_at < ? OR (m.created_at = ? AND m.id < ?))")
+                params.extend([before_ts, before_ts, before_id])
+            sql = (
+                "SELECT m.id, m.channel_id, m.sender_wallet, m.content, m.created_at"
+                " FROM community_messages m WHERE "
+                + " AND ".join(where)
+                + " ORDER BY m.created_at DESC, m.id DESC LIMIT ?"
+            )
+            params.append(limit)
+            rows = conn.execute(sql, params).fetchall()
+            has_more = len(rows) >= limit
+            results = []
+            for r in rows:
+                sw = r["sender_wallet"] or ""
+                meta = id_to_meta.get(r["channel_id"]) or {}
+                slug = (meta["slug"] if meta else "") or ""
+                if str(sw).startswith("bot:"):
+                    msg = {
+                        "id": r["id"],
+                        "sender_wallet": sw,
+                        "content": r["content"],
+                        "created_at": r["created_at"],
+                        "display_name": GARDEN_BOT_NAME if "garden" in sw else "Bot",
+                        "role": "bot",
+                        "has_avatar": False,
+                        "bot": True,
+                        "slug": slug,
+                        "channel": meta["name"] if meta else slug,
+                    }
+                else:
+                    prof = profile_dict(conn, sw)
+                    msg = {
+                        "id": r["id"],
+                        "sender_wallet": sw,
+                        "content": r["content"],
+                        "created_at": r["created_at"],
+                        "display_name": prof["display_name"],
+                        "role": prof["role"],
+                        "has_avatar": prof["has_avatar"],
+                        "slug": slug,
+                        "channel": meta["name"] if meta else slug,
+                    }
+                results.append(msg)
+            return jsonify({
+                "results": results,
+                "has_more": has_more,
+                "count": len(results),
+                "from_resolved": sender,
+            })
         finally:
             conn.close()
 
