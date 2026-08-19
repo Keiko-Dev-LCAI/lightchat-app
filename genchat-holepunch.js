@@ -7,8 +7,9 @@
  * Default Gen Chat path remains WebRTC (genchat-p2p.js). This module is
  * opt-in via localStorage lc_holepunch_on=1 (+ optional lc_holepunch_relay).
  *
- * Live relay default: wss://lightchat-holepunch-production.up.railway.app
- * Verified: Node↔Node chat over that relay works; browser still experimental
+ * Relay URL: localStorage lc_holepunch_relay, or window.__LIGHTCHAT_HOLEPUNCH_RELAY__,
+ * else off (empty). Set HOLEPUNCH_RELAY_URL in host env / inject for production.
+ * Verified: Node↔Node chat over a DHT relay works; browser still experimental
  * (esm.sh + WASM sodium may fail on some devices).
  */
 (function (global) {
@@ -18,7 +19,10 @@
   const ESM_WS = 'https://esm.sh/@hyperswarm/dht-relay@0.4.3/ws';
   const ESM_SWARM = 'https://esm.sh/hyperswarm@4.11.7';
   const ESM_B4A = 'https://esm.sh/b4a@1.6.7';
-  const DEFAULT_RELAY = 'wss://lightchat-holepunch-production.up.railway.app';
+  // Default off — experimental path. Inject or localStorage to enable a relay.
+  const DEFAULT_RELAY = (typeof window !== 'undefined' && window.__LIGHTCHAT_HOLEPUNCH_RELAY__)
+    ? String(window.__LIGHTCHAT_HOLEPUNCH_RELAY__).trim()
+    : '';
   const FLUSH_MS = 15000;
   const WS_MS = 12000;
 
