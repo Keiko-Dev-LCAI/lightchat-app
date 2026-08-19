@@ -2414,17 +2414,292 @@ def get_lcai_price():
 
 
 def lightchain_rpc(method, params):
-    """Call the Lightchain JSON-RPC endpoint."""
+    """Call a Lightchain JSON-RPC endpoint (node1, then AIVM RPC fallback)."""
     payload = json.dumps({
         'jsonrpc': '2.0', 'method': method, 'params': params, 'id': 1
     }).encode()
-    req = _urllib_req.Request(
-        'https://node1.lightchain.ai',
-        data=payload,
-        headers={'Content-Type': 'application/json', 'User-Agent': 'LightChat/1.0'}
+    last_err = None
+    for url in ('https://node1.lightchain.ai', _AIVM_RPC):
+        try:
+            req = _urllib_req.Request(
+                url,
+                data=payload,
+                headers={'Content-Type': 'application/json', 'User-Agent': 'LightChat/1.0'}
+            )
+            with _urllib_req.urlopen(req, timeout=15) as r:
+                return json.loads(r.read())
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or RuntimeError('lightchain_rpc failed')
+
+
+# ── Chain-data readers for #ask-ai (read-only; no signing) ───────────────────
+_DEX_ROUTER_DEFAULT = '0x1f94c0A6Cf48D3075f9713A79f87FA4eEdAF7021'
+_DEX_FACTORY_DEFAULT = '0xBA502917c3F7233F9100f9430f4048a224A7D8DE'
+_DEX_WLCAI_DEFAULT = '0xeBf97f16d843bFD9d9E6B1857B4C00d94ca7e2B2'
+_chain_data_cache = {}  # key -> (ts, value)
+_CHAIN_CACHE_TTL = 45
+
+
+def _chain_cache_get(key):
+    row = _chain_data_cache.get(key)
+    if not row:
+        return None
+    ts, val = row
+    if time.time() - ts > _CHAIN_CACHE_TTL:
+        return None
+    return val
+
+
+def _chain_cache_set(key, val):
+    _chain_data_cache[key] = (time.time(), val)
+    return val
+
+
+def _dex_addrs():
+    from web3 import Web3
+    return {
+        'router': Web3.to_checksum_address(os.environ.get('DEX_ROUTER') or _DEX_ROUTER_DEFAULT),
+        'factory': Web3.to_checksum_address(os.environ.get('DEX_FACTORY') or _DEX_FACTORY_DEFAULT),
+        'wlcai': Web3.to_checksum_address(os.environ.get('DEX_WLCAI') or _DEX_WLCAI_DEFAULT),
+    }
+
+
+def _wei_to_eth_str(wei) -> str:
+    try:
+        v = int(str(wei), 0) if isinstance(wei, str) and wei.startswith('0x') else int(wei)
+    except Exception:
+        return '0'
+    whole = v // 10**18
+    frac = v % 10**18
+    if frac == 0:
+        return f'{whole:,}'
+    fr = str(frac).zfill(18)[:4].rstrip('0') or '0'
+    return f'{whole:,}.{fr}'
+
+
+def chain_get_native_balance(address: str) -> dict:
+    """Native LCAI balance via lightchain_rpc."""
+    addr = (address or '').lower().strip()
+    if not addr.startswith('0x') or len(addr) != 42:
+        return {'error': 'invalid address'}
+    cached = _chain_cache_get('bal:' + addr)
+    if cached is not None:
+        return cached
+    try:
+        res = lightchain_rpc('eth_getBalance', [addr, 'latest'])
+        wei_hex = res.get('result') or '0x0'
+        wei = int(wei_hex, 16)
+        out = {
+            'address': addr,
+            'wei': str(wei),
+            'lcai': _wei_to_eth_str(wei),
+            'usd': None,
+        }
+        try:
+            px = float(get_lcai_price() or 0)
+            out['usd'] = round((wei / 1e18) * px, 6) if px else None
+            out['lcai_usd'] = px
+        except Exception:
+            pass
+        return _chain_cache_set('bal:' + addr, out)
+    except Exception as e:
+        return {'error': f'balance unavailable: {str(e)[:120]}'}
+
+
+def chain_get_tx_status(tx_hash: str) -> dict:
+    txh = (tx_hash or '').strip()
+    if not txh.startswith('0x') or len(txh) < 66:
+        return {'error': 'invalid tx hash'}
+    cached = _chain_cache_get('tx:' + txh.lower())
+    if cached is not None:
+        return cached
+    try:
+        tx = lightchain_rpc('eth_getTransactionByHash', [txh]).get('result')
+        rcpt = lightchain_rpc('eth_getTransactionReceipt', [txh]).get('result')
+        if not tx and not rcpt:
+            return {'hash': txh, 'status': 'not_found'}
+        status = 'pending'
+        if rcpt:
+            st = rcpt.get('status')
+            if st in ('0x1', 1, '1'):
+                status = 'confirmed'
+            elif st in ('0x0', 0, '0'):
+                status = 'failed'
+            else:
+                status = 'mined'
+        out = {
+            'hash': txh,
+            'status': status,
+            'from': (tx or {}).get('from') or (rcpt or {}).get('from'),
+            'to': (tx or {}).get('to') or (rcpt or {}).get('to'),
+            'value_lcai': _wei_to_eth_str(int((tx or {}).get('value') or '0x0', 16)) if tx else None,
+            'block': int(rcpt['blockNumber'], 16) if rcpt and rcpt.get('blockNumber') else None,
+        }
+        return _chain_cache_set('tx:' + txh.lower(), out)
+    except Exception as e:
+        return {'error': f'tx lookup unavailable: {str(e)[:120]}'}
+
+
+def chain_get_dex_wlcai_liquidity() -> dict:
+    """Best-effort DEX liquidity via Factory/WLCAI. Fail-open if no pairs yet."""
+    cached = _chain_cache_get('dex:wlcai')
+    if cached is not None:
+        return cached
+    try:
+        from web3 import Web3
+        addrs = _dex_addrs()
+        w3 = Web3(Web3.HTTPProvider(_AIVM_RPC, request_kwargs={'timeout': 30}))
+        fac_abi = [
+            {'inputs': [], 'name': 'allPairsLength', 'outputs': [{'type': 'uint256'}],
+             'stateMutability': 'view', 'type': 'function'},
+            {'inputs': [{'type': 'uint256'}], 'name': 'allPairs', 'outputs': [{'type': 'address'}],
+             'stateMutability': 'view', 'type': 'function'},
+            {'inputs': [{'type': 'address'}, {'type': 'address'}], 'name': 'getPair',
+             'outputs': [{'type': 'address'}], 'stateMutability': 'view', 'type': 'function'},
+        ]
+        pair_abi = [
+            {'inputs': [], 'name': 'getReserves',
+             'outputs': [{'type': 'uint112'}, {'type': 'uint112'}, {'type': 'uint32'}],
+             'stateMutability': 'view', 'type': 'function'},
+            {'inputs': [], 'name': 'token0', 'outputs': [{'type': 'address'}],
+             'stateMutability': 'view', 'type': 'function'},
+            {'inputs': [], 'name': 'token1', 'outputs': [{'type': 'address'}],
+             'stateMutability': 'view', 'type': 'function'},
+        ]
+        fac = w3.eth.contract(address=addrs['factory'], abi=fac_abi)
+        n = int(fac.functions.allPairsLength().call())
+        if n <= 0:
+            out = {
+                'pairs': 0,
+                'note': 'DEX factory has no pairs yet on chain 9200 — liquidity N/A; price via get_lcai_price()',
+                'factory': addrs['factory'],
+                'wlcai': addrs['wlcai'],
+                'router': addrs['router'],
+            }
+            return _chain_cache_set('dex:wlcai', out)
+        # Sum WLCAI-side reserves across pairs that include WLCAI
+        wlcai = addrs['wlcai'].lower()
+        total_wlcai_wei = 0
+        used = 0
+        for i in range(min(n, 25)):
+            pair_addr = fac.functions.allPairs(i).call()
+            pair = w3.eth.contract(address=pair_addr, abi=pair_abi)
+            t0 = pair.functions.token0().call().lower()
+            t1 = pair.functions.token1().call().lower()
+            if wlcai not in (t0, t1):
+                continue
+            r0, r1, _ = pair.functions.getReserves().call()
+            total_wlcai_wei += int(r0 if t0 == wlcai else r1)
+            used += 1
+        px = float(get_lcai_price() or 0)
+        out = {
+            'pairs': n,
+            'wlcai_pairs': used,
+            'wlcai_reserve_lcai': _wei_to_eth_str(total_wlcai_wei),
+            'wlcai_reserve_usd': round((total_wlcai_wei / 1e18) * px, 2) if px else None,
+            'lcai_usd': px,
+            'factory': addrs['factory'],
+            'wlcai': addrs['wlcai'],
+        }
+        return _chain_cache_set('dex:wlcai', out)
+    except Exception as e:
+        return {'error': f'DEX read unavailable: {str(e)[:140]}', 'pairs': None}
+
+
+def chain_data_question_looks_relevant(text: str) -> bool:
+    t = (text or '').lower()
+    keys = (
+        'price', 'worth', 'lcai', 'liquidity', 'pool', 'reserve', 'dex',
+        'balance', 'holds', 'holding', 'wallet', 'tx', 'transaction',
+        'confirm', 'swap', 'buy', 'sell', 'send',
     )
-    with _urllib_req.urlopen(req, timeout=15) as r:
-        return json.loads(r.read())
+    if any(k in t for k in keys):
+        return True
+    if re.search(r'0x[a-fA-F0-9]{40}', text or ''):
+        return True
+    if re.search(r'0x[a-fA-F0-9]{64}', text or ''):
+        return True
+    return False
+
+
+def build_chain_data_facts(question: str) -> str:
+    """Compact facts block for AIVM prompt. Read-only; never invent numbers."""
+    q = question or ''
+    qlow = q.lower()
+    lines = []
+    now = time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())
+
+    # Decline trading intent (still answer with price/how-to, no execution)
+    if any(k in qlow for k in ('buy ', 'sell ', 'swap ', 'trade ', 'send lcai', 'transfer')):
+        lines.append('NOTE: Bot is read-only — do NOT execute buy/sell/swap/send. Explain only.')
+
+    want_price = any(k in qlow for k in ('price', 'worth', 'lcai at', 'how much is lcai', '$'))
+    want_liq = any(k in qlow for k in ('liquidity', 'pool', 'reserve', 'dex', 'depth'))
+    want_bal = any(k in qlow for k in ('balance', 'holds', 'holding', 'how much does'))
+    want_tx = any(k in qlow for k in ('tx', 'transaction', 'go through', 'confirmed', 'failed'))
+
+    addrs = re.findall(r'0x[a-fA-F0-9]{40}', q)
+    txs = re.findall(r'0x[a-fA-F0-9]{64}', q)
+    # Prefer longer matches as txs
+    addrs = [a for a in addrs if a.lower() not in {t[:42].lower() for t in txs}]
+
+    if want_price or (not want_liq and not want_bal and not want_tx and 'lcai' in qlow):
+        try:
+            px = get_lcai_price()
+            lines.append(f'LCAI/USD price: ${px} (via get_lcai_price cache)')
+        except Exception as e:
+            lines.append(f'LCAI/USD price: temporarily unavailable ({str(e)[:80]})')
+
+    if want_liq or 'pool' in qlow:
+        dex = chain_get_dex_wlcai_liquidity()
+        if dex.get('error'):
+            lines.append(f'DEX liquidity: {dex["error"]}')
+        elif dex.get('pairs') == 0:
+            lines.append(
+                'DEX liquidity: factory has 0 pairs on chain 9200 right now '
+                f'(factory {dex.get("factory")}, WLCAI {dex.get("wlcai")}). '
+                'Use LCAI/USD price above; on-chain pool depth N/A until pairs exist.'
+            )
+        else:
+            lines.append(
+                f'DEX: {dex.get("wlcai_pairs")} WLCAI pairs / {dex.get("pairs")} total · '
+                f'WLCAI-side reserves ≈ {dex.get("wlcai_reserve_lcai")} LCAI'
+                + (f' (~${dex.get("wlcai_reserve_usd")})' if dex.get('wlcai_reserve_usd') is not None else '')
+            )
+
+    for a in addrs[:2]:
+        if want_bal or want_price or True:
+            bal = chain_get_native_balance(a)
+            if bal.get('error'):
+                lines.append(f'Balance {a[:10]}…: {bal["error"]}')
+            else:
+                usd = bal.get('usd')
+                lines.append(
+                    f'Native balance {a[:8]}…{a[-4:]}: {bal.get("lcai")} LCAI'
+                    + (f' (~${usd})' if usd is not None else '')
+                )
+
+    for th in txs[:2]:
+        st = chain_get_tx_status(th)
+        if st.get('error'):
+            lines.append(f'Tx {th[:12]}…: {st["error"]}')
+        else:
+            fr = (st.get('from') or '?')
+            to = (st.get('to') or '?')
+            lines.append(
+                f'Tx {th[:12]}…: status={st.get("status")} '
+                f'from={fr[:8]}…{fr[-4:] if len(fr) > 10 else fr} '
+                f'to={to[:8]}…{to[-4:] if len(to) > 10 else to} '
+                f'value={st.get("value_lcai")} LCAI '
+                f'block={st.get("block")}'
+            )
+
+    if not lines:
+        return ''
+    lines.append(f'Live from Lightchain · updated {now}')
+    return '\n'.join(lines)
 
 
 @app.route('/api/lcai-price')
@@ -3652,6 +3927,15 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
         knowledge_hits = search_knowledge(conn, question, limit=5)
         knowledge_block = format_knowledge_for_prompt(knowledge_hits, max_chars=2200)
 
+        # Live chain-data (price / liquidity / balances / txs) — read-only
+        chain_block = ""
+        try:
+            if chain_data_question_looks_relevant(question):
+                chain_block = build_chain_data_facts(question)
+        except Exception as e:
+            print(f"  [ask-ai] chain-data error: {e}", flush=True)
+            chain_block = "Chain data temporarily unavailable — do not invent prices/balances/tx status."
+
         # Live DAO proposals (read-only cache; fail-open if empty/stale)
         dao_block = ""
         if dao_question_looks_governance(question):
@@ -3697,8 +3981,13 @@ def _ask_ai_worker(get_db, socketio, wallet: str, content: str, display_name: st
             "Answer using the reference material below when relevant. If the docs cover it,",
             "explain clearly and mention which source. If you're unsure, say so — don't invent.",
             "For governance questions, use ONLY the on-chain proposal data provided — never invent tallies or titles.",
+            "For price/balance/tx questions, use ONLY the chain-data facts block — never invent numbers. Never execute trades.",
             "",
         ]
+        if chain_block:
+            prompt_parts.append("Reference — live Lightchain chain data:")
+            prompt_parts.append(chain_block)
+            prompt_parts.append("")
         if dao_block:
             prompt_parts.append("Reference — Lightchain governance (on-chain):")
             prompt_parts.append(dao_block)
