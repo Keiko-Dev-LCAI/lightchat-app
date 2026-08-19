@@ -1987,7 +1987,44 @@ body {
           font-size:13px; line-height:1.25; color:#1a3a1a; white-space:pre; overflow:hidden;
           min-height:88px; position:relative;
         }
+        .garden-art-wrap.thirst-thirsty { filter:saturate(0.72) brightness(0.95); }
+        .garden-art-wrap.thirst-wilting { filter:saturate(0.45) brightness(0.82); }
+        .garden-thirst-cap {
+          display:none; font-size:11px; font-weight:700; color:#1a3a1a; background:rgba(255,255,255,0.55);
+          border-radius:3px; padding:2px 8px; margin:4px auto 0; width:fit-content; font-family:inherit;
+        }
+        .garden-art-wrap.thirst-thirsty .garden-thirst-cap,
+        .garden-art-wrap.thirst-wilting .garden-thirst-cap { display:block; }
         .garden-art-emoji { font-size:42px; line-height:1; display:block; margin-bottom:2px; font-family:inherit; }
+        .garden-art-emoji.garden-pop { animation:gardenWaterPop 0.55s ease; }
+        .garden-water-drop {
+          position:absolute; left:50%; top:8px; font-size:18px; pointer-events:none; opacity:0;
+          transform:translateX(-50%);
+        }
+        .garden-water-drop.go { animation:gardenDropRise 0.7s ease-out forwards; }
+        @keyframes gardenWaterPop {
+          0% { transform:scale(1); }
+          40% { transform:scale(1.15); }
+          100% { transform:scale(1); }
+        }
+        @keyframes gardenDropRise {
+          0% { opacity:1; top:55%; }
+          100% { opacity:0; top:8%; }
+        }
+        .garden-streak-chip {
+          display:none; margin-left:6px; font-size:12px; font-weight:700; color:#fee75c;
+          vertical-align:middle; cursor:help;
+        }
+        .garden-streak-chip.show { display:inline; }
+        .garden-you-card {
+          margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);
+        }
+        .garden-you-card-title {
+          font-size:11px; font-weight:700; color:#b5bac1; text-transform:uppercase;
+          letter-spacing:0.04em; margin-bottom:6px;
+        }
+        .garden-you-card-body { font-size:13px; color:#dbdee1; line-height:1.45; }
+        .garden-you-card-body .gy-muted { color:#949ba4; font-size:12px; }
         .garden-desc { font-size:13px; color:#dbdee1; line-height:1.45; }
         .garden-desc strong { color:#fff; }
         .garden-desc .g-muted { color:#b5bac1; }
@@ -2075,11 +2112,13 @@ body {
               <div class="garden-embed-title" id="garden-tree-name">Lightchain Tree</div>
               <div class="garden-art-wrap" id="garden-art" aria-hidden="true">
                 <span class="garden-art-emoji" id="garden-emoji">🌱</span>
+                <span class="garden-water-drop" id="garden-water-drop" aria-hidden="true">💧</span>
                 <div id="garden-art-lines">☁️  ☀️  ☁️
 
    🌱
   ═══
 ▓▓▓▓▓▓▓</div>
+                <div class="garden-thirst-cap" id="garden-thirst-cap"></div>
               </div>
               <div class="garden-desc" id="garden-desc">
                 <strong>Your tree is 0ft tall.</strong><br>
@@ -2089,6 +2128,7 @@ body {
                 <button type="button" id="garden-water-btn" class="garden-btn garden-btn-water" onclick="waterCommunityGarden()">💧</button>
                 <button type="button" class="garden-btn garden-btn-refresh" onclick="refreshGardenPanel()" title="Refresh">🔄</button>
                 <span id="garden-label" style="font-size:12px;color:#b5bac1"></span>
+                <span class="garden-streak-chip" id="garden-streak-chip" title="Water daily (UTC) to keep your streak.">🔥 0d</span>
               </div>
               <div class="garden-apple" id="garden-apple">
                 <div class="garden-apple-hint" id="garden-apple-hint">🍎 Fruit dropping! Tap the basket under the apple.</div>
@@ -2105,6 +2145,10 @@ body {
                 <div class="garden-contrib-title">Top contributors</div>
                 <ul class="garden-contrib-list" id="garden-contrib-list"></ul>
                 <div class="garden-contrib-you" id="garden-contrib-you"></div>
+              </div>
+              <div class="garden-you-card" id="garden-you-card" style="display:none">
+                <div class="garden-you-card-title">Your garden</div>
+                <div class="garden-you-card-body" id="garden-you-card-body"></div>
               </div>
               <div class="garden-meta" id="garden-stats">Same person can't water twice in a row · taller = longer grow time · catch apples for the community</div>
             </div>
@@ -3922,6 +3966,23 @@ function renderGardenApple(drop) {
   }
 }
 
+function _gardenPlayWaterAnim() {
+  const emoji = document.getElementById('garden-emoji');
+  const drop = document.getElementById('garden-water-drop');
+  if (emoji) {
+    emoji.classList.remove('garden-pop');
+    void emoji.offsetWidth;
+    emoji.classList.add('garden-pop');
+    setTimeout(function () { emoji.classList.remove('garden-pop'); }, 600);
+  }
+  if (drop) {
+    drop.classList.remove('go');
+    void drop.offsetWidth;
+    drop.classList.add('go');
+    setTimeout(function () { drop.classList.remove('go'); }, 750);
+  }
+}
+
 function renderGardenPanel(st) {
   _gardenState = st || _gardenState;
   if (!_gardenState) return;
@@ -3930,13 +3991,41 @@ function renderGardenPanel(st) {
   const stats = document.getElementById('garden-stats');
   const desc = document.getElementById('garden-desc');
   const artLines = document.getElementById('garden-art-lines');
+  const artWrap = document.getElementById('garden-art');
+  const thirstCap = document.getElementById('garden-thirst-cap');
+  const streakChip = document.getElementById('garden-streak-chip');
+  const youCard = document.getElementById('garden-you-card');
+  const youBody = document.getElementById('garden-you-card-body');
   const treeName = document.getElementById('garden-tree-name');
   const btn = document.getElementById('garden-water-btn');
-  if (emoji) emoji.textContent = _gardenState.emoji || '🌱';
+  const thirst = _gardenState.thirst || 'ok';
+  if (emoji) {
+    // Cosmetic wilt: keep stage emoji but prepend wilt hint via caption; don't change height
+    emoji.textContent = (thirst === 'wilting' ? '🥀' : (_gardenState.emoji || '🌱'));
+  }
   if (label) label.textContent = (_gardenState.label || 'Seed') + ' · ' + _gardenFmtHeight(_gardenState.height_ft) + 'ft';
   if (treeName) treeName.textContent = _gardenState.tree_name || 'Lightchain Tree';
   if (artLines && Array.isArray(_gardenState.art)) {
     artLines.textContent = _gardenState.art.join('\n');
+  }
+  if (artWrap) {
+    artWrap.classList.remove('thirst-thirsty', 'thirst-wilting');
+    if (thirst === 'thirsty') artWrap.classList.add('thirst-thirsty');
+    if (thirst === 'wilting') artWrap.classList.add('thirst-wilting');
+  }
+  if (thirstCap) {
+    if (thirst === 'thirsty') thirstCap.textContent = '💧 getting thirsty…';
+    else if (thirst === 'wilting') thirstCap.textContent = '🥀 needs water!';
+    else thirstCap.textContent = '';
+  }
+  const streakDays = Number(_gardenState.my_streak_days || 0);
+  if (streakChip) {
+    if (streakDays >= 2) {
+      streakChip.textContent = '🔥 ' + streakDays + 'd';
+      streakChip.classList.add('show');
+    } else {
+      streakChip.classList.remove('show');
+    }
   }
   const height = _gardenFmtHeight(_gardenState.height_ft);
   const lastName = _gardenState.last_waterer_name || '';
@@ -4005,6 +4094,25 @@ function renderGardenPanel(st) {
           contribYou.textContent = '';
         }
       }
+    }
+  }
+  // "Your garden" personal stats card
+  if (youCard && youBody) {
+    if (wallet && (_gardenState.my_waters > 0 || streakDays > 0 || _gardenState.my_apples > 0)) {
+      youCard.style.display = '';
+      const best = Number(_gardenState.my_best_streak || 0);
+      const lines = [];
+      lines.push('🔥 ' + Math.max(streakDays, 0) + '-day streak'
+        + (best ? (' <span class="gy-muted">(best: ' + best + ')</span>') : ''));
+      lines.push('💧 ' + (_gardenState.my_waters || 0) + ' waters · 🍎 ' + (_gardenState.my_apples || 0) + ' caught');
+      if (_gardenState.my_rank) lines.push('🏆 Rank #' + _gardenState.my_rank);
+      youBody.innerHTML = lines.join('<br>');
+    } else if (wallet) {
+      youCard.style.display = '';
+      youBody.innerHTML = '<span class="gy-muted">Water the tree to start your garden stats.</span>';
+    } else {
+      youCard.style.display = 'none';
+      youBody.innerHTML = '';
     }
   }
   if (btn) {
@@ -4083,9 +4191,14 @@ async function waterCommunityGarden() {
       else refreshGardenPanel();
       return;
     }
+    try { _gardenPlayWaterAnim(); } catch (e) {}
     if (j.garden) renderGardenPanel(j.garden);
     if (j.apple_drop) renderGardenApple(j.apple_drop);
-    showToast(j.grew ? ('🌳 Grew to ' + (j.height_ft || '') + 'ft!') : ('💧 Watered · ' + (j.height_ft || '') + 'ft'));
+    const streakN = j.garden && j.garden.my_streak_days;
+    const streakBit = (streakN && streakN >= 2) ? (' · 🔥 ' + streakN + 'd') : '';
+    showToast(j.grew
+      ? ('🌳 Grew to ' + (j.height_ft || '') + 'ft!' + streakBit)
+      : ('💧 Watered · ' + (j.height_ft || '') + 'ft' + streakBit));
     refreshGardenPanel();
     if (_activeCommSlug === 'garden') loadCommunityChannel('garden');
   } catch (e) {
