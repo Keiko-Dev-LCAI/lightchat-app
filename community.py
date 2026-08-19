@@ -444,6 +444,34 @@ def init_community_db(get_db):
         """CREATE INDEX IF NOT EXISTS idx_knowledge_source
            ON knowledge_chunks(source_url)"""
     )
+    # Lightchain Governor proposals cache (read-only chain sync)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS dao_proposals (
+            proposal_id TEXT PRIMARY KEY,
+            short_id TEXT,
+            proposer TEXT,
+            title TEXT,
+            description TEXT,
+            state INTEGER,
+            for_wei TEXT,
+            against_wei TEXT,
+            abstain_wei TEXT,
+            snapshot_block INTEGER,
+            deadline_block INTEGER,
+            created_at INTEGER,
+            updated_at INTEGER
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_dao_proposals_state
+           ON dao_proposals(state)"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS dao_scan_state (
+            k TEXT PRIMARY KEY,
+            v TEXT
+        )"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_tickets (
             id TEXT PRIMARY KEY,
@@ -1285,6 +1313,201 @@ def format_knowledge_for_prompt(chunks: list[dict], max_chars: int = 2200) -> st
             break
         lines.append(line)
         used += len(line) + 1
+    return "\n".join(lines)
+
+
+# ── DAO proposals cache (filled by server.py poller; read-only) ──
+DAO_STATE_NAMES = {
+    0: "Pending",
+    1: "Active",
+    2: "Canceled",
+    3: "Defeated",
+    4: "Succeeded",
+    5: "Queued",
+    6: "Expired",
+    7: "Executed",
+}
+DAO_TERMINAL_STATES = {2, 3, 6, 7}  # Canceled, Defeated, Expired, Executed
+
+
+def _wei_to_lcai_str(wei) -> str:
+    try:
+        v = int(str(wei or "0"))
+    except Exception:
+        return "0"
+    neg = v < 0
+    v = abs(v)
+    whole = v // 10**18
+    frac = v % 10**18
+    if frac == 0:
+        s = f"{whole:,}"
+    else:
+        fr = (str(frac).zfill(18)[:4]).rstrip("0") or "0"
+        s = f"{whole:,}.{fr}"
+    return ("-" if neg else "") + s
+
+
+def dao_get_scan_value(conn, key: str, default: str = "") -> str:
+    try:
+        row = conn.execute("SELECT v FROM dao_scan_state WHERE k=?", (key,)).fetchone()
+        return (row["v"] if row else default) or default
+    except Exception:
+        return default
+
+
+def dao_set_scan_value(conn, key: str, value: str) -> None:
+    conn.execute(
+        "INSERT INTO dao_scan_state (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+        (key, str(value)),
+    )
+    conn.commit()
+
+
+def dao_upsert_proposal(conn, row: dict) -> None:
+    now = int(time.time())
+    conn.execute(
+        """INSERT INTO dao_proposals (
+            proposal_id, short_id, proposer, title, description, state,
+            for_wei, against_wei, abstain_wei, snapshot_block, deadline_block,
+            created_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(proposal_id) DO UPDATE SET
+            short_id=excluded.short_id,
+            proposer=excluded.proposer,
+            title=excluded.title,
+            description=excluded.description,
+            state=excluded.state,
+            for_wei=excluded.for_wei,
+            against_wei=excluded.against_wei,
+            abstain_wei=excluded.abstain_wei,
+            snapshot_block=excluded.snapshot_block,
+            deadline_block=excluded.deadline_block,
+            updated_at=excluded.updated_at
+        """,
+        (
+            str(row["proposal_id"]),
+            row.get("short_id") or str(row["proposal_id"])[:6],
+            row.get("proposer") or "",
+            row.get("title") or "",
+            row.get("description") or "",
+            int(row.get("state") if row.get("state") is not None else -1),
+            str(row.get("for_wei") or "0"),
+            str(row.get("against_wei") or "0"),
+            str(row.get("abstain_wei") or "0"),
+            int(row.get("snapshot_block") or 0),
+            int(row.get("deadline_block") or 0),
+            int(row.get("created_at") or now),
+            now,
+        ),
+    )
+    conn.commit()
+
+
+def dao_list_proposals(conn, *, active_only: bool = False, limit: int = 20) -> list[dict]:
+    try:
+        if active_only:
+            rows = conn.execute(
+                """SELECT * FROM dao_proposals
+                   WHERE state IN (0, 1, 4, 5)
+                   ORDER BY updated_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM dao_proposals ORDER BY updated_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def dao_find_proposal(conn, query: str) -> dict | None:
+    """Match by short_id prefix, full id, or title keywords."""
+    q = (query or "").strip()
+    if not q:
+        return None
+    q_clean = q.lstrip("#").strip()
+    rows = dao_list_proposals(conn, active_only=False, limit=200)
+    if not rows:
+        return None
+    # Exact / prefix id
+    for r in rows:
+        pid = str(r.get("proposal_id") or "")
+        sid = str(r.get("short_id") or "")
+        if q_clean == pid or q_clean == sid or pid.startswith(q_clean) or sid.startswith(q_clean):
+            return r
+    # Title keywords
+    words = [w.lower() for w in re.split(r"\s+", q_clean) if len(w) > 2]
+    if not words:
+        return None
+    best = None
+    best_score = 0
+    for r in rows:
+        title = (r.get("title") or "").lower()
+        desc = (r.get("description") or "").lower()
+        score = sum(1 for w in words if w in title or w in desc)
+        if score > best_score:
+            best_score = score
+            best = r
+    return best if best_score > 0 else None
+
+
+def dao_question_looks_governance(text: str) -> bool:
+    t = (text or "").lower()
+    keys = (
+        "proposal", "proposals", "governance", "governor", "dao", "quorum",
+        "vote", "voting", "timelock", "on-chain proposal",
+    )
+    if any(k in t for k in keys):
+        return True
+    if re.search(r"#\d{4,}", t):
+        return True
+    return False
+
+
+def format_dao_proposals_for_prompt(
+    rows: list[dict],
+    *,
+    full: bool = False,
+    max_chars: int = 3200,
+    updated_at: int | None = None,
+) -> str:
+    if not rows:
+        return ""
+    lines = []
+    used = 0
+    for r in rows:
+        sid = r.get("short_id") or str(r.get("proposal_id") or "")[:6]
+        title = (r.get("title") or "Untitled").strip()
+        if title.startswith("#"):
+            title = title.lstrip("#").strip()
+        st = DAO_STATE_NAMES.get(int(r.get("state") if r.get("state") is not None else -1), "Unknown")
+        fv = _wei_to_lcai_str(r.get("for_wei"))
+        av = _wei_to_lcai_str(r.get("against_wei"))
+        ab = _wei_to_lcai_str(r.get("abstain_wei"))
+        line = f"- #{sid} · {st} · For {fv} / Against {av} / Abstain {ab} LCAI · {title}"
+        if full:
+            body = (r.get("description") or "").strip()
+            if len(body) > 1200:
+                body = body[:1197] + "…"
+            line = (
+                f"Proposal #{sid} ({st})\n"
+                f"Title: {title}\n"
+                f"Votes: For {fv} LCAI · Against {av} LCAI · Abstain {ab} LCAI\n"
+                f"Snapshot block {r.get('snapshot_block') or '?'} · Deadline block {r.get('deadline_block') or '?'}\n"
+                f"Proposer: {r.get('proposer') or '?'}\n"
+                f"Description:\n{body}"
+            )
+        if used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    if not lines:
+        return ""
+    footer_ts = updated_at or max((int(r.get("updated_at") or 0) for r in rows), default=0)
+    when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(footer_ts)) if footer_ts else "unknown"
+    lines.append(f"Live from Lightchain governance · updated {when}")
     return "\n".join(lines)
 
 
