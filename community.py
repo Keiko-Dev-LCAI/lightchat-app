@@ -11,8 +11,10 @@ import time
 import uuid
 import base64
 import re
+import threading
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from html.parser import HTMLParser
 
 # Official community id
 COMMUNITY_ID = "lightchain-official"
@@ -27,10 +29,11 @@ DEFAULT_CHANNELS = [
     ("dev", "Devs", "text", "Builders, apps, contracts, tooling — P2P live chat", 6, 0),
     ("nodes", "Nodes", "text", "Node operators, validators, RPC, sync, hardware — P2P live chat", 7, 0),
     ("ai", "AI", "text", "AI and AIVM discussion", 8, 0),
-    ("proposals", "Proposals", "text", "DAO and ideas", 9, 0),
-    ("mods", "Mods", "text", "Staff only — mod issues & coordination · P2P", 10, 0),
-    ("links", "Links", "info", "Official links and contracts", 11, 1),
-    ("report", "Report", "text", "Report issues", 12, 0),
+    ("ask-ai", "Ask AI", "text", "Ask Lightchain AI (AIVM) — community-funded answers", 9, 0),
+    ("proposals", "Proposals", "text", "DAO and ideas", 10, 0),
+    ("mods", "Mods", "text", "Staff only — mod issues & coordination · P2P", 11, 0),
+    ("links", "Links", "info", "Official links and contracts", 12, 1),
+    ("report", "Report", "text", "Report issues", 13, 0),
 ]
 
 # Discord-style Start Here guide (shown in #start-here UI)
@@ -427,6 +430,20 @@ def init_community_db(get_db):
         """CREATE INDEX IF NOT EXISTS idx_comm_msg_chan_created
            ON community_messages(channel_id, created_at)"""
     )
+    # Phase 2 AIVM knowledge (whitepaper/docs) — dormant until KNOWLEDGE_SOURCES set
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS knowledge_chunks (
+            id TEXT PRIMARY KEY,
+            source_url TEXT NOT NULL,
+            title TEXT,
+            chunk_text TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )"""
+    )
+    conn.execute(
+        """CREATE INDEX IF NOT EXISTS idx_knowledge_source
+           ON knowledge_chunks(source_url)"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_tickets (
             id TEXT PRIMARY KEY,
@@ -678,6 +695,42 @@ def init_community_db(get_db):
     except Exception as e:
         print("  [community] mods channel seed:", e)
 
+    # Ensure #ask-ai channel (AIVM bot)
+    try:
+        row_a = conn.execute(
+            "SELECT id FROM community_channels WHERE community_id=? AND slug='ask-ai'",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if not row_a:
+            conn.execute(
+                """INSERT INTO community_channels
+                   (id, community_id, slug, name, kind, description, sort_order, readonly_members)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (
+                    f"{COMMUNITY_ID}:ask-ai",
+                    COMMUNITY_ID,
+                    "ask-ai",
+                    "Ask AI",
+                    "text",
+                    "Ask Lightchain AI (AIVM) — community-funded answers",
+                    9,
+                    0,
+                ),
+            )
+            conn.commit()
+        else:
+            conn.execute(
+                "UPDATE community_channels SET name=?, description=?, readonly_members=0 WHERE community_id=? AND slug='ask-ai'",
+                (
+                    "Ask AI",
+                    "Ask Lightchain AI (AIVM) — community-funded answers",
+                    COMMUNITY_ID,
+                ),
+            )
+            conn.commit()
+    except Exception as e:
+        print("  [community] ask-ai channel seed:", e)
+
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_threads (
             id TEXT PRIMARY KEY,
@@ -892,6 +945,407 @@ def parse_mentions(conn, content: str) -> tuple[bool, list[str]]:
         if resolved:
             wallets.add(resolved)
     return everyone, list(wallets)
+
+
+def _visible_channel_rows(conn, *, staff: bool = False, in_slug: str = ""):
+    """Channels the viewer may see. staff=False never includes #mods."""
+    ch_rows = conn.execute(
+        "SELECT id, slug, name FROM community_channels WHERE community_id=?",
+        (COMMUNITY_ID,),
+    ).fetchall()
+    visible = []
+    in_slug = (in_slug or "").strip().lstrip("#").lower()
+    for cr in ch_rows:
+        slug = (cr["slug"] or "").lower()
+        if slug == "mods" and not staff:
+            continue
+        visible.append(cr)
+    if in_slug:
+        if in_slug == "mods" and not staff:
+            return None  # forbidden
+        visible = [c for c in visible if (c["slug"] or "").lower() == in_slug]
+    return visible
+
+
+def search_messages_for_context(
+    conn,
+    query: str,
+    limit: int = 8,
+    *,
+    staff: bool = False,
+    from_tok: str = "",
+    in_slug: str = "",
+    before_ts=None,
+    before_id: str = "",
+):
+    """Keyword search over community_messages (shared by /search + AIVM RAG).
+
+    With staff=False (default for the #ask-ai bot), #mods is never included.
+    """
+    q = (query or "").strip()
+    from_tok = (from_tok or "").strip()
+    limit = max(1, min(int(limit or 8), 100))
+    if not q and not from_tok:
+        return [], {"error": "q or from required", "forbidden": False}
+
+    visible = _visible_channel_rows(conn, staff=staff, in_slug=in_slug)
+    if visible is None:
+        return [], {"error": "staff_only", "forbidden": True}
+    if in_slug and not visible:
+        return [], {"error": "channel not found", "forbidden": False}
+    chan_ids = [c["id"] for c in visible]
+    if not chan_ids:
+        return [], {"error": None, "forbidden": False}
+    id_to_meta = {c["id"]: c for c in visible}
+
+    sender = None
+    if from_tok:
+        sender = resolve_member_token(conn, from_tok)
+        if not sender:
+            return [], {"error": None, "forbidden": False, "from_resolved": None}
+
+    messages_ensure_extras(conn)
+    where = [
+        "m.community_id=?",
+        "m.channel_id IN (" + ",".join("?" * len(chan_ids)) + ")",
+    ]
+    params = [COMMUNITY_ID] + list(chan_ids)
+    if sender:
+        where.append("m.sender_wallet=?")
+        params.append(sender)
+    words = [w for w in re.split(r"\s+", q) if w] if q else []
+    for w in words:
+        where.append("m.content LIKE ?")
+        params.append("%" + w + "%")
+    if before_ts is not None:
+        where.append("(m.created_at < ? OR (m.created_at = ? AND m.id < ?))")
+        params.extend([before_ts, before_ts, before_id or ""])
+    sql = (
+        "SELECT m.id, m.channel_id, m.sender_wallet, m.content, m.created_at"
+        " FROM community_messages m WHERE "
+        + " AND ".join(where)
+        + " ORDER BY m.created_at DESC, m.id DESC LIMIT ?"
+    )
+    params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
+    results = []
+    for r in rows:
+        sw = r["sender_wallet"] or ""
+        meta = id_to_meta.get(r["channel_id"]) or {}
+        slug = (meta["slug"] if meta else "") or ""
+        if str(sw).startswith("bot:"):
+            msg = {
+                "id": r["id"],
+                "sender_wallet": sw,
+                "content": r["content"],
+                "created_at": r["created_at"],
+                "display_name": bot_display_name(sw),
+                "role": "bot",
+                "has_avatar": False,
+                "bot": True,
+                "slug": slug,
+                "channel": meta["name"] if meta else slug,
+            }
+        else:
+            prof = profile_dict(conn, sw)
+            msg = {
+                "id": r["id"],
+                "sender_wallet": sw,
+                "content": r["content"],
+                "created_at": r["created_at"],
+                "display_name": prof["display_name"],
+                "role": prof["role"],
+                "has_avatar": prof["has_avatar"],
+                "slug": slug,
+                "channel": meta["name"] if meta else slug,
+            }
+        results.append(msg)
+    return results, {
+        "error": None,
+        "forbidden": False,
+        "from_resolved": sender,
+        "has_more": len(rows) >= limit,
+    }
+
+
+# ── Phase 2 knowledge base (env-driven; off when KNOWLEDGE_SOURCES unset) ──
+
+def knowledge_sources_from_env() -> list[str]:
+    raw = (os.environ.get("KNOWLEDGE_SOURCES") or "").strip()
+    if not raw:
+        return []
+    return [u.strip() for u in raw.split(",") if u.strip()]
+
+
+class _HtmlTextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self._skip += 1
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript") and self._skip:
+            self._skip -= 1
+
+    def handle_data(self, data):
+        if not self._skip and data:
+            self.parts.append(data)
+
+
+def _html_to_text(html: str) -> str:
+    p = _HtmlTextExtractor()
+    try:
+        p.feed(html or "")
+    except Exception:
+        return re.sub(r"<[^>]+>", " ", html or "")
+    return re.sub(r"\s+", " ", " ".join(p.parts)).strip()
+
+
+def _chunk_text(text: str, size: int = 800) -> list[str]:
+    text = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
+    if not text:
+        return []
+    paras = re.split(r"\n\s*\n", text)
+    chunks = []
+    buf = ""
+    for para in paras:
+        para = para.strip()
+        if not para:
+            continue
+        if len(buf) + len(para) + 2 <= size:
+            buf = (buf + "\n\n" + para).strip() if buf else para
+        else:
+            if buf:
+                chunks.append(buf)
+            if len(para) <= size:
+                buf = para
+            else:
+                for i in range(0, len(para), size):
+                    chunks.append(para[i : i + size])
+                buf = ""
+    if buf:
+        chunks.append(buf)
+    return chunks
+
+
+def _fetch_source_text(url: str) -> tuple[str, str]:
+    """Return (title, plain_text). Supports HTML and PDF (pdfplumber if installed)."""
+    import requests as _req
+
+    r = _req.get(url, timeout=45, headers={"User-Agent": "LightChatKnowledgeBot/1.0"})
+    r.raise_for_status()
+    ctype = (r.headers.get("Content-Type") or "").lower()
+    title = url
+    low = url.lower()
+    if "pdf" in ctype or low.endswith(".pdf"):
+        try:
+            import pdfplumber  # optional
+            import io
+
+            parts = []
+            with pdfplumber.open(io.BytesIO(r.content)) as pdf:
+                if pdf.metadata and pdf.metadata.get("Title"):
+                    title = str(pdf.metadata["Title"])
+                for page in pdf.pages:
+                    t = page.extract_text() or ""
+                    if t.strip():
+                        parts.append(t)
+            return title, "\n\n".join(parts)
+        except ImportError:
+            print(f"  [knowledge] pdfplumber not installed — skip PDF {url}", flush=True)
+            return title, ""
+        except Exception as e:
+            print(f"  [knowledge] PDF parse failed {url}: {e}", flush=True)
+            return title, ""
+    html = r.text or ""
+    m = re.search(r"<title[^>]*>(.*?)</title>", html, re.I | re.S)
+    if m:
+        title = re.sub(r"\s+", " ", m.group(1)).strip() or title
+    return title, _html_to_text(html)
+
+
+def ingest_knowledge_url(conn, url: str) -> int:
+    """Fetch one URL, replace its chunks. Returns chunk count (0 on empty/fail)."""
+    url = (url or "").strip()
+    if not url:
+        return 0
+    try:
+        title, text = _fetch_source_text(url)
+    except Exception as e:
+        print(f"  [knowledge] fetch failed {url}: {e}", flush=True)
+        return 0
+    chunks = _chunk_text(text)
+    conn.execute("DELETE FROM knowledge_chunks WHERE source_url=?", (url,))
+    now = int(time.time())
+    for i, ch in enumerate(chunks):
+        cid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{url}#{i}"))
+        conn.execute(
+            """INSERT INTO knowledge_chunks (id, source_url, title, chunk_text, created_at)
+               VALUES (?,?,?,?,?)""",
+            (cid, url, title, ch, now),
+        )
+    conn.commit()
+    return len(chunks)
+
+
+def ingest_all_knowledge(conn) -> dict:
+    """Re-ingest every URL in KNOWLEDGE_SOURCES. Idempotent per source_url."""
+    sources = knowledge_sources_from_env()
+    out = {"sources": len(sources), "chunks": 0, "per_source": {}}
+    for url in sources:
+        n = ingest_knowledge_url(conn, url)
+        out["per_source"][url] = n
+        out["chunks"] += n
+    return out
+
+
+def search_knowledge(conn, query: str, limit: int = 5) -> list[dict]:
+    """Keyword LIKE over knowledge_chunks. Empty if Phase 2 off / no rows."""
+    q = (query or "").strip()
+    if not q:
+        return []
+    words = [w for w in re.split(r"\s+", q) if w]
+    if not words:
+        return []
+    # Pull a wider candidate set, then score by distinct word hits
+    where = []
+    params = []
+    for w in words:
+        where.append("chunk_text LIKE ?")
+        params.append("%" + w + "%")
+    sql = (
+        "SELECT id, source_url, title, chunk_text, created_at FROM knowledge_chunks WHERE "
+        + " OR ".join(where)
+        + " ORDER BY created_at DESC LIMIT 80"
+    )
+    try:
+        rows = conn.execute(sql, params).fetchall()
+    except Exception:
+        return []
+    scored = []
+    low_words = [w.lower() for w in words]
+    for r in rows:
+        text = (r["chunk_text"] or "").lower()
+        score = sum(1 for w in low_words if w in text)
+        if score <= 0:
+            continue
+        scored.append((score, r["created_at"] or 0, r))
+    scored.sort(key=lambda t: (-t[0], -t[1]))
+    out = []
+    for score, _ts, r in scored[: max(1, min(int(limit or 5), 20))]:
+        out.append({
+            "id": r["id"],
+            "source_url": r["source_url"],
+            "title": r["title"] or r["source_url"],
+            "chunk_text": r["chunk_text"],
+            "created_at": r["created_at"],
+            "score": score,
+        })
+    return out
+
+
+def format_chat_context_for_prompt(hits: list[dict], max_chars: int = 2800) -> str:
+    if not hits:
+        return ""
+    lines = []
+    used = 0
+    for h in hits:
+        who = h.get("display_name") or "member"
+        ch = h.get("slug") or h.get("channel") or "?"
+        body = re.sub(r"\s+", " ", str(h.get("content") or "")).strip()
+        if body.startswith("[["):
+            body = "[media]"
+        if len(body) > 280:
+            body = body[:277] + "…"
+        line = f"- #{ch} · {who}: {body}"
+        if used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines)
+
+
+def format_knowledge_for_prompt(chunks: list[dict], max_chars: int = 2200) -> str:
+    if not chunks:
+        return ""
+    lines = []
+    used = 0
+    for c in chunks:
+        title = c.get("title") or "doc"
+        url = c.get("source_url") or ""
+        body = re.sub(r"\s+", " ", str(c.get("chunk_text") or "")).strip()
+        if len(body) > 400:
+            body = body[:397] + "…"
+        line = f"- {title} ({url}): {body}"
+        if used + len(line) + 1 > max_chars:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines)
+
+
+# ── #ask-ai enqueue (runner registered from server.py to avoid circular import) ──
+_ask_ai_runner = None
+_ask_ai_hits: dict = {}
+_ask_ai_rate_lock = threading.Lock()
+
+
+def set_ask_ai_runner(fn):
+    """server.py registers the AIVM background worker here."""
+    global _ask_ai_runner
+    _ask_ai_runner = fn
+
+
+def ask_ai_channel_slug() -> str:
+    return (os.environ.get("AIVM_CHANNEL_SLUG") or "ask-ai").strip().lower() or "ask-ai"
+
+
+def ask_ai_rate_ok(wallet: str) -> bool:
+    cap = int(os.environ.get("AIVM_ASK_RATE_PER_HOUR", "5") or 5)
+    wallet = _norm(wallet)
+    now = time.time()
+    with _ask_ai_rate_lock:
+        hits = [t for t in _ask_ai_hits.get(wallet, []) if now - t < 3600]
+        if len(hits) >= max(1, cap):
+            _ask_ai_hits[wallet] = hits
+            return False
+        hits.append(now)
+        _ask_ai_hits[wallet] = hits
+        return True
+
+
+def maybe_enqueue_ask_ai(get_db, socketio, slug: str, wallet: str, content: str, display_name: str = ""):
+    """After a human posts in #ask-ai, kick off background AIVM answer (non-blocking)."""
+    slug = (slug or "").lower().strip()
+    if slug != ask_ai_channel_slug():
+        return
+    if str(wallet or "").startswith("bot:"):
+        return
+    content = (content or "").strip()
+    if not content or content.startswith("[[" ):
+        return  # skip pure media posts
+    runner = _ask_ai_runner
+    if not runner:
+        return
+    try:
+        threading.Thread(
+            target=runner,
+            kwargs={
+                "get_db": get_db,
+                "socketio": socketio,
+                "wallet": wallet,
+                "content": content,
+                "display_name": display_name or "",
+                "slug": slug,
+            },
+            daemon=True,
+        ).start()
+    except Exception as e:
+        print(f"  [ask-ai] enqueue failed: {e}", flush=True)
 
 
 def all_member_wallets(conn) -> list[str]:
@@ -1135,6 +1589,16 @@ GARDEN_STAGES = [
     (500, "🏯", "Legendary Grove", ["✨🌙✨", "🏯🌳🏯", "🌴🌲🌳🌲🌴", "═╩═╩═╩═╩═", "▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓"]),
 ]
 GARDEN_BOT_NAME = "Garden Bot"
+AIVM_BOT_NAME = "Lightchain AI"
+
+
+def bot_display_name(sender_wallet: str, fallback: str = "Bot") -> str:
+    sw = str(sender_wallet or "").lower()
+    if "aivm" in sw:
+        return AIVM_BOT_NAME
+    if "garden" in sw:
+        return GARDEN_BOT_NAME
+    return fallback
 GARDEN_APPLE_LANES = 3
 GARDEN_APPLE_CATCH_SEC = 10
 # Live apple drops (drop_id -> {lane, exp, caught, by})
@@ -1748,7 +2212,7 @@ def message_reply_preview(conn, reply_to_id: str) -> dict | None:
     sw = row["sender_wallet"] or ""
     name = "Bot"
     if str(sw).startswith("bot:"):
-        name = GARDEN_BOT_NAME if "garden" in sw else "Bot"
+        name = bot_display_name(sw)
     else:
         try:
             name = profile_dict(conn, sw).get("display_name") or (
@@ -1809,7 +2273,16 @@ def post_channel_bot_message(conn, socketio, slug: str, content: str, bot_name: 
     mid = str(uuid.uuid4())
     now = int(time.time())
     # Synthetic sender — not a real 0x wallet; clients show bot_name
-    sender = "bot:garden" if "garden" in (bot_name or "").lower() else "bot:system"
+    bn = (bot_name or "Bot").lower()
+    if "aivm" in bn or "lightchain" in bn:
+        sender = "bot:aivm"
+        display = AIVM_BOT_NAME
+    elif "garden" in bn:
+        sender = "bot:garden"
+        display = GARDEN_BOT_NAME
+    else:
+        sender = "bot:system"
+        display = bot_name or "Bot"
     conn.execute(
         """INSERT INTO community_messages
            (id, community_id, channel_id, sender_wallet, content, created_at)
@@ -1822,7 +2295,7 @@ def post_channel_bot_message(conn, socketio, slug: str, content: str, bot_name: 
         "sender_wallet": sender,
         "content": content,
         "created_at": now,
-        "display_name": bot_name,
+        "display_name": display,
         "role": "bot",
         "has_avatar": False,
         "slug": slug,
@@ -1933,7 +2406,7 @@ def register_community_routes(app, socketio, get_db):
             GUIDE_SLUGS = {"start-here"}
             STAFF_ONLY_SLUGS = {"mods"}
             PRIMARY_SLUGS = {
-                "general", "off-topic", "dev", "nodes", "mods",
+                "general", "off-topic", "dev", "nodes", "mods", "ask-ai",
                 "start-here", "announcements", "media", "links", "garden",
             }
             P2P_CHAT_SLUGS = {"general", "off-topic", "dev", "nodes", "mods"}
@@ -2536,7 +3009,7 @@ def register_community_routes(app, socketio, get_db):
                         "created_at": r["created_at"],
                         "edited": bool(edited_at),
                         "edited_at": edited_at,
-                        "display_name": GARDEN_BOT_NAME if "garden" in sw else "Bot",
+                        "display_name": bot_display_name(sw),
                         "role": "bot",
                         "has_avatar": False,
                         "bot": True,
@@ -2572,7 +3045,7 @@ def register_community_routes(app, socketio, get_db):
         """Discord-style channel search: q (words) + from: + in: back to day one.
 
         v1 uses plain LIKE (no FTS5 yet). Staff-only channels (#mods) never
-        leak to non-staff. Optional has:/mentions:/date params reserved for later.
+        leak to non-staff. Core query: search_messages_for_context.
         """
         q = (request.args.get("q") or "").strip()
         from_tok = (request.args.get("from") or "").strip()
@@ -2587,7 +3060,6 @@ def register_community_routes(app, socketio, get_db):
                 before_ts = int(before_raw)
             except (TypeError, ValueError):
                 return jsonify({"error": "invalid before"}), 400
-        # has / mentions reserved (accepted, ignored in v1)
         _ = request.args.get("has")
         _ = request.args.get("mentions")
         if not q and not from_tok:
@@ -2596,93 +3068,25 @@ def register_community_routes(app, socketio, get_db):
         try:
             viewer_role = get_role(conn, viewer) if viewer else None
             staff = is_staff(viewer_role)
-            # Visible channels
-            ch_rows = conn.execute(
-                "SELECT id, slug, name FROM community_channels WHERE community_id=?",
-                (COMMUNITY_ID,),
-            ).fetchall()
-            visible = []
-            for cr in ch_rows:
-                slug = (cr["slug"] or "").lower()
-                if slug == "mods" and not staff:
-                    continue
-                visible.append(cr)
-            if in_slug:
-                if in_slug == "mods" and not staff:
-                    return jsonify({"error": "Mods channel is staff only", "code": "staff_only"}), 403
-                visible = [c for c in visible if (c["slug"] or "").lower() == in_slug]
-                if not visible:
-                    return jsonify({"error": "channel not found", "results": [], "has_more": False}), 404
-            chan_ids = [c["id"] for c in visible]
-            if not chan_ids:
-                return jsonify({"results": [], "has_more": False, "count": 0})
-            id_to_meta = {c["id"]: c for c in visible}
-
-            sender = None
-            if from_tok:
-                sender = resolve_member_token(conn, from_tok)
-                if not sender:
-                    return jsonify({"results": [], "has_more": False, "count": 0, "from_resolved": None})
-
-            messages_ensure_extras(conn)
-            where = ["m.community_id=?", "m.channel_id IN (" + ",".join("?" * len(chan_ids)) + ")"]
-            params = [COMMUNITY_ID] + list(chan_ids)
-            if sender:
-                where.append("m.sender_wallet=?")
-                params.append(sender)
-            words = [w for w in re.split(r"\s+", q) if w] if q else []
-            for w in words:
-                where.append("m.content LIKE ?")
-                params.append("%" + w + "%")
-            if before_ts is not None:
-                where.append("(m.created_at < ? OR (m.created_at = ? AND m.id < ?))")
-                params.extend([before_ts, before_ts, before_id])
-            sql = (
-                "SELECT m.id, m.channel_id, m.sender_wallet, m.content, m.created_at"
-                " FROM community_messages m WHERE "
-                + " AND ".join(where)
-                + " ORDER BY m.created_at DESC, m.id DESC LIMIT ?"
+            results, meta = search_messages_for_context(
+                conn,
+                q,
+                limit=limit,
+                staff=staff,
+                from_tok=from_tok,
+                in_slug=in_slug,
+                before_ts=before_ts,
+                before_id=before_id,
             )
-            params.append(limit)
-            rows = conn.execute(sql, params).fetchall()
-            has_more = len(rows) >= limit
-            results = []
-            for r in rows:
-                sw = r["sender_wallet"] or ""
-                meta = id_to_meta.get(r["channel_id"]) or {}
-                slug = (meta["slug"] if meta else "") or ""
-                if str(sw).startswith("bot:"):
-                    msg = {
-                        "id": r["id"],
-                        "sender_wallet": sw,
-                        "content": r["content"],
-                        "created_at": r["created_at"],
-                        "display_name": GARDEN_BOT_NAME if "garden" in sw else "Bot",
-                        "role": "bot",
-                        "has_avatar": False,
-                        "bot": True,
-                        "slug": slug,
-                        "channel": meta["name"] if meta else slug,
-                    }
-                else:
-                    prof = profile_dict(conn, sw)
-                    msg = {
-                        "id": r["id"],
-                        "sender_wallet": sw,
-                        "content": r["content"],
-                        "created_at": r["created_at"],
-                        "display_name": prof["display_name"],
-                        "role": prof["role"],
-                        "has_avatar": prof["has_avatar"],
-                        "slug": slug,
-                        "channel": meta["name"] if meta else slug,
-                    }
-                results.append(msg)
+            if meta.get("forbidden"):
+                return jsonify({"error": "Mods channel is staff only", "code": "staff_only"}), 403
+            if meta.get("error") == "channel not found":
+                return jsonify({"error": "channel not found", "results": [], "has_more": False}), 404
             return jsonify({
                 "results": results,
-                "has_more": has_more,
+                "has_more": bool(meta.get("has_more")),
                 "count": len(results),
-                "from_resolved": sender,
+                "from_resolved": meta.get("from_resolved"),
             })
         finally:
             conn.close()
@@ -2855,7 +3259,39 @@ def register_community_routes(app, socketio, get_db):
                 emit_community_mentions(
                     socketio, conn, msg, mention_everyone, mention_wallets, wallet
                 )
+            # #ask-ai → background AIVM answer (never blocks this response)
+            try:
+                maybe_enqueue_ask_ai(
+                    get_db, socketio, slug, wallet, content, prof.get("display_name") or ""
+                )
+            except Exception as e:
+                print(f"  [ask-ai] hook error: {e}", flush=True)
             return jsonify({"ok": True, "message": msg})
+        finally:
+            conn.close()
+
+    @app.route("/api/community/knowledge/ingest", methods=["POST"])
+    def api_knowledge_ingest():
+        """Owner/admin: re-ingest KNOWLEDGE_SOURCES into knowledge_chunks."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            role = get_role(conn, wallet)
+            if role not in ("owner", "admin"):
+                return jsonify({"error": "owners/admins only"}), 403
+            if not knowledge_sources_from_env():
+                return jsonify({
+                    "ok": True,
+                    "sources": 0,
+                    "chunks": 0,
+                    "note": "KNOWLEDGE_SOURCES unset — Phase 2 dormant",
+                })
+            result = ingest_all_knowledge(conn)
+            result["ok"] = True
+            return jsonify(result)
         finally:
             conn.close()
 
