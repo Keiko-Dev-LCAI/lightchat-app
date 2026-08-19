@@ -24,6 +24,9 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 | 15 | LIGHTCHAIN ▾: server items vs personal (Friends/DMs under avatar menu); staff see Server Settings | ☐ |
 | 16 | Staff: Server Settings → Profile save persists; Roles/Members/Bans/Emoji tabs load | ☐ |
 | 17 | Non-staff: no Server Settings entry; POST /server-profile → 403 | ☐ |
+| 18 | Server Settings Roles/Bans show **short** wallets only; click copies full | ☐ |
+| 19 | Backgrounded user with push on: @mention in a channel → web push; @everyone → no mass push | ☐ |
+| 20 | Ticket reply: other party gets push; sender does not | ☐ |
 
 ### Notes
 
