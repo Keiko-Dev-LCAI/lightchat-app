@@ -204,6 +204,23 @@ def _norm(w: str) -> str:
     return (w or "").lower().strip()
 
 
+def _safe_media_url(raw) -> str:
+    """Allow https URLs or same-origin /api/... paths only — no HTML/javascript."""
+    u = str(raw or "").strip()
+    if not u:
+        return ""
+    if len(u) > 500:
+        return ""
+    low = u.lower()
+    if low.startswith("javascript:") or low.startswith("data:text/html"):
+        return ""
+    if low.startswith("https://"):
+        return u
+    if u.startswith("/api/") or u.startswith("/media/"):
+        return u
+    return ""
+
+
 def init_community_db(get_db):
     conn = get_db()
     conn.executescript(
@@ -298,6 +315,14 @@ def init_community_db(get_db):
         conn.commit()
     except Exception:
         pass
+
+    # Server profile: icon_url + banner on community_meta (name/description already exist)
+    for _col in ("icon_url TEXT", "banner TEXT"):
+        try:
+            conn.execute(f"ALTER TABLE community_meta ADD COLUMN {_col}")
+            conn.commit()
+        except Exception:
+            pass
 
     conn.execute(
         """CREATE TABLE IF NOT EXISTS community_timeouts (
@@ -2667,10 +2692,28 @@ def register_community_routes(app, socketio, get_db):
                 if d["mode"] == "hidden":
                     continue
                 enriched.append(d)
+            icon_url = ""
+            banner = ""
+            if meta:
+                try:
+                    icon_url = (meta["icon_url"] or "") if "icon_url" in meta.keys() else ""
+                except Exception:
+                    icon_url = ""
+                if not icon_url:
+                    try:
+                        icon_url = (meta["icon"] or "") if "icon" in meta.keys() else ""
+                    except Exception:
+                        icon_url = ""
+                try:
+                    banner = (meta["banner"] or "") if "banner" in meta.keys() else ""
+                except Exception:
+                    banner = ""
             return jsonify({
                 "id": COMMUNITY_ID,
                 "name": meta["name"] if meta else "Lightchain",
                 "description": meta["description"] if meta else "",
+                "icon_url": icon_url or "",
+                "banner": banner or "",
                 "member_count": n_members,
                 "channels": enriched,
                 "chat_channel": "general",
@@ -2683,6 +2726,108 @@ def register_community_routes(app, socketio, get_db):
                     "gradient_end": "#EE11FB",
                 },
             })
+        finally:
+            conn.close()
+
+    @app.route("/api/community/server-profile", methods=["POST"])
+    def api_server_profile():
+        """Owner/admin: update community_meta name/description/icon_url/banner."""
+        data = request.json or {}
+        wallet = _norm(data.get("wallet", ""))
+        if not wallet.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            role = ensure_member(conn, wallet)
+            if not has_perm(role, "server_settings") and role not in ("owner", "admin"):
+                return jsonify({"error": "owners/admins only", "code": "forbidden"}), 403
+            meta = conn.execute(
+                "SELECT * FROM community_meta WHERE id=?", (COMMUNITY_ID,)
+            ).fetchone()
+            if not meta:
+                return jsonify({"error": "community meta missing"}), 500
+
+            name = meta["name"]
+            description = meta["description"] if "description" in meta.keys() else ""
+            try:
+                icon_url = (meta["icon_url"] or "") if "icon_url" in meta.keys() else ""
+            except Exception:
+                icon_url = ""
+            try:
+                banner = (meta["banner"] or "") if "banner" in meta.keys() else ""
+            except Exception:
+                banner = ""
+
+            if "name" in data:
+                name = re.sub(r"\s+", " ", str(data.get("name") or "").strip())[:64]
+                if not name:
+                    return jsonify({"error": "name required"}), 400
+            if "description" in data:
+                description = str(data.get("description") or "").strip()[:280]
+            if "icon_url" in data:
+                icon_url = _safe_media_url(data.get("icon_url"))
+            if "banner" in data:
+                banner = _safe_media_url(data.get("banner"))
+
+            # Ensure columns exist then update
+            for _col in ("icon_url TEXT", "banner TEXT"):
+                try:
+                    conn.execute(f"ALTER TABLE community_meta ADD COLUMN {_col}")
+                except Exception:
+                    pass
+            conn.execute(
+                """UPDATE community_meta
+                   SET name=?, description=?, icon_url=?, banner=?
+                   WHERE id=?""",
+                (name, description, icon_url or "", banner or "", COMMUNITY_ID),
+            )
+            # Keep legacy icon column in sync when present
+            try:
+                conn.execute(
+                    "UPDATE community_meta SET icon=? WHERE id=?",
+                    (icon_url or "", COMMUNITY_ID),
+                )
+            except Exception:
+                pass
+            conn.commit()
+            return jsonify({
+                "ok": True,
+                "id": COMMUNITY_ID,
+                "name": name,
+                "description": description,
+                "icon_url": icon_url or "",
+                "banner": banner or "",
+            })
+        finally:
+            conn.close()
+
+    @app.route("/api/community/bans")
+    def api_bans_list():
+        """Staff: list community_bans for Server Settings → Bans tab."""
+        viewer = _norm(request.args.get("wallet", ""))
+        conn = get_db()
+        try:
+            role = get_role(conn, viewer) if viewer else None
+            if not is_staff(role):
+                return jsonify({"error": "staff only"}), 403
+            rows = conn.execute(
+                """SELECT wallet, reason, by_wallet, created_at
+                   FROM community_bans WHERE community_id=?
+                   ORDER BY created_at DESC LIMIT 200""",
+                (COMMUNITY_ID,),
+            ).fetchall()
+            out = []
+            for r in rows:
+                prof = profile_dict(conn, r["wallet"])
+                out.append({
+                    "wallet": r["wallet"],
+                    "reason": r["reason"] or "",
+                    "by_wallet": r["by_wallet"] or "",
+                    "created_at": r["created_at"],
+                    "display_name": prof.get("display_name") or "",
+                    "handle": prof.get("handle") or "",
+                })
+            return jsonify({"bans": out, "count": len(out)})
         finally:
             conn.close()
 
