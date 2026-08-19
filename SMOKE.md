@@ -33,6 +33,8 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 | 24 | save-friend does not notify the other party; un-friend clears server + local | ☐ |
 | 25 | #ask-ai: ask → "thinking…" shows → answer clears it; media/bot post → no spinner | ☐ |
 | 26 | #ask-ai: leave channel / ~200s timeout → no stuck thinking row | ☐ |
+| 27 | Reaction hover shows who reacted (handle or short wallet); +N past 12; live update | ☐ |
+| 28 | Mobile reaction tap/long-press unchanged (no tooltip hijack) | ☐ |
 
 ### Notes
 

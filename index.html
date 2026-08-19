@@ -12041,12 +12041,28 @@ function applyCommReactions(msgId, reactions) {
   }).join('');
 }
 
+function _reactWhoTitle(r, staff) {
+  /** Discord-style: "😂 alice, bob, carol +3 · click to react" — never full wallets. */
+  const token = String(r.emoji || '');
+  const label = (r.custom && r.name) ? String(r.name) : token;
+  const names = Array.isArray(r.reactors) ? r.reactors : [];
+  const more = parseInt(r.reactors_more || 0, 10) || 0;
+  const whoParts = names.map(function (n) { return String(n || '').trim(); }).filter(Boolean);
+  let who = whoParts.join(', ');
+  if (more > 0) who = who ? (who + ' +' + more) : ('+' + more + ' more');
+  const action = r.me
+    ? 'click to remove'
+    : (staff ? 'click to react · Shift-click to clear all' : 'click to react');
+  if (who) return escapeHtml(label + ' ' + who + ' · ' + action);
+  return escapeHtml(
+    r.me ? 'Remove your reaction' : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction')
+  );
+}
+
 function _reactPillHtml(msgId, slug, r, staff) {
   staff = !!staff;
   const me = r.me ? ' me' : '';
-  const tip = r.me
-    ? 'Remove your reaction'
-    : (staff ? 'Add reaction · Shift-click to clear all' : 'Add reaction');
+  const tip = _reactWhoTitle(r, staff);
   const token = String(r.emoji || '');
   const emAttr = escapeHtml(token).replace(/'/g, '&#39;');
   const mid = escapeHtml(msgId);
