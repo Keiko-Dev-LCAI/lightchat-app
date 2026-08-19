@@ -2514,28 +2514,101 @@ def messages_ensure_extras(conn) -> None:
         pass
 
 
+def _short_wallet_label(wallet: str) -> str:
+    w = _norm(wallet)
+    if not w:
+        return "?"
+    if len(w) > 10:
+        return w[:6] + "…" + w[-4:]
+    return w
+
+
+def _reactor_label(wallet: str, handle: str = "", display_name: str = "") -> str:
+    """Handle or display name or shortened wallet — never a full address."""
+    h = (handle or "").lstrip("@").strip()
+    if h:
+        return h[:40]
+    dn = (display_name or "").lstrip("@").strip()
+    if dn and not dn.lower().startswith("0x"):
+        return dn[:40]
+    return _short_wallet_label(wallet)
+
+
 def message_reactions_summary(conn, message_id: str, viewer: str = "") -> list:
-    """[{emoji, count, me, custom?, url?, name?}] ordered by count desc."""
+    """[{emoji, count, me, reactors, reactors_more, custom?, url?, name?}] ordered by count desc.
+
+    Reactor names are handle / display_name / shortened wallet only — never full wallets.
+    """
     messages_ensure_extras(conn)
-    rows = conn.execute(
-        """SELECT emoji, COUNT(*) AS c,
-                  SUM(CASE WHEN wallet=? THEN 1 ELSE 0 END) AS me
-           FROM community_message_reactions
-           WHERE message_id=?
-           GROUP BY emoji
-           ORDER BY c DESC, emoji ASC""",
-        (_norm(viewer) if viewer else "", message_id),
-    ).fetchall()
-    out = []
+    viewer_n = _norm(viewer) if viewer else ""
+    # One query: reaction rows + identity (handles / profiles). Oldest-first for Discord-like lists.
+    try:
+        rows = conn.execute(
+            """SELECT r.emoji AS emoji, r.wallet AS wallet, r.created_at AS created_at,
+                      h.handle AS handle, p.display_name AS display_name
+               FROM community_message_reactions r
+               LEFT JOIN handles h ON lower(h.wallet) = lower(r.wallet)
+               LEFT JOIN community_profiles p ON lower(p.wallet) = lower(r.wallet)
+               WHERE r.message_id=?
+               ORDER BY r.created_at ASC""",
+            (message_id,),
+        ).fetchall()
+    except Exception:
+        # Fallback if join fails on older DBs — counts only
+        rows = conn.execute(
+            """SELECT emoji, wallet, created_at, NULL AS handle, NULL AS display_name
+               FROM community_message_reactions
+               WHERE message_id=?
+               ORDER BY created_at ASC""",
+            (message_id,),
+        ).fetchall()
+
+    buckets: dict = {}
+    order: list = []
     for r in rows:
         token = r["emoji"]
-        item = {
-            "emoji": token,
-            "count": int(r["c"] or 0),
-            "me": bool(int(r["me"] or 0)),
-        }
-        item.update(reaction_display_meta(conn, token))
-        out.append(item)
+        if token not in buckets:
+            buckets[token] = {
+                "emoji": token,
+                "count": 0,
+                "me": False,
+                "reactors": [],
+                "reactors_more": 0,
+                "_labels": [],
+            }
+            order.append(token)
+        b = buckets[token]
+        b["count"] += 1
+        w = _norm(r["wallet"] or "")
+        if viewer_n and w == viewer_n:
+            b["me"] = True
+        label = _reactor_label(
+            w,
+            handle=(r["handle"] or "") if "handle" in r.keys() else "",
+            display_name=(r["display_name"] or "") if "display_name" in r.keys() else "",
+        )
+        b["_labels"].append(label)
+
+    REACTOR_CAP = 12
+    out = []
+    # Sort by count desc, emoji asc (stable Discord-ish)
+    order_sorted = sorted(order, key=lambda e: (-buckets[e]["count"], e))
+    for token in order_sorted:
+        b = buckets[token]
+        labels = b.pop("_labels", [])
+        # De-dupe while preserving order (shouldn't happen with PK, but safe)
+        seen = set()
+        uniq = []
+        for lb in labels:
+            if lb in seen:
+                continue
+            seen.add(lb)
+            uniq.append(lb)
+        shown = uniq[:REACTOR_CAP]
+        b["reactors"] = shown
+        b["reactors_more"] = max(0, b["count"] - len(shown))
+        b.update(reaction_display_meta(conn, token))
+        out.append(b)
     return out
 
 
