@@ -83,127 +83,163 @@ body {
 @media (min-width: 768px) {
   body { font-size: 22px; flex-direction: row; }
 
-  /* Sidebar */
-  .sidebar {
-    width: var(--sidebar);
-    min-width: var(--sidebar);
-    background: var(--card);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    position: relative;
-    z-index: 150;
-  }
-  .sidebar-logo {
-    padding: 32px 34px 26px;
-    font-size: 42px;
-    font-weight: 800;
-    color: var(--purple);
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar-logo span { color: var(--text); }
+  /* Far-left app-nav removed on desktop — Discord single rail owns left column */
+  .sidebar { display: none !important; }
 
-  .sidebar-nav { display: flex; flex-direction: column; padding: 14px 0; flex: 1; }
-  .sidebar-tab {
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    padding: 22px 34px;
-    cursor: pointer;
-    color: var(--text2);
-    font-size: 26px;
-    font-weight: 500;
-    border: none;
-    background: none;
-    width: 100%;
-    text-align: left;
-    border-radius: 0;
-    transition: background 0.15s, color 0.15s;
-    position: relative;
-  }
-  .sidebar-tab:hover { background: var(--purple-glow); }
-  .sidebar-tab.active { color: var(--purple); background: var(--purple-glow); }
-  .sidebar-tab-icon { font-size: 36px; }
-  .sidebar-notif {
-    width: 12px; height: 12px;
-    background: var(--purple);
-    border-radius: 50%;
-    position: absolute;
-    right: 24px;
-    display: none;
-  }
-  .sidebar-notif.show { display: block; }
-
-  .sidebar-user {
-    border-top: 1px solid var(--border);
-    padding: 24px 34px;
-  }
-  .sidebar-connect-btn {
-    width: 100%;
-    background: var(--purple);
-    color: #fff;
-    border: none;
-    border-radius: 16px;
-    padding: 20px;
-    font-size: 24px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .sidebar-connect-btn:hover { background: var(--purple-dark); }
-  .sidebar-handle-badge {
-    background: var(--purple-glow);
-    border: 1px solid var(--purple);
-    border-radius: 14px;
-    padding: 16px 20px;
-    font-size: 24px;
-    color: var(--purple);
-    font-weight: 700;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Main content area */
+  /* Main content area — rail + body side by side */
   .desktop-main {
     flex: 1;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     height: 100%;
     overflow: hidden;
     position: relative;
+  }
+  .desktop-main-body {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
   }
 
   /* Hide mobile elements */
   .mobile-header { display: none !important; }
   .bottom-nav { display: none !important; }
 
-  /* Discord-style: channel list + chat */
+  /* Discord-style single channel rail */
   .comm-discord { display: flex; height: 100%; min-height: 0; flex: 1; }
   .channel-rail {
-    width: 220px;
+    width: 240px;
     flex-shrink: 0;
     border-right: 1px solid var(--border);
-    background: rgba(0,0,0,0.2);
+    background: rgba(0,0,0,0.22);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .channel-rail-server {
+    position: relative;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .channel-rail-server-btn {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    appearance: none; border: none; background: transparent;
+    color: #fff; font-family: inherit; font-size: 15px; font-weight: 800;
+    padding: 14px 12px; cursor: pointer; text-align: left;
+  }
+  .channel-rail-server-btn:hover { background: rgba(255,255,255,0.04); }
+  .channel-rail-server-btn .crs-chev { margin-left: auto; color: var(--text2); font-size: 12px; }
+  .channel-rail-dropdown {
+    display: none; position: absolute; left: 8px; right: 8px; top: 100%;
+    z-index: 80; background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    padding: 6px; margin-top: 4px;
+  }
+  .channel-rail-dropdown.open { display: block; }
+  .channel-rail-dropdown button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    appearance: none; border: none; background: transparent;
+    color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600;
+    padding: 10px 12px; border-radius: 8px; cursor: pointer; text-align: left;
+    position: relative;
+  }
+  .channel-rail-dropdown button:hover { background: var(--purple-glow); }
+  .channel-rail-dropdown .crd-div {
+    height: 1px; background: var(--border); margin: 4px 8px;
+  }
+  .channel-rail-dropdown .sidebar-notif {
+    width: 8px; height: 8px; background: var(--purple); border-radius: 50%;
+    position: absolute; right: 12px; display: none;
+  }
+  .channel-rail-dropdown .sidebar-notif.show { display: block; }
+  .channel-rail-scroll {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
-    padding: 10px 8px 16px;
+    padding: 8px 8px 12px;
   }
-  .channel-rail-title {
-    font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--text2);
-    padding: 8px 10px 6px;
+  .channel-rail-cat {
+    margin-top: 8px;
   }
+  .channel-rail-cat:first-child { margin-top: 2px; }
+  .channel-rail-cat-btn {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    appearance: none; border: none; background: transparent;
+    color: var(--text2); font-family: inherit; font-size: 11px; font-weight: 800;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 6px 8px 4px; cursor: pointer; text-align: left;
+  }
+  .channel-rail-cat-btn:hover { color: var(--text); }
+  .channel-rail-cat-btn .crc-chev { font-size: 10px; width: 12px; }
+  .channel-rail-cat.collapsed .channel-rail-cat-items { display: none; }
   .channel-rail-item {
-    display: block; width: 100%; text-align: left;
+    display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
     background: none; border: none; color: var(--text2);
     font-family: inherit; font-size: 14px; font-weight: 600;
-    padding: 8px 10px; border-radius: 8px; cursor: pointer;
-    margin-bottom: 2px;
+    padding: 7px 10px; border-radius: 8px; cursor: pointer;
+    margin-bottom: 1px; position: relative;
   }
   .channel-rail-item:hover { background: var(--purple-glow); color: var(--text); }
   .channel-rail-item.active {
     background: rgba(91,75,255,0.28); color: #fff;
   }
+  .channel-rail-item .cri-unread {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--purple);
+    margin-left: auto; flex-shrink: 0; display: none;
+  }
+  .channel-rail-item .cri-unread.show { display: block; }
+  .channel-rail-foot {
+    flex-shrink: 0;
+    padding: 8px 10px 4px;
+    border-top: 1px solid var(--border);
+    font-size: 11px; line-height: 1.4; color: var(--text2);
+  }
+  .channel-rail-user {
+    flex-shrink: 0;
+    border-top: 1px solid var(--border);
+    padding: 10px;
+    background: rgba(0,0,0,0.18);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .channel-rail-user .sidebar-connect-btn {
+    width: 100%;
+    background: var(--purple);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .channel-rail-user .sidebar-connect-btn:hover { background: var(--purple-dark); }
+  .channel-rail-user .cru-av {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, var(--lc-primary), var(--lc-secondary));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; overflow: hidden;
+  }
+  .channel-rail-user .cru-av img { width: 100%; height: 100%; object-fit: cover; }
+  .channel-rail-user .cru-meta { flex: 1; min-width: 0; }
+  .channel-rail-user .sidebar-handle-badge {
+    background: transparent; border: none; padding: 0;
+    font-size: 13px; color: #fff; font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .channel-rail-user .cru-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .channel-rail-user .cru-icon-btn {
+    appearance: none; border: 1px solid var(--border); background: transparent;
+    color: var(--text2); width: 32px; height: 32px; border-radius: 8px;
+    cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  .channel-rail-user .cru-icon-btn:hover { color: var(--text); background: var(--purple-glow); }
   .comm-discord > .comm-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
   #tab-genchat.tab.active {
     display: flex;
@@ -222,6 +258,11 @@ body {
     gap: 8px;
     flex-shrink: 0;
   }
+
+  /* Overlays no longer offset for removed far-left sidebar */
+  #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #owner-panel, #profile-edit-panel {
+    left: 0;
+  }
 }
 
 /* ════════════════════════════════
@@ -230,6 +271,7 @@ body {
 @media (max-width: 767px) {
   .sidebar { display: none !important; }
   .desktop-main { display: contents; }
+  .desktop-main-body { display: contents; } /* wrapper from Discord rail hoist — unwrap on mobile */
   .channel-rail { display: none !important; }
   /* Keep Gen Chat msgs scrollable + composer pinned above bottom nav */
   #tab-genchat.tab.active {
@@ -702,7 +744,7 @@ body {
 #lightpay-panel.open, #invite-panel.open, #search-panel.open, #settings-panel.open, #memory-post-panel.open, #stickers-panel.open, #owner-panel.open, #profile-edit-panel.open { display: flex; }
 @media (min-width: 768px) {
   #lightpay-panel, #invite-panel, #search-panel, #settings-panel, #memory-post-panel, #stickers-panel, #owner-panel, #profile-edit-panel {
-    left: var(--sidebar);
+    left: 0;
   }
 }
 
@@ -1895,7 +1937,7 @@ body {
     </button>
     <button class="sidebar-tab" id="snav-chats" onclick="switchTab('chats')">
       <span class="sidebar-tab-icon">💬</span> DMs
-      <span class="sidebar-notif" id="schats-dot"></span>
+      <span class="sidebar-notif" id="schats-dot-sidebar"></span>
     </button>
     <button class="sidebar-tab" id="snav-contacts" onclick="switchTab('contacts')">
       <span class="sidebar-tab-icon">🤝</span> Friends
@@ -1906,7 +1948,7 @@ body {
     </button>
     <button class="sidebar-tab" id="snav-tickets" onclick="switchTab('tickets')">
       <span class="sidebar-tab-icon">🎫</span> Help
-      <span class="sidebar-notif" id="stickets-dot"></span>
+      <span class="sidebar-notif" id="stickets-dot-sidebar"></span>
     </button>
     <button class="sidebar-tab" id="snav-calendar" onclick="switchTab('calendar')">
       <span class="sidebar-tab-icon">📅</span> Events
@@ -1917,16 +1959,44 @@ body {
   </div>
 
   <div class="sidebar-user">
-    <button class="sidebar-connect-btn" id="sidebar-connect-btn" onclick="connectWallet()">🔗 Connect Wallet</button>
-    <button class="sidebar-connect-btn" id="sidebar-logoff-btn" onclick="logOff()" title="Log off"
-      style="display:none;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--text2);font-size:13px">🚪 Log off</button>
-    <div class="sidebar-handle-badge" id="sidebar-handle-badge" style="display:none"></div>
+    <!-- Connect / logoff / handle relocated to #channel-rail-user (Discord user bar) -->
   </div>
 </div>
 
 <!-- ── DESKTOP MAIN WRAPPER ── -->
 <div class="desktop-main">
 
+  <!-- Discord-style channel rail (desktop only; hidden on mobile) -->
+  <aside class="channel-rail" id="channel-rail" aria-label="Channels">
+    <div class="channel-rail-server">
+      <button type="button" class="channel-rail-server-btn" id="channel-rail-server-btn" onclick="toggleChannelRailServerMenu(event)" aria-expanded="false">
+        <span>Lightchain</span>
+        <span class="crs-chev" id="channel-rail-server-chev">▾</span>
+      </button>
+      <div class="channel-rail-dropdown" id="channel-rail-server-menu" role="menu">
+        <button type="button" role="menuitem" onclick="channelRailNav('directory')">👥 Members</button>
+        <button type="button" role="menuitem" onclick="channelRailNav('calendar')">📅 Events</button>
+        <button type="button" role="menuitem" onclick="channelRailNav('contacts')">🤝 Friends</button>
+        <button type="button" role="menuitem" onclick="channelRailNav('chats')">💬 DMs <span class="sidebar-notif" id="schats-dot"></span></button>
+        <div class="crd-div"></div>
+        <button type="button" role="menuitem" onclick="channelRailNav('tickets')">🎫 Help / Tickets <span class="sidebar-notif" id="stickets-dot"></span></button>
+      </div>
+    </div>
+    <div class="channel-rail-scroll" id="channel-rail-list"><div class="empty-text" style="padding:12px;font-size:13px">Loading…</div></div>
+    <div class="channel-rail-user" id="channel-rail-user">
+      <button class="sidebar-connect-btn" id="sidebar-connect-btn" onclick="connectWallet()">🔗 Connect Wallet</button>
+      <div class="cru-av" id="rail-user-av" style="display:none">🦈</div>
+      <div class="cru-meta" id="rail-user-meta" style="display:none">
+        <div class="sidebar-handle-badge" id="sidebar-handle-badge"></div>
+      </div>
+      <div class="cru-actions" id="rail-user-actions" style="display:none">
+        <button type="button" class="cru-icon-btn" id="rail-settings-btn" title="Settings / Me" onclick="switchTab('me')">⚙</button>
+        <button type="button" class="cru-icon-btn" id="sidebar-logoff-btn" title="Log off" onclick="logOff()">🚪</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="desktop-main-body">
   <!-- Mobile header -->
   <div class="mobile-header">
     <div class="header-logo">
@@ -1946,10 +2016,6 @@ body {
     <!-- Gen Chat + Discord-style channel rail (desktop) -->
     <div class="tab active" id="tab-genchat">
       <div class="comm-discord">
-      <aside class="channel-rail" id="channel-rail" aria-label="Channels">
-        <div class="channel-rail-title">Lightchain</div>
-        <div id="channel-rail-list"><div class="empty-text" style="padding:12px;font-size:13px">Loading…</div></div>
-      </aside>
       <div class="comm-wrap">
         <!-- Title bar only for guide/info channels (Start Here, etc.) — hidden for live chat so posts aren't covered -->
         <div class="comm-header" id="genchat-titlebar" style="display:none">
@@ -2539,6 +2605,8 @@ body {
     </div>
 
   </div><!-- /main -->
+
+  </div><!-- /desktop-main-body -->
 
   <!-- Mobile bottom nav -->
   <div class="bottom-nav">
@@ -3518,6 +3586,13 @@ function hideConnectUI() {
   document.getElementById('handle-badge') && (document.getElementById('handle-badge').style.display = 'block');
   document.getElementById('sidebar-connect-btn') && (document.getElementById('sidebar-connect-btn').style.display = 'none');
   document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'block');
+  const railAv = document.getElementById('rail-user-av');
+  const railMeta = document.getElementById('rail-user-meta');
+  const railAct = document.getElementById('rail-user-actions');
+  if (railAv) railAv.style.display = '';
+  if (railMeta) railMeta.style.display = '';
+  if (railAct) railAct.style.display = '';
+  try { refreshRailUserAv(); } catch (e) {}
   const cta = document.getElementById('empty-cta-btn');
   if (cta && wallet) cta.textContent = '👥 Add a Contact';
   const logBtn = document.getElementById('me-logoff-btn');
@@ -3532,6 +3607,12 @@ function showConnectUI() {
   const sc = document.getElementById('sidebar-connect-btn');
   if (sc) { sc.style.display = ''; sc.textContent = '🔗 Connect Wallet'; sc.onclick = function () { connectWallet(); }; }
   document.getElementById('sidebar-handle-badge') && (document.getElementById('sidebar-handle-badge').style.display = 'none');
+  const railAv = document.getElementById('rail-user-av');
+  const railMeta = document.getElementById('rail-user-meta');
+  const railAct = document.getElementById('rail-user-actions');
+  if (railAv) railAv.style.display = 'none';
+  if (railMeta) railMeta.style.display = 'none';
+  if (railAct) railAct.style.display = 'none';
   const cta = document.getElementById('empty-cta-btn');
   if (cta) cta.textContent = '🔗 Connect Wallet';
   const logBtn = document.getElementById('me-logoff-btn');
@@ -3939,6 +4020,7 @@ function showHandleError(msg) {
 function updateUI() {
   if (document.getElementById('handle-badge')) document.getElementById('handle-badge').textContent = myHandle || shortenWallet(wallet);
   if (document.getElementById('sidebar-handle-badge')) document.getElementById('sidebar-handle-badge').textContent = myHandle || shortenWallet(wallet);
+  try { refreshRailUserAv(); } catch (e) {}
   const letter = (myHandle || 'X').replace('@','').charAt(0).toUpperCase();
   document.getElementById('me-avatar').textContent = letter;
   try { refreshMeAvatarFromProfile(); } catch(e) {}
@@ -9728,6 +9810,64 @@ function _visibleCommunityChannels() {
   );
 }
 
+/** Frontend-only slug → category map (Discord-style rail). */
+var CHANNEL_RAIL_CATEGORIES = [
+  { id: 'information', label: 'Information', slugs: ['start-here', 'announcements'] },
+  { id: 'text', label: 'Text Channels', slugs: ['general', 'off-topic', 'dev', 'nodes', 'media', 'links'] },
+  { id: 'community', label: 'Community', slugs: ['garden', 'mods'] },
+];
+var _railCatOpen = { information: true, text: true, community: true, channels: true };
+
+function toggleChannelRailServerMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('channel-rail-server-menu');
+  const btn = document.getElementById('channel-rail-server-btn');
+  const chev = document.getElementById('channel-rail-server-chev');
+  if (!menu) return;
+  const open = !menu.classList.contains('open');
+  menu.classList.toggle('open', open);
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (chev) chev.textContent = open ? '▴' : '▾';
+}
+
+function closeChannelRailServerMenu() {
+  const menu = document.getElementById('channel-rail-server-menu');
+  const btn = document.getElementById('channel-rail-server-btn');
+  const chev = document.getElementById('channel-rail-server-chev');
+  if (menu) menu.classList.remove('open');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  if (chev) chev.textContent = '▾';
+}
+
+function channelRailNav(tab) {
+  closeChannelRailServerMenu();
+  switchTab(tab);
+}
+
+function toggleRailCategory(catId) {
+  _railCatOpen[catId] = !_railCatOpen[catId];
+  renderChannelRail();
+}
+
+function _railChannelLabel(c) {
+  const slug = c.slug || '';
+  if (slug === 'general') return 'gen-chat';
+  if (slug === 'garden') return 'garden  (🌳 tree)';
+  return String(c.name || slug).toLowerCase().replace(/\s+/g, '-');
+}
+
+function _railChannelButton(c, active) {
+  const slug = c.slug || '';
+  const label = _railChannelLabel(c);
+  const isActive = slug === active ? ' active' : '';
+  const hash = slug === 'start-here' ? '👋' : '#';
+  return '<button type="button" class="channel-rail-item' + isActive + '" data-slug="' + escapeHtml(slug) + '" ' +
+    'onclick="openCommunityChannel(\'' + escapeHtml(slug) + '\')">' +
+    '<span>' + hash + ' ' + escapeHtml(label) + '</span>' +
+    '<span class="cri-unread" aria-hidden="true"></span>' +
+    '</button>';
+}
+
 function renderChannelRail() {
   const rail = document.getElementById('channel-rail-list');
   if (!rail) return;
@@ -9737,22 +9877,66 @@ function renderChannelRail() {
     rail.innerHTML = '<div class="empty-text" style="padding:12px;font-size:13px">No channels</div>';
     return;
   }
-  let html = visible.map(function (c) {
-    const slug = c.slug || '';
-    const label = slug === 'general' ? 'gen-chat' : (c.name || slug);
-    const isActive = slug === active ? ' active' : '';
-    const hash = slug === 'start-here' ? '👋' : '#';
-    return '<button type="button" class="channel-rail-item' + isActive + '" data-slug="' + escapeHtml(slug) + '" ' +
-      'onclick="openCommunityChannel(\'' + escapeHtml(slug) + '\')">' +
-      hash + ' ' + escapeHtml(String(label).toLowerCase().replace(/\s+/g, '-')) +
-      '</button>';
-  }).join('');
-  // Help tickets + safety tip at bottom of channel list (not covering chat)
+  const bySlug = {};
+  visible.forEach(function (c) { bySlug[c.slug] = c; });
+  const mapped = {};
+  CHANNEL_RAIL_CATEGORIES.forEach(function (cat) {
+    cat.slugs.forEach(function (s) { mapped[s] = cat.id; });
+  });
+  let html = '';
+  CHANNEL_RAIL_CATEGORIES.forEach(function (cat) {
+    const items = cat.slugs.map(function (s) { return bySlug[s]; }).filter(Boolean);
+    if (!items.length) return;
+    const open = _railCatOpen[cat.id] !== false;
+    html += '<div class="channel-rail-cat' + (open ? '' : ' collapsed') + '" data-cat="' + cat.id + '">';
+    html += '<button type="button" class="channel-rail-cat-btn" onclick="toggleRailCategory(\'' + cat.id + '\')">' +
+      '<span class="crc-chev">' + (open ? '▾' : '▸') + '</span>' + escapeHtml(cat.label) + '</button>';
+    html += '<div class="channel-rail-cat-items">';
+    items.forEach(function (c) { html += _railChannelButton(c, active); });
+    html += '</div></div>';
+  });
+  const leftovers = visible.filter(function (c) { return !mapped[c.slug]; });
+  if (leftovers.length) {
+    const open = _railCatOpen.channels !== false;
+    html += '<div class="channel-rail-cat' + (open ? '' : ' collapsed') + '" data-cat="channels">';
+    html += '<button type="button" class="channel-rail-cat-btn" onclick="toggleRailCategory(\'channels\')">' +
+      '<span class="crc-chev">' + (open ? '▾' : '▸') + '</span>Channels</button>';
+    html += '<div class="channel-rail-cat-items">';
+    leftovers.forEach(function (c) { html += _railChannelButton(c, active); });
+    html += '</div></div>';
+  }
   html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>';
   html += '<button type="button" class="channel-rail-item" onclick="switchTab(\'tickets\')">🎫 help-tickets</button>';
-  html += '<div style="padding:8px 10px 4px;font-size:11px;line-height:1.4;color:var(--text2)">Staff never ask for seeds. Official help = tickets only.</div>';
+  html += '<div class="channel-rail-foot">Staff never ask for seeds. Official help = tickets only.</div>';
   rail.innerHTML = html;
 }
+
+function refreshRailUserAv() {
+  const el = document.getElementById('rail-user-av');
+  if (!el) return;
+  if (!wallet) { el.textContent = '🦈'; return; }
+  const letter = (myHandle || 'X').replace('@', '').charAt(0).toUpperCase();
+  // Prefer community avatar if present on Me avatar img
+  try {
+    const meImg = document.querySelector('#me-avatar img');
+    if (meImg && meImg.src) {
+      el.innerHTML = '<img src="' + meImg.src + '" alt="">';
+      return;
+    }
+  } catch (e) {}
+  if (wallet) {
+    el.innerHTML = '<img src="' + BACKEND + '/api/community/avatar/' + wallet + '" alt="" onerror="this.parentNode.textContent=\'🦈\'">';
+  } else {
+    el.textContent = letter || '🦈';
+  }
+}
+
+document.addEventListener('click', function (e) {
+  const menu = document.getElementById('channel-rail-server-menu');
+  if (!menu || !menu.classList.contains('open')) return;
+  if (e.target.closest && e.target.closest('.channel-rail-server')) return;
+  closeChannelRailServerMenu();
+});
 
 async function loadChannelsList() {
   try {
