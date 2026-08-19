@@ -11,6 +11,7 @@ import time
 import uuid
 import base64
 import re
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 # Official community id
@@ -1183,6 +1184,10 @@ def garden_ensure_columns(conn) -> None:
         "ALTER TABLE community_garden ADD COLUMN last_waterer TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE community_garden ADD COLUMN apples INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE community_garden_waters ADD COLUMN apples INTEGER NOT NULL DEFAULT 0",
+        # Phase 1 tree upgrade — personal watering streaks (UTC calendar days)
+        "ALTER TABLE community_garden_waters ADD COLUMN streak_days INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE community_garden_waters ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE community_garden_waters ADD COLUMN last_water_day TEXT NOT NULL DEFAULT ''",
         """CREATE TABLE IF NOT EXISTS community_garden_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             community_id TEXT NOT NULL,
@@ -1200,6 +1205,107 @@ def garden_ensure_columns(conn) -> None:
             conn.commit()
         except Exception:
             pass
+
+
+# Tree health (cosmetic only — never shrinks height)
+GARDEN_THIRSTY_AFTER = 6 * 3600
+GARDEN_WILTING_AFTER = 24 * 3600
+GARDEN_THIRST_PING_COOLDOWN = 6 * 3600
+
+
+def garden_utc_today() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def garden_utc_yesterday() -> str:
+    return (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+
+
+def garden_thirst_level(updated_at: int) -> str:
+    """Cosmetic thirst from last water time. ok | thirsty | wilting."""
+    try:
+        last = int(updated_at or 0)
+    except (TypeError, ValueError):
+        last = 0
+    if last <= 0:
+        return "ok"
+    age = int(time.time()) - last
+    if age >= GARDEN_WILTING_AFTER:
+        return "wilting"
+    if age >= GARDEN_THIRSTY_AFTER:
+        return "thirsty"
+    return "ok"
+
+
+def garden_apply_streak(conn, wallet: str) -> dict:
+    """Update streak on a successful water. Returns streak fields for the wallet."""
+    garden_ensure_columns(conn)
+    wallet = _norm(wallet)
+    today = garden_utc_today()
+    yesterday = garden_utc_yesterday()
+    row = conn.execute(
+        """SELECT streak_days, best_streak, last_water_day FROM community_garden_waters
+           WHERE community_id=? AND wallet=?""",
+        (COMMUNITY_ID, wallet),
+    ).fetchone()
+    if not row:
+        return {"streak_days": 0, "best_streak": 0, "last_water_day": ""}
+    last_day = (row["last_water_day"] or "").strip()
+    streak = int(row["streak_days"] or 0)
+    best = int(row["best_streak"] or 0)
+    if last_day == today:
+        # Already watered today — streak unchanged
+        pass
+    elif last_day == yesterday:
+        streak = max(1, streak) + 1
+    else:
+        streak = 1
+    best = max(best, streak)
+    conn.execute(
+        """UPDATE community_garden_waters
+           SET streak_days=?, best_streak=?, last_water_day=?
+           WHERE community_id=? AND wallet=?""",
+        (streak, best, today, COMMUNITY_ID, wallet),
+    )
+    return {"streak_days": streak, "best_streak": best, "last_water_day": today}
+
+
+def garden_maybe_thirst_ping(conn, socketio, thirst: str, prev_thirst: str | None = None) -> None:
+    """Debounced Garden Bot ping when wilting on load, or when watering restores health."""
+    try:
+        now = int(time.time())
+        # Restore shout
+        if prev_thirst in ("thirsty", "wilting") and thirst == "ok":
+            post_channel_bot_message(
+                conn,
+                socketio,
+                "garden",
+                "💧 The Lightchain Tree perked up — thanks for the drink!",
+                GARDEN_BOT_NAME,
+            )
+            return
+        if thirst != "wilting":
+            return
+        # Debounce wilting pings via event log
+        last = conn.execute(
+            """SELECT created_at FROM community_garden_events
+               WHERE community_id=? AND kind='thirst_ping'
+               ORDER BY id DESC LIMIT 1""",
+            (COMMUNITY_ID,),
+        ).fetchone()
+        if last and int(last["created_at"] or 0) + GARDEN_THIRST_PING_COOLDOWN > now:
+            return
+        garden_log_event(conn, "thirst_ping", size=0, detail="wilting")
+        conn.commit()
+        post_channel_bot_message(
+            conn,
+            socketio,
+            "garden",
+            "🥀 The Lightchain Tree is thirsty — who'll give it a drink?",
+            GARDEN_BOT_NAME,
+        )
+    except Exception as e:
+        print("  [garden] thirst ping failed:", e)
 
 
 def garden_log_event(conn, kind: str, wallet: str = "", size: int = 0, detail: str = "") -> None:
@@ -1378,6 +1484,10 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
             "my_apples": 0,
             "my_waters": 0,
             "my_rank": None,
+            "my_streak_days": 0,
+            "my_best_streak": 0,
+            "thirst": "ok",
+            "seconds_since_water": 0,
             "contributors": [],
             "apple_drop": None,
             "tree_name": "Lightchain Tree",
@@ -1408,10 +1518,15 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
         apples_total = 0
     my_apples = 0
     my_waters = 0
+    my_streak = 0
+    my_best_streak = 0
     viewer_n = _norm(viewer) if viewer else ""
     if viewer_n.startswith("0x"):
         wr = conn.execute(
-            """SELECT apples, total_waters FROM community_garden_waters
+            """SELECT apples, total_waters,
+                      COALESCE(streak_days, 0) AS streak_days,
+                      COALESCE(best_streak, 0) AS best_streak
+               FROM community_garden_waters
                WHERE community_id=? AND wallet=?""",
             (COMMUNITY_ID, viewer_n),
         ).fetchone()
@@ -1424,10 +1539,20 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
                 my_waters = int(wr["total_waters"] or 0)
             except Exception:
                 my_waters = 0
+            try:
+                my_streak = int(wr["streak_days"] or 0)
+            except Exception:
+                my_streak = 0
+            try:
+                my_best_streak = int(wr["best_streak"] or 0)
+            except Exception:
+                my_best_streak = 0
     last_at = int(row["updated_at"] or 0)
     cd = garden_cooldown_for_size(max(1, size))
     now = int(time.time())
     left = max(0, (last_at + cd) - now) if last_at else 0
+    thirst = garden_thirst_level(last_at)
+    seconds_since = max(0, now - last_at) if last_at else 0
     # Discord rules: ready when cooldown done AND you weren't last waterer
     blocked = ""
     can = False
@@ -1476,6 +1601,10 @@ def garden_state_dict(conn, viewer: str = "") -> dict:
         "my_apples": my_apples,
         "my_waters": my_waters,
         "my_rank": my_rank,
+        "my_streak_days": my_streak,
+        "my_best_streak": my_best_streak,
+        "thirst": thirst,
+        "seconds_since_water": seconds_since,
         "contributors": contributors,
         "apple_drop": garden_active_apple(),
         "tree_name": "Lightchain Tree",
@@ -3544,7 +3673,14 @@ def register_community_routes(app, socketio, get_db):
         wallet = _norm(request.args.get("wallet", ""))
         conn = get_db()
         try:
-            return jsonify(garden_state_dict(conn, viewer=wallet))
+            st = garden_state_dict(conn, viewer=wallet)
+            # Debounced wilting ping when someone opens the garden
+            if st.get("thirst") == "wilting":
+                try:
+                    garden_maybe_thirst_ping(conn, socketio, "wilting", None)
+                except Exception:
+                    pass
+            return jsonify(st)
         finally:
             conn.close()
 
@@ -3573,6 +3709,7 @@ def register_community_routes(app, socketio, get_db):
             ).fetchone()
             old_size = int(g["waters"] or 0) or int(g["xp"] or 0)
             last_at = int(g["updated_at"] or 0)
+            prev_thirst = garden_thirst_level(last_at)
             try:
                 last_w = _norm(g["last_waterer"] or "")
             except Exception:
@@ -3626,6 +3763,8 @@ def register_community_routes(app, socketio, get_db):
                        VALUES (?,?,?,?)""",
                     (COMMUNITY_ID, wallet, now, 1),
                 )
+            # Personal UTC watering streak (Phase 1)
+            garden_apply_streak(conn, wallet)
             garden_log_event(
                 conn,
                 "water",
@@ -3673,6 +3812,11 @@ def register_community_routes(app, socketio, get_db):
             st["can_water"] = False
             st["blocked_reason"] = "same_waterer"
             st["cooldown_remaining"] = st.get("cooldown_sec") or cd
+            # Cosmetic thirst restore shout
+            try:
+                garden_maybe_thirst_ping(conn, socketio, st.get("thirst") or "ok", prev_thirst)
+            except Exception:
+                pass
             try:
                 socketio.emit("community_garden", st, room="community:garden")
             except Exception:
