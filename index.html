@@ -1960,45 +1960,48 @@ body {
           </div>
         </div>
         <style>
-        /* Discord-style Grow a Tree embed */
-        #garden-panel { display:none; padding:10px 12px 12px; border-bottom:1px solid var(--border); background:var(--bg); }
+        /* Discord-style Grow a Tree embed — compact so chat stays readable */
+        #garden-panel { display:none; padding:6px 10px 8px; border-bottom:1px solid var(--border); background:var(--bg); }
         #garden-panel.is-open { display:block; }
         .garden-embed {
           display:flex; border-radius:4px; overflow:hidden; background:#2b2d31;
-          border:1px solid rgba(255,255,255,0.06); box-shadow:0 2px 8px rgba(0,0,0,0.25);
+          border:1px solid rgba(255,255,255,0.06); box-shadow:0 1px 4px rgba(0,0,0,0.2);
         }
-        .garden-embed-bar { width:4px; flex-shrink:0; background:#57F287; }
-        .garden-embed-body { flex:1; min-width:0; padding:12px 14px 12px 12px; }
-        .garden-embed-author { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+        .garden-embed-bar { width:3px; flex-shrink:0; background:#57F287; }
+        .garden-embed-body { flex:1; min-width:0; padding:8px 10px 8px 10px; }
+        .garden-embed-author { display:flex; align-items:center; gap:6px; margin-bottom:4px; }
         .garden-embed-av {
-          width:22px; height:22px; border-radius:50%; background:linear-gradient(135deg,#2ea043,#57F287);
-          display:flex; align-items:center; justify-content:center; font-size:12px;
+          width:18px; height:18px; border-radius:50%; background:linear-gradient(135deg,#2ea043,#57F287);
+          display:flex; align-items:center; justify-content:center; font-size:10px;
         }
-        .garden-embed-author-name { font-weight:700; font-size:13px; color:#fff; }
+        .garden-embed-author-name { font-weight:700; font-size:12px; color:#fff; }
         .garden-embed-author-bot {
-          font-size:10px; font-weight:700; background:#5865F2; color:#fff; border-radius:3px;
-          padding:1px 4px; letter-spacing:0.02em;
+          font-size:9px; font-weight:700; background:#5865F2; color:#fff; border-radius:3px;
+          padding:0 3px; letter-spacing:0.02em;
         }
-        .garden-embed-title { font-weight:800; font-size:15px; color:#fff; margin-bottom:8px; }
+        .garden-embed-title { font-weight:800; font-size:13px; color:#fff; margin-bottom:4px; }
         .garden-art-wrap {
           background:linear-gradient(180deg,#87CEEB 0%,#b8e0f0 40%,#90c890 70%,#5a8f5a 100%);
-          border-radius:4px; padding:10px 8px 6px; text-align:center; margin-bottom:10px;
+          border-radius:4px; padding:4px 6px 4px; text-align:center; margin-bottom:6px;
           font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-          font-size:13px; line-height:1.25; color:#1a3a1a; white-space:pre; overflow:hidden;
-          min-height:88px; position:relative;
+          font-size:11px; line-height:1.15; color:#1a3a1a; white-space:pre; overflow:hidden;
+          min-height:0; position:relative;
+          display:flex; flex-direction:column; align-items:center; justify-content:center;
         }
         .garden-art-wrap.thirst-thirsty { filter:saturate(0.72) brightness(0.95); }
         .garden-art-wrap.thirst-wilting { filter:saturate(0.45) brightness(0.82); }
+        /* Compact: hide tall ASCII art; emoji + thirst chip only */
+        #garden-art-lines { display:none; }
         .garden-thirst-cap {
-          display:none; font-size:11px; font-weight:700; color:#1a3a1a; background:rgba(255,255,255,0.55);
-          border-radius:3px; padding:2px 8px; margin:4px auto 0; width:fit-content; font-family:inherit;
+          display:none; font-size:10px; font-weight:700; color:#1a3a1a; background:rgba(255,255,255,0.55);
+          border-radius:3px; padding:1px 6px; margin:2px auto 0; width:fit-content; font-family:inherit;
         }
         .garden-art-wrap.thirst-thirsty .garden-thirst-cap,
         .garden-art-wrap.thirst-wilting .garden-thirst-cap { display:block; }
-        .garden-art-emoji { font-size:42px; line-height:1; display:block; margin-bottom:2px; font-family:inherit; }
+        .garden-art-emoji { font-size:28px; line-height:1; display:block; margin:0; font-family:inherit; }
         .garden-art-emoji.garden-pop { animation:gardenWaterPop 0.55s ease; }
         .garden-water-drop {
-          position:absolute; left:50%; top:8px; font-size:18px; pointer-events:none; opacity:0;
+          position:absolute; left:50%; top:2px; font-size:14px; pointer-events:none; opacity:0;
           transform:translateX(-50%);
         }
         .garden-water-drop.go { animation:gardenDropRise 0.7s ease-out forwards; }
@@ -2012,47 +2015,55 @@ body {
           100% { opacity:0; top:8%; }
         }
         .garden-streak-chip {
-          display:none; margin-left:6px; font-size:12px; font-weight:700; color:#fee75c;
+          display:none; margin-left:6px; font-size:11px; font-weight:700; color:#fee75c;
           vertical-align:middle; cursor:help;
         }
         .garden-streak-chip.show { display:inline; }
         .garden-you-card {
-          margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);
+          margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);
         }
         .garden-you-card-title {
-          font-size:11px; font-weight:700; color:#b5bac1; text-transform:uppercase;
-          letter-spacing:0.04em; margin-bottom:6px;
+          font-size:10px; font-weight:700; color:#b5bac1; text-transform:uppercase;
+          letter-spacing:0.04em; margin-bottom:2px;
         }
-        .garden-you-card-body { font-size:13px; color:#dbdee1; line-height:1.45; }
-        .garden-you-card-body .gy-muted { color:#949ba4; font-size:12px; }
-        .garden-desc { font-size:13px; color:#dbdee1; line-height:1.45; }
+        .garden-you-card-body { font-size:12px; color:#dbdee1; line-height:1.35; }
+        .garden-you-card-body .gy-muted { color:#949ba4; font-size:11px; }
+        .garden-desc { font-size:12px; color:#dbdee1; line-height:1.35; margin:0; }
         .garden-desc strong { color:#fff; }
         .garden-desc .g-muted { color:#b5bac1; }
-        .garden-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+        .garden-actions { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center; }
         .garden-btn {
-          appearance:none; border:none; border-radius:3px; padding:6px 14px; font-size:14px;
-          font-weight:600; cursor:pointer; font-family:inherit; line-height:1.4;
+          appearance:none; border:none; border-radius:3px; padding:4px 10px; font-size:13px;
+          font-weight:600; cursor:pointer; font-family:inherit; line-height:1.3;
         }
         .garden-btn-water { background:#5865F2; color:#fff; }
         .garden-btn-water:hover:not(:disabled) { background:#4752C4; }
         .garden-btn-water:disabled { opacity:0.55; cursor:not-allowed; }
         .garden-btn-refresh { background:#4e5058; color:#fff; }
         .garden-btn-refresh:hover { background:#6d6f78; }
-        .garden-meta { font-size:11px; color:#949ba4; margin-top:8px; }
+        .garden-meta { font-size:10px; color:#949ba4; margin-top:4px; display:none; }
+        .garden-meta.is-open { display:block; }
+        .garden-details-btn {
+          appearance:none; border:none; background:transparent; color:#949ba4; font-size:11px;
+          font-weight:600; cursor:pointer; padding:2px 0; margin-top:4px; font-family:inherit;
+        }
+        .garden-details-btn:hover { color:#dbdee1; }
+        .garden-details-block { display:none; }
+        .garden-details-block.is-open { display:block; }
         .garden-contrib {
-          margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);
+          margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);
         }
         .garden-contrib-title {
-          font-size:11px; font-weight:700; color:#b5bac1; text-transform:uppercase;
-          letter-spacing:0.04em; margin-bottom:6px;
+          font-size:10px; font-weight:700; color:#b5bac1; text-transform:uppercase;
+          letter-spacing:0.04em; margin-bottom:4px;
         }
         .garden-contrib-list { list-style:none; margin:0; padding:0; }
         .garden-contrib-list li {
-          display:flex; align-items:center; gap:8px; font-size:13px; color:#dbdee1;
-          padding:3px 0; line-height:1.35;
+          display:flex; align-items:center; gap:6px; font-size:12px; color:#dbdee1;
+          padding:2px 0; line-height:1.3;
         }
         .garden-contrib-list .gc-rank {
-          width:22px; flex-shrink:0; font-weight:800; color:#949ba4; font-variant-numeric:tabular-nums;
+          width:20px; flex-shrink:0; font-weight:800; color:#949ba4; font-variant-numeric:tabular-nums;
         }
         .garden-contrib-list li.gc-top1 .gc-rank { color:#fee75c; }
         .garden-contrib-list li.gc-top2 .gc-rank { color:#b5bac1; }
@@ -2062,7 +2073,7 @@ body {
         }
         .garden-contrib-list li.gc-me .gc-name { color:#57F287; }
         .garden-contrib-list .gc-count { color:#b5bac1; font-variant-numeric:tabular-nums; flex-shrink:0; }
-        .garden-contrib-you { font-size:11px; color:#949ba4; margin-top:6px; }
+        .garden-contrib-you { display:none; /* rank shown in Your garden card */ }
         .garden-apple {
           display:none; margin-top:10px; padding:10px; border-radius:4px;
           background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08);
@@ -2141,16 +2152,19 @@ body {
                   <button type="button" class="garden-basket" data-lane="2" onclick="catchGardenApple(2)" aria-label="Right basket">🧺</button>
                 </div>
               </div>
-              <div class="garden-contrib" id="garden-contrib" style="display:none">
-                <div class="garden-contrib-title">Top contributors</div>
-                <ul class="garden-contrib-list" id="garden-contrib-list"></ul>
-                <div class="garden-contrib-you" id="garden-contrib-you"></div>
-              </div>
               <div class="garden-you-card" id="garden-you-card" style="display:none">
                 <div class="garden-you-card-title">Your garden</div>
                 <div class="garden-you-card-body" id="garden-you-card-body"></div>
               </div>
-              <div class="garden-meta" id="garden-stats">Same person can't water twice in a row · taller = longer grow time · catch apples for the community</div>
+              <button type="button" class="garden-details-btn" id="garden-details-btn" onclick="toggleGardenDetails()">▸ Details</button>
+              <div class="garden-details-block" id="garden-details-block">
+                <div class="garden-contrib" id="garden-contrib" style="display:none">
+                  <div class="garden-contrib-title">Top contributors</div>
+                  <ul class="garden-contrib-list" id="garden-contrib-list"></ul>
+                  <div class="garden-contrib-you" id="garden-contrib-you"></div>
+                </div>
+                <div class="garden-meta is-open" id="garden-stats">Same person can't water twice in a row · taller = longer grow time · catch apples for the community</div>
+              </div>
             </div>
           </div>
         </div>
@@ -3983,6 +3997,15 @@ function _gardenPlayWaterAnim() {
   }
 }
 
+function toggleGardenDetails() {
+  const block = document.getElementById('garden-details-block');
+  const btn = document.getElementById('garden-details-btn');
+  if (!block) return;
+  const open = !block.classList.contains('is-open');
+  block.classList.toggle('is-open', open);
+  if (btn) btn.textContent = open ? '▾ Details' : '▸ Details';
+}
+
 function renderGardenPanel(st) {
   _gardenState = st || _gardenState;
   if (!_gardenState) return;
@@ -4031,18 +4054,17 @@ function renderGardenPanel(st) {
   const lastName = _gardenState.last_waterer_name || '';
   const left = _gardenState.cooldown_remaining || 0;
   const blocked = _gardenState.blocked_reason || '';
-  let body = '<strong>Your tree is ' + height + 'ft tall.</strong><br>';
+  // Compact one-line status (full chatter lives in channel messages)
+  let body = '<strong>' + height + 'ft</strong> · ';
   if (!_gardenState.waters) {
-    body += '<span class="g-muted">Press 💧 below to water it for the first time!</span>';
+    body += '<span class="g-muted">press 💧 to plant</span>';
   } else if (left > 0) {
-    body += '<strong>Thanks ' + (lastName || 'someone') + ' for watering the tree!</strong><br>';
-    body += '<span class="g-muted">It\'s growing right now — come back in ' + left + 's.</span>';
+    body += '<span class="g-muted">growing ' + left + 's · thanks ' + (lastName || 'someone') + '</span>';
   } else if (blocked === 'same_waterer') {
-    body += '<span class="g-muted">Last watered by: <strong style="color:#fff">' + (lastName || 'you') + '</strong></span><br>';
-    body += '<span class="g-muted">You watered last — someone else has to water it first.</span>';
+    body += '<span class="g-muted">wait for someone else (you last)</span>';
   } else {
-    body += '<span class="g-muted">Last watered by: <strong style="color:#fff">' + (lastName || '—') + '</strong></span><br>';
-    body += '<strong style="color:#57F287">Ready to be watered!</strong>';
+    body += '<strong style="color:#57F287">ready</strong>'
+      + (lastName ? (' <span class="g-muted">· last: ' + lastName + '</span>') : '');
   }
   if (desc) desc.innerHTML = body;
   if (stats) {
@@ -4096,20 +4118,21 @@ function renderGardenPanel(st) {
       }
     }
   }
-  // "Your garden" personal stats card
+  // "Your garden" — one compact line
   if (youCard && youBody) {
     if (wallet && (_gardenState.my_waters > 0 || streakDays > 0 || _gardenState.my_apples > 0)) {
       youCard.style.display = '';
       const best = Number(_gardenState.my_best_streak || 0);
-      const lines = [];
-      lines.push('🔥 ' + Math.max(streakDays, 0) + '-day streak'
-        + (best ? (' <span class="gy-muted">(best: ' + best + ')</span>') : ''));
-      lines.push('💧 ' + (_gardenState.my_waters || 0) + ' waters · 🍎 ' + (_gardenState.my_apples || 0) + ' caught');
-      if (_gardenState.my_rank) lines.push('🏆 Rank #' + _gardenState.my_rank);
-      youBody.innerHTML = lines.join('<br>');
+      const bits = [];
+      bits.push('🔥 ' + Math.max(streakDays, 0) + 'd'
+        + (best ? (' <span class="gy-muted">(best ' + best + ')</span>') : ''));
+      bits.push('💧 ' + (_gardenState.my_waters || 0));
+      bits.push('🍎 ' + (_gardenState.my_apples || 0));
+      if (_gardenState.my_rank) bits.push('🏆 #' + _gardenState.my_rank);
+      youBody.innerHTML = bits.join(' · ');
     } else if (wallet) {
       youCard.style.display = '';
-      youBody.innerHTML = '<span class="gy-muted">Water the tree to start your garden stats.</span>';
+      youBody.innerHTML = '<span class="gy-muted">Water to start your stats</span>';
     } else {
       youCard.style.display = 'none';
       youBody.innerHTML = '';
