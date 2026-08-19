@@ -16,19 +16,61 @@ import secrets
 import subprocess
 import tempfile
 
+
+def _load_local_env():
+    """Load key=value pairs from a local .env into os.environ (no overwrite).
+    Railway/production already injects env; this is for local runs only."""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if not os.path.isfile(env_path):
+        return
+    try:
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, _, val = line.partition('=')
+                key = key.strip()
+                if not key or key in os.environ:
+                    continue
+                val = val.strip()
+                if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                    val = val[1:-1]
+                os.environ[key] = val
+    except OSError as e:
+        print(f'[lightchat] .env load skipped: {e}', flush=True)
+
+
+_load_local_env()
+
 try:
     from pywebpush import webpush, WebPushException
     PUSH_AVAILABLE = True
 except ImportError:
     PUSH_AVAILABLE = False
 
-VAPID_PUBLIC_KEY = "BARwCZXpnFLr_5wN2AtVFC0TE6_wfOiuq8jS6Gxvf-qt3R0QLUCkxXbQr7a1JYI_MqZmU0JfuLXmPPu8e85lFlI"
-VAPID_PRIVATE_KEY = "tzOJiS8pApHcxCBapYWKk63xle6Zia-Q1Gn4lAGaFsM"
-VAPID_CLAIMS = {"sub": "mailto:noreply@lightchat.app"}
+# Web-push keys — from env only (never hardcode). Push disables cleanly if unset.
+VAPID_PUBLIC_KEY = (os.environ.get('VAPID_PUBLIC_KEY') or '').strip()
+VAPID_PRIVATE_KEY = (os.environ.get('VAPID_PRIVATE_KEY') or '').strip()
+_vapid_claims_env = (os.environ.get('VAPID_CLAIMS') or '').strip()
+if _vapid_claims_env:
+    try:
+        VAPID_CLAIMS = json.loads(_vapid_claims_env)
+    except Exception:
+        sub = _vapid_claims_env if _vapid_claims_env.startswith('mailto:') else f'mailto:{_vapid_claims_env}'
+        VAPID_CLAIMS = {'sub': sub}
+else:
+    VAPID_CLAIMS = {'sub': 'mailto:noreply@lightchat.app'}
+WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and PUSH_AVAILABLE)
+if not WEB_PUSH_ENABLED:
+    print('[lightchat] web push disabled — set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY (and install pywebpush)', flush=True)
 
 app = Flask(__name__)
 CORS(app, origins="*")
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lightchat-secret-2026')
+_secret = (os.environ.get('SECRET_KEY') or '').strip()
+if not _secret:
+    raise RuntimeError('SECRET_KEY env var is required — refuse to start with a default secret')
+app.config['SECRET_KEY'] = _secret
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max request
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
@@ -413,7 +455,7 @@ def get_handle_for(wallet, conn=None):
     return wallet[:8] + '...'
 
 def send_push_notification(to_wallet, title, body, extra_data=None):
-    if not PUSH_AVAILABLE:
+    if not WEB_PUSH_ENABLED:
         return
     try:
         conn = get_db()
@@ -692,10 +734,14 @@ def serve_sticker(filename):
 
 @app.route('/vapid-public-key')
 def vapid_public_key():
+    if not WEB_PUSH_ENABLED:
+        return jsonify({'error': 'web push not configured — set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY'}), 503
     return jsonify({'publicKey': VAPID_PUBLIC_KEY})
 
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
+    if not WEB_PUSH_ENABLED:
+        return jsonify({'error': 'web push not configured'}), 503
     data = request.json or {}
     wallet = data.get('wallet', '').lower().strip()
     subscription = data.get('subscription')
