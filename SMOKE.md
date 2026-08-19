@@ -21,6 +21,9 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 | 12 | `GET /health` → `status=ok`, `media.ready=true`, `db.exists=true` | ☐ |
 | 13 | **#ask-ai**: "what proposals are live?" → lists real DAO titles/tallies (matches dao.lightchain.ai) | ☐ |
 | 14 | **#ask-ai**: "explain #375517" or Safety Framework → grounded description + For/Against LCAI | ☐ |
+| 15 | LIGHTCHAIN ▾: server items vs personal (Friends/DMs under avatar menu); staff see Server Settings | ☐ |
+| 16 | Staff: Server Settings → Profile save persists; Roles/Members/Bans/Emoji tabs load | ☐ |
+| 17 | Non-staff: no Server Settings entry; POST /server-profile → 403 | ☐ |
 
 ### Notes
 

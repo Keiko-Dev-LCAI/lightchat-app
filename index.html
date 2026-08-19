@@ -207,6 +207,10 @@ body {
     padding: 10px;
     background: rgba(0,0,0,0.18);
     display: flex; align-items: center; gap: 8px;
+    position: relative;
+  }
+  .channel-rail-user .rail-user-menu {
+    left: 8px; right: 8px; bottom: calc(100% + 4px); top: auto; margin-top: 0;
   }
   .channel-rail-user .sidebar-connect-btn {
     width: 100%;
@@ -2142,24 +2146,37 @@ body {
         <span class="crs-chev" id="channel-rail-server-chev">▾</span>
       </button>
       <div class="channel-rail-dropdown" id="channel-rail-server-menu" role="menu">
+        <!-- Server (everyone) -->
         <button type="button" role="menuitem" onclick="channelRailNav('directory')">👥 Members</button>
         <button type="button" role="menuitem" onclick="channelRailNav('calendar')">📅 Events</button>
-        <button type="button" role="menuitem" onclick="channelRailNav('contacts')">🤝 Friends</button>
-        <button type="button" role="menuitem" onclick="channelRailNav('chats')">💬 DMs <span class="sidebar-notif" id="schats-dot"></span></button>
-        <div class="crd-div"></div>
         <button type="button" role="menuitem" onclick="channelRailNav('tickets')">🎫 Help / Tickets <span class="sidebar-notif" id="stickets-dot"></span></button>
+        <!-- Server (staff only) -->
+        <div class="crd-div rail-mod-only" style="display:none"></div>
+        <button type="button" role="menuitem" class="rail-mod-only" style="display:none" onclick="openServerSettings()">⚙ Server Settings</button>
+        <button type="button" role="menuitem" class="rail-mod-only" style="display:none" onclick="serverSettingsCreateChannel()">＋ Create Channel</button>
+        <button type="button" role="menuitem" class="rail-mod-only" style="display:none" onclick="serverSettingsCreateCategory()">＋ Create Category</button>
+        <button type="button" role="menuitem" class="rail-mod-only" style="display:none" onclick="channelRailNav('calendar')">📅 Create Event</button>
       </div>
     </div>
     <div class="channel-rail-scroll" id="channel-rail-list"><div class="empty-text" style="padding:12px;font-size:13px">Loading…</div></div>
     <div class="channel-rail-user" id="channel-rail-user">
       <button class="sidebar-connect-btn" id="sidebar-connect-btn" onclick="connectWallet()">🔗 Connect Wallet</button>
-      <div class="cru-av" id="rail-user-av" style="display:none">🦈</div>
-      <div class="cru-meta" id="rail-user-meta" style="display:none">
+      <div class="cru-av" id="rail-user-av" style="display:none" role="button" tabindex="0" onclick="toggleRailUserMenu(event)" title="Personal menu">🦈</div>
+      <div class="cru-meta" id="rail-user-meta" style="display:none" onclick="toggleRailUserMenu(event)">
         <div class="sidebar-handle-badge" id="sidebar-handle-badge"></div>
       </div>
       <div class="cru-actions" id="rail-user-actions" style="display:none">
+        <button type="button" class="cru-icon-btn" id="rail-user-menu-btn" title="Personal menu" onclick="toggleRailUserMenu(event)">☰</button>
         <button type="button" class="cru-icon-btn" id="rail-settings-btn" title="Settings / Me" onclick="switchTab('me')">⚙</button>
         <button type="button" class="cru-icon-btn" id="sidebar-logoff-btn" title="Log off" onclick="logOff()">🚪</button>
+      </div>
+      <div class="channel-rail-dropdown rail-user-menu" id="rail-user-menu" role="menu">
+        <button type="button" role="menuitem" onclick="channelRailNav('contacts'); closeRailUserMenu()">🤝 Friends</button>
+        <button type="button" role="menuitem" onclick="channelRailNav('chats'); closeRailUserMenu()">💬 DMs <span class="sidebar-notif" id="schats-dot"></span></button>
+        <button type="button" role="menuitem" onclick="switchTab('me'); closeRailUserMenu()">🔔 Notification Settings</button>
+        <button type="button" role="menuitem" onclick="openEditProfile(); closeRailUserMenu()">👤 Edit Profile</button>
+        <div class="crd-div"></div>
+        <button type="button" role="menuitem" onclick="leaveServerConfirm()">Leave Server</button>
       </div>
     </div>
   </aside>
@@ -3772,6 +3789,130 @@ body {
   <button type="button" onclick="modMemberAction('unban')">♻️ Remove ban</button>
   <button type="button" onclick="closeModMemberMenu()">✕ Close</button>
 </div>
+
+<!-- Server Settings (staff) — Discord-style gather panel -->
+<div id="server-settings-backdrop" onclick="closeServerSettings()"></div>
+<div id="server-settings-panel" role="dialog" aria-label="Server Settings">
+  <div class="ss-head">
+    <div>
+      <div class="ss-title">Server Settings</div>
+      <div class="ss-sub" id="ss-server-name">Lightchain</div>
+    </div>
+    <button type="button" class="ss-close" onclick="closeServerSettings()" aria-label="Close">✕</button>
+  </div>
+  <div class="ss-tabs" role="tablist">
+    <button type="button" class="ss-tab active" data-tab="profile" onclick="serverSettingsTab('profile')">Server Profile</button>
+    <button type="button" class="ss-tab" data-tab="roles" onclick="serverSettingsTab('roles')">Roles</button>
+    <button type="button" class="ss-tab" data-tab="members" onclick="serverSettingsTab('members')">Members</button>
+    <button type="button" class="ss-tab" data-tab="bans" onclick="serverSettingsTab('bans')">Bans</button>
+    <button type="button" class="ss-tab" data-tab="emoji" onclick="serverSettingsTab('emoji')">Emoji / Stickers</button>
+  </div>
+  <div class="ss-body">
+    <div class="ss-pane active" id="ss-pane-profile">
+      <label class="ss-label">Server name</label>
+      <input class="ss-input" id="ss-name" maxlength="64" placeholder="Lightchain">
+      <label class="ss-label">Description</label>
+      <textarea class="ss-input" id="ss-desc" maxlength="280" rows="3" placeholder="What this server is about"></textarea>
+      <label class="ss-label">Icon URL</label>
+      <input class="ss-input" id="ss-icon" maxlength="500" placeholder="https://… or /api/…">
+      <label class="ss-label">Banner URL</label>
+      <input class="ss-input" id="ss-banner" maxlength="500" placeholder="https://… or /api/…">
+      <div class="ss-hint">Owners/admins only. https or /api/ /media/ paths. Audit Log is phase 2.</div>
+      <button type="button" class="ss-primary" onclick="saveServerProfile()">Save profile</button>
+    </div>
+    <div class="ss-pane" id="ss-pane-roles">
+      <div class="ss-hint">Assign roles via the existing roles API (rank + 2-owner caps still apply).</div>
+      <div class="ss-row">
+        <input class="ss-input" id="ss-role-wallet" placeholder="0x target wallet" style="flex:1">
+        <select class="ss-input" id="ss-role-select" style="width:120px">
+          <option value="member">member</option>
+          <option value="helper">helper</option>
+          <option value="mod">mod</option>
+          <option value="admin">admin</option>
+          <option value="owner">owner</option>
+        </select>
+        <button type="button" class="ss-primary" onclick="ssSetRole()">Set role</button>
+      </div>
+      <div id="ss-roles-list" class="ss-list"></div>
+    </div>
+    <div class="ss-pane" id="ss-pane-members">
+      <input class="ss-input" id="ss-members-q" placeholder="Search members…" oninput="ssRenderMembers()">
+      <div id="ss-members-list" class="ss-list"></div>
+    </div>
+    <div class="ss-pane" id="ss-pane-bans">
+      <div id="ss-bans-list" class="ss-list"><div class="ss-hint">Loading…</div></div>
+    </div>
+    <div class="ss-pane" id="ss-pane-emoji">
+      <div class="ss-hint">Server emoji &amp; stickers (same pack as chat). Upload opens the existing sheet.</div>
+      <button type="button" class="ss-primary" onclick="openEmojiStickerSheet('emoji'); closeServerSettings()">Manage emoji / stickers</button>
+      <div id="ss-emoji-list" class="ss-list" style="margin-top:12px"></div>
+    </div>
+  </div>
+</div>
+<style>
+#server-settings-backdrop {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 930;
+}
+#server-settings-backdrop.open { display: block; }
+#server-settings-panel {
+  display: none; position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%);
+  background: var(--card); border-left: 1px solid var(--border); z-index: 931;
+  flex-direction: column; box-shadow: -12px 0 40px rgba(0,0,0,0.45);
+}
+#server-settings-panel.open { display: flex; }
+.ss-head {
+  display: flex; align-items: flex-start; gap: 12px; padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.ss-title { font-size: 18px; font-weight: 800; color: #fff; }
+.ss-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.ss-close {
+  appearance: none; border: none; background: transparent; color: var(--text2);
+  font-size: 18px; cursor: pointer; margin-left: auto; padding: 4px 8px;
+}
+.ss-tabs {
+  display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  overflow-x: auto; flex-shrink: 0;
+}
+.ss-tab {
+  appearance: none; border: none; background: transparent; color: var(--text2);
+  font-family: inherit; font-size: 12px; font-weight: 700; padding: 8px 10px;
+  border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.ss-tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.ss-tab.active { color: #fff; background: rgba(91,75,255,0.28); }
+.ss-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; }
+.ss-pane { display: none; }
+.ss-pane.active { display: block; }
+.ss-label {
+  display: block; font-size: 12px; font-weight: 700; color: var(--text2);
+  margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ss-input {
+  width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; color: var(--text); font-size: 14px; font-family: inherit;
+}
+.ss-hint { font-size: 12px; color: var(--text2); margin: 8px 0 12px; line-height: 1.4; }
+.ss-primary {
+  appearance: none; border: none; border-radius: 10px; padding: 10px 14px;
+  background: linear-gradient(135deg, var(--lc-primary), var(--lc-gradient-end, #EE11FB));
+  color: #fff; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.ss-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.ss-list { margin-top: 8px; }
+.ss-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.ss-item .n { font-weight: 700; font-size: 14px; }
+.ss-item .d { font-size: 12px; color: var(--text2); }
+.ss-item button {
+  appearance: none; border: 1px solid var(--border); background: var(--bg); color: var(--text);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: inherit; margin-left: auto; flex-shrink: 0;
+}
+.ss-item button.danger { color: #ff6b6b; }
+</style>
 
 <!-- Gen Chat message search (Discord-style) -->
 <div id="comm-search-backdrop" onclick="closeCommSearchPanel()"></div>
@@ -10519,6 +10660,267 @@ function channelRailNav(tab) {
   switchTab(tab);
 }
 
+function toggleRailUserMenu(ev) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+  closeChannelRailServerMenu();
+  const menu = document.getElementById('rail-user-menu');
+  if (!menu) return;
+  menu.classList.toggle('open');
+}
+
+function closeRailUserMenu() {
+  document.getElementById('rail-user-menu')?.classList.remove('open');
+}
+
+function leaveServerConfirm() {
+  closeRailUserMenu();
+  if (!confirm('Leave this server and log off this device?')) return;
+  try { logOff(); } catch (e) {}
+}
+
+function refreshRailModMenuVisibility() {
+  const staff = typeof isCommStaff === 'function' && isCommStaff();
+  document.querySelectorAll('.rail-mod-only').forEach(function (el) {
+    el.style.display = staff ? '' : 'none';
+  });
+}
+
+let _communityMeta = { name: 'Lightchain', description: '', icon_url: '', banner: '' };
+
+function applyCommunityMetaToChrome(meta) {
+  meta = meta || _communityMeta || {};
+  _communityMeta = {
+    name: meta.name || 'Lightchain',
+    description: meta.description || '',
+    icon_url: meta.icon_url || '',
+    banner: meta.banner || '',
+  };
+  const sub = document.getElementById('ss-server-name');
+  if (sub) sub.textContent = _communityMeta.name;
+  // Optional: show tiny icon beside wordmark if URL set
+  const btn = document.getElementById('channel-rail-server-btn');
+  if (btn && _communityMeta.icon_url) {
+    let img = btn.querySelector('.crs-server-icon');
+    if (!img) {
+      img = document.createElement('img');
+      img.className = 'crs-server-icon';
+      img.alt = '';
+      img.style.cssText = 'width:22px;height:22px;border-radius:6px;object-fit:cover;flex-shrink:0';
+      btn.insertBefore(img, btn.firstChild);
+    }
+    img.src = _communityMeta.icon_url;
+    img.style.display = '';
+  }
+}
+
+function canOpenServerSettings() {
+  // Staff can open panel; profile edits still require owner/admin on the API
+  return typeof isCommStaff === 'function' && isCommStaff();
+}
+
+function openServerSettings() {
+  closeChannelRailServerMenu();
+  if (!wallet) { showToast('Connect wallet'); return; }
+  if (!canOpenServerSettings()) { showToast('Staff only'); return; }
+  document.getElementById('server-settings-backdrop')?.classList.add('open');
+  document.getElementById('server-settings-panel')?.classList.add('open');
+  serverSettingsTab('profile');
+  ssLoadProfileForm();
+}
+
+function closeServerSettings() {
+  document.getElementById('server-settings-backdrop')?.classList.remove('open');
+  document.getElementById('server-settings-panel')?.classList.remove('open');
+}
+
+function serverSettingsTab(name) {
+  document.querySelectorAll('.ss-tab').forEach(function (t) {
+    t.classList.toggle('active', t.getAttribute('data-tab') === name);
+  });
+  document.querySelectorAll('.ss-pane').forEach(function (p) {
+    p.classList.toggle('active', p.id === 'ss-pane-' + name);
+  });
+  if (name === 'roles') ssRenderRoles();
+  if (name === 'members') ssRenderMembers();
+  if (name === 'bans') ssLoadBans();
+  if (name === 'emoji') ssLoadEmoji();
+}
+
+function ssLoadProfileForm() {
+  const m = _communityMeta || {};
+  const n = document.getElementById('ss-name');
+  const d = document.getElementById('ss-desc');
+  const i = document.getElementById('ss-icon');
+  const b = document.getElementById('ss-banner');
+  if (n) n.value = m.name || '';
+  if (d) d.value = m.description || '';
+  if (i) i.value = m.icon_url || '';
+  if (b) b.value = m.banner || '';
+  const sub = document.getElementById('ss-server-name');
+  if (sub) sub.textContent = m.name || 'Lightchain';
+}
+
+async function saveServerProfile() {
+  if (!wallet) { showToast('Connect wallet'); return; }
+  const body = {
+    wallet: wallet,
+    name: (document.getElementById('ss-name')?.value || '').trim(),
+    description: (document.getElementById('ss-desc')?.value || '').trim(),
+    icon_url: (document.getElementById('ss-icon')?.value || '').trim(),
+    banner: (document.getElementById('ss-banner')?.value || '').trim(),
+  };
+  try {
+    const r = await fetch(BACKEND + '/api/community/server-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { showToast(j.error || 'Save failed'); return; }
+    applyCommunityMetaToChrome(j);
+    showToast('Server profile saved');
+    try { loadChannelsList(); } catch (e) {}
+  } catch (e) {
+    showToast('Save failed');
+  }
+}
+
+function ssRenderRoles() {
+  const el = document.getElementById('ss-roles-list');
+  if (!el) return;
+  const list = (_dirMembers || []).slice().sort(typeof _dirRoleSort === 'function' ? _dirRoleSort : undefined);
+  if (!list.length) {
+    el.innerHTML = '<div class="ss-hint">No members loaded — open Members once, or wait for directory.</div>';
+    try { loadDirectory(); } catch (e) {}
+    return;
+  }
+  el.innerHTML = list.map(function (m) {
+    const dn = escapeHtml(stripAt(m.display_name || m.handle || shortenWallet(m.wallet)));
+    const role = escapeHtml(m.role || 'member');
+    const w = escapeHtml(m.wallet || '');
+    return '<div class="ss-item"><div style="min-width:0;flex:1"><div class="n">' + dn +
+      '</div><div class="d">' + w + ' · ' + role + '</div></div></div>';
+  }).join('');
+}
+
+async function ssSetRole() {
+  const target = (document.getElementById('ss-role-wallet')?.value || '').trim().toLowerCase();
+  const role = document.getElementById('ss-role-select')?.value || 'member';
+  if (!/^0x[a-f0-9]{40}$/.test(target)) { showToast('Valid wallet required'); return; }
+  const r = await fetch(BACKEND + '/api/community/roles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet: wallet, target: target, role: role }),
+  });
+  const j = await r.json().catch(function () { return {}; });
+  if (!r.ok) { showToast(j.error || 'Failed'); return; }
+  showToast('Role set: ' + role);
+  try { await loadDirectory(); } catch (e) {}
+  ssRenderRoles();
+}
+
+function ssRenderMembers() {
+  const el = document.getElementById('ss-members-list');
+  if (!el) return;
+  const q = (document.getElementById('ss-members-q')?.value || '').toLowerCase();
+  let list = (_dirMembers || []).slice();
+  if (q) {
+    list = list.filter(function (m) {
+      return ((m.display_name || '') + (m.handle || '') + (m.wallet || '') + (m.role || '')).toLowerCase().includes(q);
+    });
+  }
+  if (!list.length) {
+    el.innerHTML = '<div class="ss-hint">No members match.</div>';
+    if (!(_dirMembers || []).length) try { loadDirectory(); } catch (e) {}
+    return;
+  }
+  el.innerHTML = list.map(function (m) {
+    const dn = escapeHtml(stripAt(m.display_name || m.handle || shortenWallet(m.wallet)));
+    const w = (m.wallet || '').toLowerCase();
+    const role = escapeHtml(m.role || 'member');
+    const safeW = escapeHtml(w);
+    const safeDn = escapeHtml(dn).replace(/'/g, "\\'");
+    let actions = '';
+    if (wallet && w && w !== wallet.toLowerCase() && typeof isCommStaff === 'function' && isCommStaff()) {
+      actions =
+        '<button type="button" onclick="openModMemberMenu(event,\'' + safeW + '\',\'' + safeDn + '\')">🛡</button>' +
+        '<button type="button" onclick="openModView(\'' + safeW + '\')">👁</button>';
+    }
+    return '<div class="ss-item"><div style="min-width:0;flex:1"><div class="n">' + dn +
+      '</div><div class="d">' + role + (m.online ? ' · online' : '') + '</div></div>' + actions + '</div>';
+  }).join('');
+}
+
+async function ssLoadBans() {
+  const el = document.getElementById('ss-bans-list');
+  if (!el) return;
+  el.innerHTML = '<div class="ss-hint">Loading…</div>';
+  try {
+    const r = await fetch(BACKEND + '/api/community/bans?wallet=' + encodeURIComponent(wallet || ''));
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) { el.innerHTML = '<div class="ss-hint">' + escapeHtml(j.error || 'Failed') + '</div>'; return; }
+    const bans = j.bans || [];
+    if (!bans.length) { el.innerHTML = '<div class="ss-hint">No bans.</div>'; return; }
+    el.innerHTML = bans.map(function (b) {
+      const dn = escapeHtml(stripAt(b.display_name || b.handle || shortenWallet(b.wallet)));
+      const w = escapeHtml(b.wallet || '');
+      const reason = escapeHtml(b.reason || '');
+      return '<div class="ss-item"><div style="min-width:0;flex:1"><div class="n">' + dn +
+        '</div><div class="d">' + w + (reason ? (' · ' + reason) : '') + '</div></div>' +
+        '<button type="button" class="danger" onclick="ssUnban(\'' + w + '\')">Unban</button></div>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="ss-hint">Failed to load bans</div>';
+  }
+}
+
+async function ssUnban(target) {
+  if (!wallet || !target) return;
+  if (!confirm('Unban ' + target + '?')) return;
+  const r = await fetch(BACKEND + '/api/community/moderate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wallet: wallet, target: target, action: 'unban' }),
+  });
+  const j = await r.json().catch(function () { return {}; });
+  if (!r.ok) { showToast(j.error || 'Unban failed'); return; }
+  showToast('Unbanned');
+  ssLoadBans();
+}
+
+async function ssLoadEmoji() {
+  const el = document.getElementById('ss-emoji-list');
+  if (!el) return;
+  try {
+    const r = await fetch(BACKEND + '/api/community/stickers');
+    const j = await r.json();
+    const list = j.stickers || [];
+    if (!list.length) { el.innerHTML = '<div class="ss-hint">No custom emoji/stickers yet.</div>'; return; }
+    el.innerHTML = list.slice(0, 40).map(function (s) {
+      const url = BACKEND + (s.url || ('/api/community/stickers/' + s.id));
+      return '<div class="ss-item"><img src="' + escapeHtml(url) + '" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:6px">' +
+        '<div style="min-width:0;flex:1"><div class="n">' + escapeHtml(s.name || s.id) +
+        '</div><div class="d">' + escapeHtml(s.kind || '') + '</div></div></div>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div class="ss-hint">Could not load stickers</div>';
+  }
+}
+
+function serverSettingsCreateChannel() {
+  closeChannelRailServerMenu();
+  if (!(communityRole === 'owner' || communityRole === 'admin')) {
+    showToast('Owners/admins only for channel tools');
+    return;
+  }
+  try { openOwnerPanel(); } catch (e) { showToast('Open Owner tools to manage channels'); }
+}
+
+function serverSettingsCreateCategory() {
+  closeChannelRailServerMenu();
+  showToast('Categories: use the channel rail groups for now — full create comes next');
+}
+
 function toggleRailCategory(catId) {
   _railCatOpen[catId] = !_railCatOpen[catId];
   renderChannelRail();
@@ -10608,9 +11010,17 @@ function refreshRailUserAv() {
 
 document.addEventListener('click', function (e) {
   const menu = document.getElementById('channel-rail-server-menu');
-  if (!menu || !menu.classList.contains('open')) return;
-  if (e.target.closest && e.target.closest('.channel-rail-server')) return;
-  closeChannelRailServerMenu();
+  if (menu && menu.classList.contains('open')) {
+    if (!(e.target.closest && e.target.closest('.channel-rail-server'))) {
+      closeChannelRailServerMenu();
+    }
+  }
+  const umenu = document.getElementById('rail-user-menu');
+  if (umenu && umenu.classList.contains('open')) {
+    if (!(e.target.closest && e.target.closest('#channel-rail-user'))) {
+      closeRailUserMenu();
+    }
+  }
 });
 
 async function loadChannelsList() {
@@ -10618,6 +11028,15 @@ async function loadChannelsList() {
     const r = await fetch(BACKEND + '/api/community' + (wallet ? ('?wallet=' + encodeURIComponent(wallet)) : ''));
     const j = await r.json();
     communityChannels = j.channels || [];
+    try {
+      applyCommunityMetaToChrome({
+        name: j.name,
+        description: j.description,
+        icon_url: j.icon_url,
+        banner: j.banner,
+      });
+    } catch (e) {}
+    try { refreshRailModMenuVisibility(); } catch (e) {}
     const visible = _visibleCommunityChannels();
     const el = document.getElementById('channels-list');
     if (el) {
@@ -13303,6 +13722,7 @@ function refreshOwnerMenuVisibility() {
   if (!el) return;
   const show = communityRole === 'owner' || communityRole === 'admin';
   el.style.display = show ? '' : 'none';
+  try { refreshRailModMenuVisibility(); } catch (e) {}
 }
 
 async function openOwnerPanel() {
