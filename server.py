@@ -1024,6 +1024,68 @@ def resolve_handle(handle):
 # Anti-scam: limit how many friend requests one wallet can send
 _FRIEND_REQ_LIMIT = 8          # max pending/sent requests
 _FRIEND_REQ_WINDOW_SEC = 3600  # per rolling hour
+_SAVE_FRIEND_LIMIT = 40        # max save-friend writes per hour (private bookmarks)
+
+
+@app.route('/save-friend', methods=['POST'])
+def save_friend():
+    """Persist a one-directional private friend bookmark for the caller only.
+
+    Does NOT notify, socket-emit, or push the other party, and does NOT add
+    the caller to their list. Distinct from /contact-request (two-way).
+    """
+    data = request.json or {}
+    wallet = (data.get('wallet') or '').lower().strip()
+    contact_wallet = (data.get('contact_wallet') or '').lower().strip()
+    handle = (data.get('handle') or '').strip()[:64]
+    if not wallet or not contact_wallet:
+        return jsonify({'error': 'wallet and contact_wallet required'}), 400
+    if wallet == contact_wallet:
+        return jsonify({'error': 'Cannot add yourself'}), 400
+    if not wallet.startswith('0x') or not contact_wallet.startswith('0x'):
+        return jsonify({'error': 'invalid wallet'}), 400
+
+    conn = get_db()
+    try:
+        since = int(time.time()) - _FRIEND_REQ_WINDOW_SEC
+        recent = conn.execute(
+            '''SELECT COUNT(*) AS c FROM contacts
+               WHERE wallet = ? AND status = ? AND created_at >= ?''',
+            (wallet, 'saved', since),
+        ).fetchone()['c']
+        if recent >= _SAVE_FRIEND_LIMIT:
+            return jsonify({
+                'error': f'Too many friend saves — try again later (max {_SAVE_FRIEND_LIMIT}/hour)',
+                'code': 'rate_limited',
+            }), 429
+
+        # If already approved in this direction, keep approved (don't downgrade)
+        existing = conn.execute(
+            'SELECT status FROM contacts WHERE wallet = ? AND contact_wallet = ?',
+            (wallet, contact_wallet),
+        ).fetchone()
+        if existing and existing['status'] == 'approved':
+            return jsonify({'ok': True, 'status': 'approved'})
+
+        now = int(time.time())
+        if existing:
+            # Upgrade pending→saved for caller's own row only, or refresh saved
+            if existing['status'] in ('saved', 'pending'):
+                conn.execute(
+                    'UPDATE contacts SET status = ?, created_at = ? WHERE wallet = ? AND contact_wallet = ?',
+                    ('saved', now, wallet, contact_wallet),
+                )
+            # else leave other statuses alone
+        else:
+            conn.execute(
+                'INSERT OR IGNORE INTO contacts (wallet, contact_wallet, status, created_at) VALUES (?, ?, ?, ?)',
+                (wallet, contact_wallet, 'saved', now),
+            )
+        conn.commit()
+        # Privacy: no socket emit, no push to contact_wallet
+        return jsonify({'ok': True, 'status': 'saved', 'handle': handle or None})
+    finally:
+        conn.close()
 
 
 @app.route('/contact-request', methods=['POST'])
