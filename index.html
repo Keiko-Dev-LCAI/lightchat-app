@@ -39,7 +39,7 @@ const ORCAVAULT_V2_ABI = [
 const LIGHTSCAN_TX = 'https://lightscan.lightchain.ai/tx/';
 const ORCAVAULT_CHUNK_SIZE = 90000;
 </script>
-<script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<script defer src="vendor/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 :root {
@@ -2702,6 +2702,9 @@ body {
           <div class="me-menu-item" onclick="showSettings()">
             <div class="me-menu-icon">🔔</div><div>Notifications</div><div class="me-menu-arrow">›</div>
           </div>
+          <div class="me-menu-item" id="me-link-device-btn" onclick="openLinkMobileDevice()" style="display:none">
+            <div class="me-menu-icon">📱</div><div>Link mobile device</div><div class="me-menu-arrow">›</div>
+          </div>
           <div class="me-menu-item" id="me-logoff-btn" onclick="logOff()" style="display:none;color:#ff8a8a">
             <div class="me-menu-icon">🚪</div><div>Log off</div><div class="me-menu-arrow">›</div>
           </div>
@@ -3673,7 +3676,29 @@ body {
     <input id="wc-addr-input" type="text" placeholder="Optional: 0x address (still must sign on Lightchain)" autocomplete="off" autocorrect="off" spellcheck="false"
       style="width:100%;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-size:17px;padding:16px 14px;margin-bottom:16px;outline:none;font-family:monospace">
     <button onclick="connectPastedAddress()" style="width:100%;padding:18px;border-radius:14px;background:var(--purple);border:none;color:#fff;font-size:20px;font-weight:700;cursor:pointer">Connect on Lightchain →</button>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="font-size:14px;color:var(--text2);text-align:center;margin-bottom:10px">Have a desktop link code?</div>
+      <input id="wc-handoff-input" type="text" placeholder="Paste code" autocomplete="off" spellcheck="false"
+        style="width:100%;box-sizing:border-box;background:var(--bg);border:1.5px solid var(--border);border-radius:14px;color:var(--text);font-size:16px;padding:14px;margin-bottom:10px;outline:none;font-family:monospace">
+      <button type="button" onclick="redeemHandoffCodeFromInput()" style="width:100%;padding:14px;border-radius:14px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:16px;font-weight:700;cursor:pointer">Sign in with code</button>
+    </div>
     <div style="text-align:center;margin-top:14px;font-size:14px;color:var(--text2);opacity:0.7">Other networks (Ethereum, BSC, etc.) cannot sign in</div>
+  </div>
+</div>
+
+<!-- ── LINK MOBILE DEVICE (desktop handoff QR) ── -->
+<div id="link-mobile-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:620;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:22px;padding:28px 22px;width:100%;max-width:380px;position:relative;text-align:center">
+    <button type="button" onclick="closeLinkMobileDevice()" style="position:absolute;top:12px;right:16px;background:none;border:none;color:var(--text2);font-size:24px;cursor:pointer;line-height:1">✕</button>
+    <div style="font-size:28px;margin-bottom:8px">📱</div>
+    <div style="font-size:22px;font-weight:800;margin-bottom:6px">Link mobile device</div>
+    <div style="font-size:14px;color:var(--text2);line-height:1.45;margin-bottom:16px">Scan with your phone (or open the link). No Ledger signing on mobile.</div>
+    <div id="link-mobile-qr" style="display:inline-block;padding:12px;background:#fff;border-radius:12px;min-height:200px;min-width:200px"></div>
+    <div id="link-mobile-code" style="margin-top:14px;font-family:monospace;font-size:18px;font-weight:700;letter-spacing:0.04em;word-break:break-all"></div>
+    <div id="link-mobile-url" style="margin-top:8px;font-size:12px;color:var(--text2);word-break:break-all;line-height:1.4;padding:0 4px"></div>
+    <button type="button" id="link-mobile-copy" onclick="copyLinkMobileUrl()" style="margin-top:12px;padding:10px 16px;border-radius:10px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-weight:700;cursor:pointer;font-size:13px">Copy link</button>
+    <div id="link-mobile-countdown" style="margin-top:14px;font-size:14px;color:var(--text2)">Expires in 3:00</div>
+    <button type="button" id="link-mobile-refresh" onclick="openLinkMobileDevice()" style="display:none;margin-top:12px;width:100%;padding:14px;border-radius:12px;background:var(--purple);border:none;color:#fff;font-weight:700;cursor:pointer">Generate new code</button>
   </div>
 </div>
 
@@ -3785,6 +3810,8 @@ function hideConnectUI() {
   if (cta && wallet) cta.textContent = '👥 Add a Contact';
   const logBtn = document.getElementById('me-logoff-btn');
   if (logBtn) logBtn.style.display = '';
+  const linkBtn = document.getElementById('me-link-device-btn');
+  if (linkBtn) linkBtn.style.display = '';
   const sideLog = document.getElementById('sidebar-logoff-btn');
   if (sideLog) sideLog.style.display = '';
 }
@@ -3805,6 +3832,8 @@ function showConnectUI() {
   if (cta) cta.textContent = '🔗 Connect Wallet';
   const logBtn = document.getElementById('me-logoff-btn');
   if (logBtn) logBtn.style.display = 'none';
+  const linkBtn = document.getElementById('me-link-device-btn');
+  if (linkBtn) linkBtn.style.display = 'none';
   const sideLog = document.getElementById('sidebar-logoff-btn');
   if (sideLog) sideLog.style.display = 'none';
 }
@@ -4250,6 +4279,8 @@ function updateUI() {
   if (cta) { cta.textContent = wallet ? '👥 Add a Contact' : '🔗 Connect Wallet'; }
   const logBtn = document.getElementById('me-logoff-btn');
   if (logBtn) logBtn.style.display = wallet ? '' : 'none';
+  const linkBtn = document.getElementById('me-link-device-btn');
+  if (linkBtn) linkBtn.style.display = wallet ? '' : 'none';
   const sideLog = document.getElementById('sidebar-logoff-btn');
   if (sideLog) sideLog.style.display = wallet ? '' : 'none';
 }
@@ -4644,6 +4675,158 @@ function clearCommDeleteTombstones() {
   } catch (e) {
     showToast('Could not clear');
   }
+}
+
+/** ── Desktop → mobile session handoff (QR / code) ── */
+let _linkMobileTimer = null;
+let _linkMobileUrl = '';
+
+function closeLinkMobileDevice() {
+  const modal = document.getElementById('link-mobile-modal');
+  if (modal) modal.style.display = 'none';
+  if (_linkMobileTimer) { clearInterval(_linkMobileTimer); _linkMobileTimer = null; }
+}
+
+async function openLinkMobileDevice() {
+  if (!wallet || !sessionToken) {
+    showToast('Sign in on this device first');
+    return;
+  }
+  const modal = document.getElementById('link-mobile-modal');
+  const qrHost = document.getElementById('link-mobile-qr');
+  const codeEl = document.getElementById('link-mobile-code');
+  const urlEl = document.getElementById('link-mobile-url');
+  const cdEl = document.getElementById('link-mobile-countdown');
+  const refreshBtn = document.getElementById('link-mobile-refresh');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  if (refreshBtn) refreshBtn.style.display = 'none';
+  if (qrHost) qrHost.innerHTML = '';
+  if (codeEl) codeEl.textContent = '…';
+  if (urlEl) urlEl.textContent = '';
+  if (cdEl) cdEl.textContent = 'Creating code…';
+  if (_linkMobileTimer) { clearInterval(_linkMobileTimer); _linkMobileTimer = null; }
+  try {
+    const r = await fetch(BACKEND + '/api/auth/handoff/create', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + sessionToken },
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok || !j.code) {
+      showToast(j.error || 'Could not create link code');
+      closeLinkMobileDevice();
+      return;
+    }
+    const code = j.code;
+    const exp = Number(j.expires_at || 0);
+    _linkMobileUrl = location.origin + '/?lc_handoff=' + encodeURIComponent(code);
+    if (codeEl) codeEl.textContent = code;
+    if (urlEl) urlEl.textContent = _linkMobileUrl;
+    if (qrHost) {
+      qrHost.innerHTML = '';
+      if (typeof QRCode === 'undefined') {
+        qrHost.innerHTML = '<div style="color:#111;font-size:12px;padding:20px">QR lib missing — use the code/link</div>';
+      } else {
+        try {
+          new QRCode(qrHost, {
+            text: _linkMobileUrl,
+            width: 200,
+            height: 200,
+            correctLevel: QRCode.CorrectLevel.M,
+          });
+        } catch (e) {
+          qrHost.innerHTML = '<div style="color:#111;font-size:12px;padding:20px">QR failed — use the code</div>';
+        }
+      }
+    }
+    function tick() {
+      const left = Math.max(0, exp - Math.floor(Date.now() / 1000));
+      if (cdEl) {
+        const m = Math.floor(left / 60);
+        const s = left % 60;
+        cdEl.textContent = left > 0
+          ? ('Expires in ' + m + ':' + String(s).padStart(2, '0'))
+          : 'Code expired';
+      }
+      if (left <= 0) {
+        if (_linkMobileTimer) { clearInterval(_linkMobileTimer); _linkMobileTimer = null; }
+        if (refreshBtn) refreshBtn.style.display = '';
+      }
+    }
+    tick();
+    _linkMobileTimer = setInterval(tick, 1000);
+  } catch (e) {
+    showToast('Could not create link code');
+    closeLinkMobileDevice();
+  }
+}
+
+function copyLinkMobileUrl() {
+  if (!_linkMobileUrl) return;
+  try {
+    navigator.clipboard.writeText(_linkMobileUrl);
+    showToast('Link copied');
+  } catch (e) {
+    showToast(_linkMobileUrl);
+  }
+}
+
+async function applyHandoffSession(j) {
+  if (!j || !j.token || !j.wallet) throw new Error('bad handoff response');
+  sessionToken = j.token;
+  sessionMode = j.mode || 'signed';
+  wallet = String(j.wallet).toLowerCase();
+  try { localStorage.setItem('lc_session_token', sessionToken); } catch (e) {}
+  try { localStorage.setItem('lc_session_mode', sessionMode); } catch (e) {}
+  try { localStorage.setItem('lc_wallet', wallet); } catch (e) {}
+  try { localStorage.removeItem('lc_manual_logout'); } catch (e) {}
+  await finishConnect({ silent: true });
+  showToast('Signed in on this device');
+}
+
+async function redeemHandoffCode(code) {
+  code = String(code || '').trim();
+  if (!code) { showToast('Enter a code'); return false; }
+  try {
+    const r = await fetch(BACKEND + '/api/auth/handoff/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code }),
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!r.ok) {
+      showToast(j.error === 'code expired or already used'
+        ? 'Link expired — generate a new code on your computer.'
+        : (j.error || 'Could not sign in with code'));
+      return false;
+    }
+    await applyHandoffSession(j);
+    return true;
+  } catch (e) {
+    showToast('Could not sign in with code');
+    return false;
+  }
+}
+
+async function redeemHandoffCodeFromInput() {
+  const inp = document.getElementById('wc-handoff-input');
+  const code = inp ? inp.value.trim() : '';
+  const ok = await redeemHandoffCode(code);
+  if (ok) {
+    try { closeWCModal(); } catch (e) {}
+  }
+}
+
+/** On load: redeem ?lc_handoff=CODE then strip from URL. */
+async function tryRedeemHandoffFromUrl() {
+  let code = '';
+  try {
+    code = new URLSearchParams(location.search).get('lc_handoff') || '';
+  } catch (e) { return false; }
+  if (!code) return false;
+  const ok = await redeemHandoffCode(code);
+  try { history.replaceState({}, '', location.pathname || '/'); } catch (e) {}
+  return ok;
 }
 
 /** Log off LightChat: revoke session, leave sockets/P2P, show Connect Wallet. Keeps local chat cache. */
@@ -8450,6 +8633,14 @@ window.addEventListener('load', async () => {
   initPicker();
   initMemoryContextMenu();
   refreshEmptyInviteUI();
+  // Desktop→mobile handoff: redeem QR/link code before normal connect
+  let handedOff = false;
+  try { handedOff = await tryRedeemHandoffFromUrl(); } catch (e) { console.warn('handoff', e); }
+  if (handedOff) {
+    applyDeepLinkTab();
+    try { applyAddFriendDeepLink(); } catch (e) {}
+    return;
+  }
   // Auto-restore session on refresh (skip if user explicitly logged off).
   // Silent: never toast "not authorized" / force personal_sign on load.
   let manualLogout = false;

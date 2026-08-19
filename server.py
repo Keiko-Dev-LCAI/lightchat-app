@@ -220,6 +220,16 @@ def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_auth_sessions_wallet ON auth_sessions(wallet);
         CREATE INDEX IF NOT EXISTS idx_auth_sessions_exp ON auth_sessions(exp);
+        -- Desktop→mobile one-time link codes (3 min, single-use)
+        CREATE TABLE IF NOT EXISTS auth_handoff_codes (
+            code TEXT PRIMARY KEY,
+            wallet TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'signed',
+            exp INTEGER NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_auth_handoff_exp ON auth_handoff_codes(exp);
     ''')
     conn.commit()
     conn.close()
@@ -734,6 +744,100 @@ def api_auth_logout():
         return jsonify({'ok': True, 'revoked': False})
     gone = _revoke_session(token)
     return jsonify({'ok': True, 'revoked': gone})
+
+
+_HANDOFF_TTL = 180  # 3 minutes
+
+
+def _auth_handoff_purge(conn=None):
+    own = conn is None
+    if own:
+        conn = get_db()
+    try:
+        now = int(time.time())
+        conn.execute('DELETE FROM auth_handoff_codes WHERE exp < ? OR used != 0', (now,))
+        if own:
+            conn.commit()
+    except Exception as e:
+        print(f'  [auth] handoff purge failed: {e}', flush=True)
+    finally:
+        if own:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+@app.route('/api/auth/handoff/create', methods=['POST'])
+def api_auth_handoff_create():
+    """Desktop (Bearer) mints a 3-min single-use code for the same wallet."""
+    auth = request.headers.get('Authorization') or ''
+    token = auth[7:].strip() if auth.lower().startswith('bearer ') else ''
+    row = _lookup_session(token)
+    if not row:
+        return jsonify({'error': 'unauthorized', 'code': 'auth_required'}), 401
+    wallet = (row.get('wallet') or '').lower()
+    mode = row.get('mode') or 'signed'
+    if not re.match(r'^0x[0-9a-f]{40}$', wallet):
+        return jsonify({'error': 'invalid session wallet'}), 401
+    now = int(time.time())
+    exp = now + _HANDOFF_TTL
+    code = secrets.token_urlsafe(9)
+    conn = get_db()
+    try:
+        _auth_handoff_purge(conn)
+        # Only newest unused code per wallet stays live
+        conn.execute(
+            'DELETE FROM auth_handoff_codes WHERE wallet=? AND used=0',
+            (wallet,),
+        )
+        conn.execute(
+            '''INSERT INTO auth_handoff_codes (code, wallet, mode, exp, used, created_at)
+               VALUES (?,?,?,?,0,?)''',
+            (code, wallet, mode, exp, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({'code': code, 'expires_at': exp})
+
+
+@app.route('/api/auth/handoff/redeem', methods=['POST'])
+def api_auth_handoff_redeem():
+    """Mobile redeems a one-time code → normal session (same shape as /verify)."""
+    data = request.json or {}
+    code = (data.get('code') or '').strip()
+    if not code:
+        return jsonify({'error': 'code required'}), 400
+    now = int(time.time())
+    conn = get_db()
+    try:
+        _auth_handoff_purge(conn)
+        row = conn.execute(
+            'SELECT code, wallet, mode, exp, used FROM auth_handoff_codes WHERE code=?',
+            (code,),
+        ).fetchone()
+        if not row or int(row['used'] or 0) != 0 or int(row['exp'] or 0) < now:
+            return jsonify({'error': 'code expired or already used'}), 400
+        # Mark used BEFORE minting (single-use under race)
+        cur = conn.execute(
+            'UPDATE auth_handoff_codes SET used=1 WHERE code=? AND used=0 AND exp>=?',
+            (code, now),
+        )
+        conn.commit()
+        if cur.rowcount != 1:
+            return jsonify({'error': 'code expired or already used'}), 400
+        wallet = (row['wallet'] or '').lower()
+        mode = row['mode'] or 'signed'
+    finally:
+        conn.close()
+    token, exp = _store_session(wallet, mode)
+    return jsonify({
+        'token': token,
+        'expires_at': exp,
+        'wallet': wallet,
+        'mode': mode,
+    })
 
 
 @app.route('/health')
