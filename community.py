@@ -2118,6 +2118,166 @@ def register_community_routes(app, socketio, get_db):
         finally:
             conn.close()
 
+    def _modview_public_channel_ids(conn):
+        """Channel ids for Gen Chat public community channels (not tickets/threads/DMs)."""
+        rows = conn.execute(
+            "SELECT id, slug FROM community_channels WHERE community_id=?",
+            (COMMUNITY_ID,),
+        ).fetchall()
+        # community_messages only stores channel posts; tickets/threads are separate tables
+        return {r["id"]: r["slug"] for r in rows}
+
+    def _modview_is_media(content: str) -> bool:
+        c = (content or "").strip()
+        if c.startswith("[[img]]") or c.startswith("[[gif]]") or c.startswith("[[video]]"):
+            return True
+        try:
+            return is_media_only_content(c) and not c.startswith("[[sticker]]") and not c.startswith("[[emoji]]")
+        except Exception:
+            return False
+
+    @app.route("/api/community/modview/<wallet>", methods=["GET"])
+    def api_modview_summary(wallet):
+        """Staff-only Gen Chat activity summary for a member. No DMs."""
+        viewer = _norm(request.args.get("wallet", ""))
+        target = _norm(wallet)
+        if not viewer.startswith("0x") or not target.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            v_role = get_role(conn, viewer)
+            if not is_staff(v_role):
+                return jsonify({"error": "staff only", "code": "staff_only"}), 403
+            t_role = get_role(conn, target) or "member"
+            banned = is_banned(conn, target)
+            if banned and not get_role(conn, target):
+                t_role = "member"
+            mem = conn.execute(
+                "SELECT role, joined_at FROM community_members WHERE community_id=? AND wallet=?",
+                (COMMUNITY_ID, target),
+            ).fetchone()
+            joined_at = int(mem["joined_at"] or 0) if mem else 0
+            if mem:
+                t_role = mem["role"] or t_role
+            prof = profile_dict(conn, target)
+            # Staff always see wallet even if hide_wallet
+            ch_map = _modview_public_channel_ids(conn)
+            ch_ids = list(ch_map.keys())
+            message_count = 0
+            link_count = 0
+            media_count = 0
+            by_channel = {}
+            if ch_ids:
+                placeholders = ",".join("?" * len(ch_ids))
+                rows = conn.execute(
+                    f"""SELECT channel_id, content FROM community_messages
+                        WHERE community_id=? AND sender_wallet=? AND channel_id IN ({placeholders})
+                        AND sender_wallet NOT LIKE 'bot:%'""",
+                    [COMMUNITY_ID, target] + ch_ids,
+                ).fetchall()
+                for r in rows:
+                    message_count += 1
+                    content = r["content"] or ""
+                    slug = ch_map.get(r["channel_id"]) or "?"
+                    by_channel[slug] = by_channel.get(slug, 0) + 1
+                    is_med = _modview_is_media(content)
+                    if is_med:
+                        media_count += 1
+                    elif content_has_link(content):
+                        link_count += 1
+            until = get_timeout_until(conn, target)
+            timeout_reason = ""
+            if until:
+                tr = conn.execute(
+                    "SELECT reason FROM community_timeouts WHERE community_id=? AND wallet=?",
+                    (COMMUNITY_ID, target),
+                ).fetchone()
+                timeout_reason = (tr["reason"] if tr else "") or ""
+            ban_reason = ""
+            if banned:
+                br = conn.execute(
+                    "SELECT reason FROM community_bans WHERE community_id=? AND wallet=?",
+                    (COMMUNITY_ID, target),
+                ).fetchone()
+                ban_reason = (br["reason"] if br else "") or ""
+            can_mod = can_moderate(v_role, t_role, "")
+            can_set_role = bool(
+                (has_perm(v_role, "manage_roles") or v_role == "owner")
+                and (rank(v_role) > rank(t_role) or v_role == "owner")
+                and viewer != target
+            )
+            return jsonify({
+                "wallet": target,
+                "display_name": prof.get("display_name") or "",
+                "handle": prof.get("handle") or "",
+                "has_avatar": bool(prof.get("has_avatar")),
+                "role": t_role,
+                "joined_at": joined_at,
+                "activity": {
+                    "message_count": message_count,
+                    "link_count": link_count,
+                    "media_count": media_count,
+                    "by_channel": by_channel,
+                },
+                "timed_out_until": until,
+                "timeout_reason": timeout_reason,
+                "banned": banned,
+                "ban_reason": ban_reason,
+                "can_act": {
+                    "timeout": can_mod and viewer != target,
+                    "untimeout": can_mod and viewer != target,
+                    "kick": can_mod and viewer != target,
+                    "ban": can_mod and viewer != target,
+                    "unban": can_mod and viewer != target,
+                    "set_role": can_set_role,
+                    "delete": can_mod,
+                },
+            })
+        finally:
+            conn.close()
+
+    @app.route("/api/community/modview/<wallet>/messages", methods=["GET"])
+    def api_modview_messages(wallet):
+        """Staff-only recent public Gen Chat messages for a member. No DMs/tickets/threads."""
+        viewer = _norm(request.args.get("wallet", ""))
+        target = _norm(wallet)
+        try:
+            limit = max(1, min(100, int(request.args.get("limit") or 50)))
+        except (TypeError, ValueError):
+            limit = 50
+        if not viewer.startswith("0x") or not target.startswith("0x"):
+            return jsonify({"error": "wallet required"}), 400
+        conn = get_db()
+        try:
+            v_role = get_role(conn, viewer)
+            if not is_staff(v_role):
+                return jsonify({"error": "staff only", "code": "staff_only"}), 403
+            ch_map = _modview_public_channel_ids(conn)
+            ch_ids = list(ch_map.keys())
+            out = []
+            if ch_ids:
+                placeholders = ",".join("?" * len(ch_ids))
+                rows = conn.execute(
+                    f"""SELECT id, channel_id, content, created_at
+                        FROM community_messages
+                        WHERE community_id=? AND sender_wallet=? AND channel_id IN ({placeholders})
+                        AND sender_wallet NOT LIKE 'bot:%'
+                        ORDER BY created_at DESC LIMIT ?""",
+                    [COMMUNITY_ID, target] + ch_ids + [limit],
+                ).fetchall()
+                for r in rows:
+                    content = r["content"] or ""
+                    preview = content if len(content) <= 240 else (content[:237] + "…")
+                    out.append({
+                        "id": r["id"],
+                        "slug": ch_map.get(r["channel_id"]) or "",
+                        "content": preview,
+                        "created_at": int(r["created_at"] or 0),
+                    })
+            return jsonify({"wallet": target, "messages": out})
+        finally:
+            conn.close()
+
     @app.route("/api/community/directory")
     def api_directory():
         q = (request.args.get("q") or "").strip().lower()
