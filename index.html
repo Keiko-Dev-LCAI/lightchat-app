@@ -3912,6 +3912,12 @@ body {
   font-family: inherit; margin-left: auto; flex-shrink: 0;
 }
 .ss-item button.danger { color: #ff6b6b; }
+.ss-wallet-chip {
+  appearance: none; border: none; background: transparent; color: var(--text2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; font-weight: 600; padding: 0; cursor: pointer; text-decoration: underline dotted;
+}
+.ss-wallet-chip:hover { color: var(--text); }
 </style>
 
 <!-- Gen Chat message search (Discord-style) -->
@@ -5911,7 +5917,16 @@ async function searchHandle() {
     if (resp.wallet === wallet) { showToast("That's you!"); return; }
     searchFoundWallet = resp.wallet;
     document.getElementById('search-result-handle').textContent = raw.replace('@','');
-    document.getElementById('search-result-wallet').textContent = resp.wallet;
+    // Short form only; tap copies full (privacy — never leave full 0x in plain text)
+    (function () {
+      const el = document.getElementById('search-result-wallet');
+      if (!el) return;
+      const full = String(resp.wallet || '');
+      el.textContent = shortenWallet(full);
+      el.title = 'Click to copy full address';
+      el.style.cursor = 'pointer';
+      el.onclick = function () { copyWalletAddress(full); };
+    })();
     document.getElementById('search-result').style.display = 'block';
     document.getElementById('search-not-found').style.display = 'none';
   } else {
@@ -6623,6 +6638,18 @@ function closePanel(id) { document.getElementById(id).classList.remove('open'); 
 
 function getRoom(w1, w2) { return [w1.toLowerCase(), w2.toLowerCase()].sort().join('_'); }
 function shortenWallet(w) { if (!w) return ''; return w.substring(0,6) + '...' + w.substring(w.length-4); }
+function copyWalletAddress(addr) {
+  addr = String(addr || '').trim();
+  if (!addr) return;
+  const done = function () { try { showToast('Copied ' + shortenWallet(addr)); } catch (e) {} };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(addr).then(done).catch(function () {
+      try { window.prompt('Copy wallet', addr); } catch (e) {}
+    });
+  } else {
+    try { window.prompt('Copy wallet', addr); } catch (e) {}
+  }
+}
 function avatarLetter(h) { if (!h) return '🐬'; return h.replace('@','').charAt(0).toUpperCase(); }
 function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function showToast(msg, ms) {
@@ -10785,6 +10812,20 @@ async function saveServerProfile() {
   }
 }
 
+/** Short form for display; click copies full 0x… (never render full in lists). */
+function ssWalletChip(full, opts) {
+  opts = opts || {};
+  const w = String(full || '').toLowerCase();
+  if (!w) return '';
+  const short = escapeHtml(shortenWallet(w));
+  const safe = escapeHtml(w);
+  const fill = opts.fillRoleInput
+    ? ' try{var i=document.getElementById(\'ss-role-wallet\'); if(i) i.value=\'' + safe + '\';}catch(e){}'
+    : '';
+  return '<button type="button" class="ss-wallet-chip" title="Click to copy full address" ' +
+    'onclick="event.stopPropagation();copyWalletAddress(\'' + safe + '\');' + fill + '">' + short + '</button>';
+}
+
 function ssRenderRoles() {
   const el = document.getElementById('ss-roles-list');
   if (!el) return;
@@ -10797,9 +10838,9 @@ function ssRenderRoles() {
   el.innerHTML = list.map(function (m) {
     const dn = escapeHtml(stripAt(m.display_name || m.handle || shortenWallet(m.wallet)));
     const role = escapeHtml(m.role || 'member');
-    const w = escapeHtml(m.wallet || '');
+    const chip = ssWalletChip(m.wallet, { fillRoleInput: true });
     return '<div class="ss-item"><div style="min-width:0;flex:1"><div class="n">' + dn +
-      '</div><div class="d">' + w + ' · ' + role + '</div></div></div>';
+      '</div><div class="d">' + chip + ' · ' + role + '</div></div></div>';
   }).join('');
 }
 
@@ -10863,11 +10904,13 @@ async function ssLoadBans() {
     if (!bans.length) { el.innerHTML = '<div class="ss-hint">No bans.</div>'; return; }
     el.innerHTML = bans.map(function (b) {
       const dn = escapeHtml(stripAt(b.display_name || b.handle || shortenWallet(b.wallet)));
-      const w = escapeHtml(b.wallet || '');
+      const w = String(b.wallet || '').toLowerCase();
+      const safeW = escapeHtml(w);
+      const chip = ssWalletChip(w);
       const reason = escapeHtml(b.reason || '');
       return '<div class="ss-item"><div style="min-width:0;flex:1"><div class="n">' + dn +
-        '</div><div class="d">' + w + (reason ? (' · ' + reason) : '') + '</div></div>' +
-        '<button type="button" class="danger" onclick="ssUnban(\'' + w + '\')">Unban</button></div>';
+        '</div><div class="d">' + chip + (reason ? (' · ' + reason) : '') + '</div></div>' +
+        '<button type="button" class="danger" onclick="ssUnban(\'' + safeW + '\')">Unban</button></div>';
     }).join('');
   } catch (e) {
     el.innerHTML = '<div class="ss-hint">Failed to load bans</div>';
@@ -14322,7 +14365,14 @@ async function openModView(targetWallet) {
   document.getElementById('modview-history-sec').style.display = 'none';
   document.getElementById('modview-name').textContent = 'Loading…';
   document.getElementById('modview-role').textContent = '';
-  document.getElementById('modview-wallet').textContent = target;
+  (function () {
+    const el = document.getElementById('modview-wallet');
+    if (!el) return;
+    el.textContent = shortenWallet(target);
+    el.title = 'Click to copy full address';
+    el.style.cursor = 'pointer';
+    el.onclick = function () { copyWalletAddress(target); };
+  })();
   document.getElementById('modview-av').textContent = '?';
   try {
     const r = await fetch(BACKEND + '/api/community/modview/' + encodeURIComponent(target) +
@@ -14346,7 +14396,15 @@ function renderModView(j) {
   const name = stripAt(j.display_name || j.handle || '') || shortenWallet(j.wallet);
   document.getElementById('modview-name').textContent = name;
   document.getElementById('modview-role').textContent = displayRoleLabel(j.role) || j.role || 'member';
-  document.getElementById('modview-wallet').textContent = j.wallet || '';
+  (function () {
+    const el = document.getElementById('modview-wallet');
+    const full = String(j.wallet || '');
+    if (!el) return;
+    el.textContent = shortenWallet(full);
+    el.title = 'Click to copy full address';
+    el.style.cursor = 'pointer';
+    el.onclick = function () { copyWalletAddress(full); };
+  })();
   const av = document.getElementById('modview-av');
   if (j.has_avatar && j.wallet) {
     av.innerHTML = '<img src="' + BACKEND + '/api/community/avatar/' + j.wallet + '" alt="">';
