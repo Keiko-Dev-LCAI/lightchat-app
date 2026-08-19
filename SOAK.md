@@ -1,7 +1,7 @@
 # LightChat — 3+ wallet soak checklist
 
-**Updated:** 2026-08-18 · KeikoDev  
-**Goal:** Prove Discord-replace day-to-day reliability (Jason Challenge #2) with **at least three** Lightchain wallets on chain **9200**.
+**Updated:** 2026-08-18  
+**Goal:** Prove Discord-replace day-to-day reliability with **at least three** Lightchain wallets on chain **9200**. Architecture: **P2P-accelerated client-server** (thin host + live relay + optional P2P).
 
 Hard-refresh the PWA (`lightchat.chat`) so `lc-build` matches latest. Use three browsers / profiles / devices (A, B, C).
 
@@ -15,7 +15,7 @@ Hard-refresh the PWA (`lightchat.chat`) so `lc-build` matches latest. Use three 
 | B | | |
 | C | | |
 
-Confirm `GET https://web-production-bc64f.up.railway.app/health` → `status=ok`, `media.backend=fs`, `media.ready=true`.
+Confirm `GET /health` on your API host → `status=ok`, `media.backend=fs`, `media.ready=true`.
 
 ---
 

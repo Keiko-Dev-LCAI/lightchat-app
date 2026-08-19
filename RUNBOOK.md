@@ -1,7 +1,7 @@
 # LightChat — one-page runbook (lightchain.ai eng)
 
-**Updated:** 2026-08-18 · KeikoDev  
-**Goal:** Thin API host + static PWA. Chat bodies prefer P2P; host = auth, signaling, roles, history fallback, media URLs.
+**Updated:** 2026-08-18  
+**Goal:** Thin API host + static PWA. **P2P-accelerated client-server** — chat bodies prefer P2P when peers are online; host = auth, signaling, roles, history fallback, media URLs, live relay.
 
 ---
 
@@ -21,7 +21,7 @@ docker compose up -d --build # API on :8080
 curl -s localhost:8080/health | jq .
 ```
 
-Static: open `index.html` with `BACKEND` pointed at the API (or `docker compose --profile with-web up`).
+Static: open `index.html` with `BACKEND` pointed at the API (inject `window.__LIGHTCHAT_BACKEND__`, or `docker compose --profile with-web up`).
 
 ---
 
@@ -29,16 +29,22 @@ Static: open `index.html` with `BACKEND` pointed at the API (or `docker compose 
 
 | Var | Purpose |
 |-----|---------|
-| `SECRET_KEY` | Flask secret |
+| `SECRET_KEY` | Flask secret — **required**; server refuses to start if unset |
 | `DATA_DIR` | Persist SQLite + fs media (default `/app/data`) |
 | `MEDIA_BACKEND` | `fs` (recommended bridge) · `s3` (R2) · `local` (legacy SQLite) |
 | `LIGHTCHAT_OWNER_WALLETS` | `0x…,0x…` max 2 dual owners |
 | `MEDIA_S3_*` | Only if `MEDIA_BACKEND=s3` — see `env.example` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web push; push disables cleanly if unset |
+| `VAPID_CLAIMS` | Optional `mailto:…` or JSON `{"sub":"mailto:…"}` |
 | `METERED_API_KEY` | Optional TURN for WebRTC NAT |
+| `METERED_SUBDOMAIN` | Metered subdomain (e.g. `yourapp`); free STUN/openrelay if unset |
+| `HOLEPUNCH_RELAY_URL` | Optional DHT relay URL (docs / inject); browser default off |
 | `LIGHTCHAT_BOT_TOKEN` | Optional garden/webhook bots |
 | `PORT` | Default `8080` |
 
-Frontend: set `BACKEND` in `index.html` (or inject at build) to the public API HTTPS URL.
+**Frontend (client-only):** set `window.__LIGHTCHAT_BACKEND__` before the app script to the public API HTTPS URL. Fallback lives in one `const BACKEND` in `index.html`. Optional: `window.__LIGHTCHAT_HOLEPUNCH_RELAY__` or `localStorage.lc_holepunch_relay`.
+
+See `env.example` for the full placeholder list — no real secrets in git.
 
 ---
 
@@ -89,4 +95,4 @@ Full Holepunch default · zero relay · Postgres · pixel-perfect Discord · mig
 
 ## Contacts
 
-Public: **KeikoDev** · product free for everyone · no personal email in ops docs.
+Public identity: **KeikoDev** · product free for everyone · no personal email in ops docs.

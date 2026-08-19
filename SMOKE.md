@@ -1,6 +1,6 @@
 # LightChat — 2-wallet staging smoke
 
-**Pass this before telling Jason hosting is ready.**  
+**Pass this before telling hosts / eng that staging is ready.**  
 **Updated:** 2026-08-18
 
 Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
@@ -22,7 +22,7 @@ Use two Lightchain wallets (chain **9200**). Hard-refresh the PWA first.
 
 ### Notes
 
-- If P2P badge never appears: still OK if Relay delivers (hybrid). Note it.  
+- If P2P badge never appears: still OK if Relay delivers (**P2P-accelerated client-server** hybrid). Note it.  
 - If media fails on `s3`: check `/health` → `media.detail`.  
 - If Members shows Offline for yourself while Me says Online: hard-refresh; report if still broken.
 
