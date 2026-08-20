@@ -94,6 +94,7 @@ START_HERE_SECTIONS = [
         "body": "Bridge, hub, faucet, workers.",
         "links": [
             {"label": "dApp Hub", "href": "https://hub.lightchain.ai/"},
+            {"label": "Orca dApps", "href": "https://keiko-dev-lcai.github.io/orcapod/"},
             {"label": "Bridge", "href": "https://bridge.lightchain.ai/"},
             {"label": "Faucet", "href": "https://lightfaucet.ai/"},
             {"label": "Workers", "href": "https://workers.lightchain.ai/"},
@@ -106,6 +107,15 @@ START_HERE_SECTIONS = [
         "links": [
             {"label": "# Links (bookmark shelf)", "href": "#channel:links", "kind": "channel"},
             {"label": "# Report", "href": "#channel:report", "kind": "channel"},
+        ],
+    },
+    {
+        "title": "Contact",
+        "body": "Developer contact — public channels only. Never send seeds or private keys.",
+        "links": [
+            {"label": "𝕏 @KeikoDevLCAI", "href": "https://x.com/KeikoDevLCAI"},
+            {"label": "OrcaMail", "href": "https://orcamail.ai"},
+            {"label": "Lightchain Hub", "href": "https://hub.lightchain.ai/"},
         ],
     },
     {
