@@ -3405,7 +3405,21 @@ body {
       </label>
     </div>
 
-    <!-- X contact removed -->
+    <!-- Contact + hubs (match OrcaMail / other KeikoDev apps) -->
+    <div style="margin-top:28px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:18px 20px;text-align:center">
+      <div style="font-size:18px;font-weight:700;margin-bottom:12px">Contact &amp; hubs</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:12px">
+        <a href="https://hub.lightchain.ai/" target="_blank" rel="noopener" style="color:#7ec8e3;font-size:14px;text-decoration:none;font-weight:600">🔗 Lightchain Hub</a>
+        <a href="https://keiko-dev-lcai.github.io/orcapod/" target="_blank" rel="noopener" style="color:#7ec8e3;font-size:14px;text-decoration:none;font-weight:600">🐬 Orca dApps</a>
+      </div>
+      <div style="font-size:13px;opacity:0.85;margin-bottom:8px">
+        <a href="https://x.com/KeikoDevLCAI" target="_blank" rel="noopener" style="color:#9b7fe8;text-decoration:none;font-weight:600">Contact · 𝕏 @KeikoDevLCAI</a>
+      </div>
+      <div style="font-size:13px;opacity:0.85">
+        <a href="https://orcamail.ai" target="_blank" rel="noopener" style="color:#9b7fe8;text-decoration:none;font-weight:600">Contact via OrcaMail 🐬</a>
+      </div>
+      <div style="font-size:12px;color:var(--text2);margin-top:10px;line-height:1.45">No personal email. Never send seeds or private keys.</div>
+    </div>
   </div>
 </div>
 
@@ -11456,6 +11470,7 @@ const START_HERE_FALLBACK = [
   ]},
   { title: 'Lightchain links', body: 'Bridge, hub, faucet, workers.', links: [
     { label: 'dApp Hub', href: 'https://hub.lightchain.ai/' },
+    { label: 'Orca dApps', href: 'https://keiko-dev-lcai.github.io/orcapod/' },
     { label: 'Bridge', href: 'https://bridge.lightchain.ai/' },
     { label: 'Faucet', href: 'https://lightfaucet.ai/' },
     { label: 'Workers', href: 'https://workers.lightchain.ai/' },
@@ -11464,6 +11479,11 @@ const START_HERE_FALLBACK = [
   { title: 'How LightChat works', body: 'Login with wallet only (English). Channels for topics. Friends for people you add. No LightPay — this community is free.', links: [
     { label: '# Links (bookmark shelf)', href: '#channel:links', kind: 'channel' },
     { label: '# Report', href: '#channel:report', kind: 'channel' },
+  ]},
+  { title: 'Contact', body: 'Developer contact — public channels only. Never send seeds or private keys.', links: [
+    { label: '𝕏 @KeikoDevLCAI', href: 'https://x.com/KeikoDevLCAI' },
+    { label: 'OrcaMail', href: 'https://orcamail.ai' },
+    { label: 'Lightchain Hub', href: 'https://hub.lightchain.ai/' },
   ]},
   { title: '⚠️ Stay safe — official help only', body: 'Real LightChat help is ONLY through Help tickets (sidebar → Help). Mods and admins will NEVER ask for your seed phrase, private key, or to “connect wallet” / sign a mystery transaction. Ignore friend requests or DMs that push airdrops, claims, or wallet connects. Scammers copy staff names — verify in Members (Admin/Mod role) and use tickets.', links: [
     { label: 'Open a Help ticket', href: '#action:tickets', kind: 'action' },
