@@ -66,13 +66,25 @@ if not WEB_PUSH_ENABLED:
     print('[lightchat] web push disabled — set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY (and install pywebpush)', flush=True)
 
 app = Flask(__name__)
-CORS(app, origins="*")
+# Scoped CORS — override with CORS_ORIGINS env (comma-separated)
+_CORS_ORIGINS = [o.strip() for o in os.environ.get(
+    'CORS_ORIGINS',
+    'https://lightchat.chat,https://www.lightchat.chat,http://localhost:5000,http://127.0.0.1:5000'
+).split(',') if o.strip()]
+CORS(app, origins=_CORS_ORIGINS)
 _secret = (os.environ.get('SECRET_KEY') or '').strip()
 if not _secret:
     raise RuntimeError('SECRET_KEY env var is required — refuse to start with a default secret')
 app.config['SECRET_KEY'] = _secret
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB max request
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins=_CORS_ORIGINS, async_mode='eventlet')
+
+
+def _cors_origin():
+    origin = (request.headers.get('Origin') or '').strip()
+    if origin in _CORS_ORIGINS:
+        return origin
+    return _CORS_ORIGINS[0] if _CORS_ORIGINS else 'https://lightchat.chat'
 
 _data_dir = os.environ.get('DATA_DIR', '/app/data')
 os.makedirs(_data_dir, exist_ok=True)
@@ -1370,7 +1382,7 @@ def download_chat_image(image_id):
     resp = make_response(img_bytes)
     resp.headers['Content-Type'] = row['image_type']
     resp.headers['Content-Disposition'] = 'attachment; filename="photo.jpg"'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     return resp
 
 import urllib.request as _urllib_req
@@ -1412,7 +1424,7 @@ def proxy_gif():
         resp.headers['Content-Type'] = content_type
         safe_name = name.replace('"', '\\"')
         resp.headers['Content-Disposition'] = f'inline; filename="{safe_name}"'
-        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
         resp.headers['Cache-Control'] = 'public, max-age=86400'
         return resp
     except Exception as e:
@@ -1575,7 +1587,7 @@ def get_chat_file(file_id):
     file_bytes = base64.b64decode(row['file_data'])
     resp = make_response(file_bytes)
     resp.headers['Content-Type'] = row['file_type']
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     resp.headers['Cache-Control'] = 'public, max-age=3600'
     safe_name = row['file_name'].replace('"', '\\"')
     # Images + videos play inline in chat; other files download
@@ -1610,7 +1622,7 @@ def file_to_image(file_id):
     conn.commit()
     conn.close()
     resp = jsonify({'image_id': image_id})
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     return resp
 
 def _voice_ext_for_type(content_type):
@@ -1661,7 +1673,7 @@ def _voice_response(audio_bytes, content_type):
     resp = make_response(audio_bytes)
     resp.headers['Content-Type'] = (content_type or 'audio/mpeg').split(';')[0].strip()
     resp.headers['Cache-Control'] = 'public, max-age=3600'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     resp.headers['Accept-Ranges'] = 'bytes'
     return resp
 
@@ -1684,7 +1696,7 @@ def post_chat_voice():
     conn.commit()
     conn.close()
     resp = jsonify({'url': '/voice/' + str(voice_id), 'mime': out_type})
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     return resp
 
 
@@ -1737,7 +1749,7 @@ def get_video(video_id):
     resp = make_response(entry['data'])
     resp.headers['Content-Type'] = entry['content_type']
     resp.headers['Cache-Control'] = 'public, max-age=3600'
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     resp.headers['Accept-Ranges'] = 'bytes'
     return resp
 
@@ -3608,7 +3620,7 @@ def _get_aivm_client():
 def api_voice_chat():
     if request.method == 'OPTIONS':
         resp = make_response('', 204)
-        resp.headers['Access-Control-Allow-Origin']  = '*'
+        resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
         resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         resp.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         return resp
@@ -3626,7 +3638,7 @@ def api_voice_chat():
     client = _get_aivm_client()
     if not client:
         resp = jsonify({'error': 'Voice AI not configured — LIGHTCHAIN_PRIVATE_KEY missing'})
-        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
         return resp, 503
 
     # Build prompt with conversation context
@@ -3657,13 +3669,13 @@ def api_voice_chat():
     except Exception as e:
         print(f"  [voice-chat] AIVM error: {e}")
         resp = jsonify({'error': f'AI inference failed: {str(e)}'})
-        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
         return resp, 500
 
     _save_to_session(session_id, transcript, response_text)
 
     resp = jsonify({'response': response_text, 'session_id': session_id})
-    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.headers['Access-Control-Allow-Origin'] = _cors_origin()
     return resp
 
 
