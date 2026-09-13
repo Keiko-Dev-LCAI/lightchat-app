@@ -43,6 +43,7 @@ const ORCAVAULT_CHUNK_SIZE = 90000;
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 :root {
+  --on-accent: #0a0f1e;
   /* Official Lightchain brand — lightchain.ai/brand */
   --lc-primary: #5B4BFF;
   --lc-secondary: #DD00AC;
@@ -172,12 +173,12 @@ body {
   .channel-rail-cat-btn {
     display: flex; align-items: center; gap: 6px; width: 100%;
     appearance: none; border: none; background: transparent;
-    color: var(--text2); font-family: inherit; font-size: 11px; font-weight: 800;
+    color: var(--text2); font-family: inherit; font-size:12px; font-weight: 800;
     letter-spacing: 0.06em; text-transform: uppercase;
     padding: 6px 8px 4px; cursor: pointer; text-align: left;
   }
   .channel-rail-cat-btn:hover { color: var(--text); }
-  .channel-rail-cat-btn .crc-chev { font-size: 10px; width: 12px; }
+  .channel-rail-cat-btn .crc-chev { font-size:12px; width: 12px; }
   .channel-rail-cat.collapsed .channel-rail-cat-items { display: none; }
   .channel-rail-item {
     display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
@@ -199,7 +200,7 @@ body {
     flex-shrink: 0;
     padding: 8px 10px 4px;
     border-top: 1px solid var(--border);
-    font-size: 11px; line-height: 1.4; color: var(--text2);
+    font-size:12px; line-height: 1.4; color: var(--text2);
   }
   .channel-rail-user {
     flex-shrink: 0;
@@ -408,13 +409,13 @@ body {
     min-height: 48px !important;
     padding: 4px 2px 2px !important;
     gap: 1px !important;
-    font-size: 10px !important;
+    font-size:12px !important;
   }
   .nav-tab-icon { font-size: 18px !important; }
   .nav-tab .nav-me-av {
     width: 22px !important;
     height: 22px !important;
-    font-size: 11px !important;
+    font-size:12px !important;
     margin: 0 auto 0 !important;
   }
   .notif-dot {
@@ -983,7 +984,7 @@ body {
   background: none;
   border: none;
   color: var(--text);
-  font-size: 11px;
+  font-size:12px;
   font-weight: 600;
   cursor: pointer;
   border-radius: 14px;
@@ -1119,7 +1120,7 @@ body {
 .sticker-btn { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 6px 4px; cursor: pointer; text-align: center; transition: border-color 0.15s, transform 0.1s; }
 .sticker-btn:hover, .sticker-btn:active { border-color: var(--purple); transform: scale(1.06); }
 .sticker-img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; display: block; margin: 0 auto; }
-.sticker-label { font-size: 11px; color: var(--text2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sticker-label { font-size:12px; color: var(--text2); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gif-search-input { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; color: var(--text); font-size: 18px; outline: none; margin-bottom: 10px; }
 .gif-search-input:focus { border-color: var(--purple); }
 .gif-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -1418,7 +1419,7 @@ body {
 /* ── Community / Gen Chat (Discord-density: flatter, tighter) ── */
 .comm-wrap { display:flex; flex-direction:column; height:100%; min-height:0; }
 .comm-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; }
-.comm-header h2 { font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.comm-header h2 {color:var(--text); font-size:16px; font-weight:700; }
 .comm-sub { font-size:12px; color:var(--text2); }
 .comm-msgs { flex:1; overflow-y:auto; padding:8px 12px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
 .comm-msg { display:flex; gap:12px; max-width:100%; padding:2px 8px; border-radius:4px; margin:0 -4px; }
@@ -1432,7 +1433,7 @@ body {
 .comm-av img { width:100%; height:100%; object-fit:cover; }
 .comm-bubble { background:transparent; border:none; border-radius:0; padding:0; max-width:min(720px,100%); flex:1; min-width:0; }
 .comm-bubble .who { font-size:15px; font-weight:600; color:var(--text); margin-bottom:2px; }
-.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:10px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:12px; margin-left:6px; text-transform:uppercase; }
 .comm-bubble { position:relative; }
 .comm-bubble .body { font-size:15px; line-height:1.375; word-break:break-word; white-space:pre-wrap; color:var(--text); }
 .comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:8px; display:block; margin-top:4px; background:var(--bg); }
@@ -1446,8 +1447,8 @@ body {
 .comm-bubble .body .mention.mention-me {
   background:rgba(255,200,60,0.4); color:#fff6d0; box-shadow:0 0 0 1px rgba(255,200,60,0.5);
 }
-.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:4px; opacity:0.8; }
-.comm-msg-time { font-size:11px !important; font-weight:500; color:var(--text2); opacity:0.75; margin-left:6px; }
+.comm-bubble .when { font-size:12px; color:var(--text2); margin-top:4px; opacity:0.8; }
+.comm-msg-time { font-size:12px !important; font-weight:500; color:var(--text2); opacity:0.75; margin-left:6px; }
 .comm-msg-more {
   position:absolute; top:6px; right:6px;
   background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text2);
@@ -1501,7 +1502,7 @@ body {
 .modview-body { flex:1; overflow-y:auto; padding:12px 16px 24px; }
 .modview-sec { margin-bottom:16px; }
 .modview-sec-title {
-  font-size:11px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
+  font-size:12px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
   color:var(--text2); margin-bottom:8px;
 }
 .modview-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
@@ -1511,7 +1512,7 @@ body {
 }
 .modview-stat:hover { border-color:var(--lc-primary); }
 .modview-stat .n { font-size:20px; font-weight:800; color:#fff; }
-.modview-stat .l { font-size:11px; color:var(--text2); margin-top:2px; }
+.modview-stat .l { font-size:12px; color:var(--text2); margin-top:2px; }
 .modview-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .modview-actions button {
   appearance:none; border:1px solid var(--border); background:var(--bg); color:var(--text);
@@ -1525,7 +1526,7 @@ body {
   padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);
   font-size:13px; color:var(--text); line-height:1.4;
 }
-.modview-history .mh-meta { font-size:11px; color:var(--text2); margin-bottom:4px; }
+.modview-history .mh-meta { font-size:12px; color:var(--text2); margin-bottom:4px; }
 .modview-role-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .modview-role-row select {
   flex:1; min-width:120px; background:var(--bg); border:1px solid var(--border);
@@ -1587,7 +1588,7 @@ body {
 #gif-sheet-backdrop.open { display:block; }
 .gif-sheet-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; border-bottom:1px solid var(--border); }
 .gif-sheet-head h3 { flex:1; margin:0; font-size:16px; font-weight:700; }
-.gif-sheet-attr { font-size:11px; color:var(--text2); padding:6px 14px 12px; text-align:center; }
+.gif-sheet-attr { font-size:12px; color:var(--text2); padding:6px 14px 12px; text-align:center; }
 .chan-list, .dir-list, .evt-list { overflow-y:auto; padding:8px 12px; flex:1; }
 .chan-item, .dir-item, .evt-item { display:flex; align-items:center; gap:12px; padding:14px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
 .chan-item:hover, .dir-item:hover, .evt-item:hover { background:var(--purple-glow); border-color:var(--border); }
@@ -1597,7 +1598,7 @@ body {
 .chan-item .meta .d { font-size:12px; color:var(--text2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dir-search { margin:12px 14px; }
 .dir-search input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
-.dir-section-label { font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text2); padding:14px 12px 6px; }
+.dir-section-label { font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text2); padding:14px 12px 6px; }
 .dir-item { position:relative; }
 .dir-av-wrap { position:relative; flex-shrink:0; }
 .dir-online-dot { position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border-radius:50%; background:#23a559; border:2px solid var(--bg); box-sizing:border-box; }
@@ -1757,7 +1758,7 @@ body {
 /* ── Community / Gen Chat (Discord-density: flatter, tighter) ── */
 .comm-wrap { display:flex; flex-direction:column; height:100%; min-height:0; }
 .comm-header { padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; flex-shrink:0; }
-.comm-header h2 { font-size:16px; font-weight:700; background:linear-gradient(135deg,var(--lc-primary),var(--lc-gradient-end)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.comm-header h2 {color:var(--text); font-size:16px; font-weight:700; }
 .comm-sub { font-size:12px; color:var(--text2); }
 .comm-msgs { flex:1; overflow-y:auto; padding:8px 12px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
 .comm-msg { display:flex; gap:12px; max-width:100%; padding:2px 8px; border-radius:4px; margin:0 -4px; }
@@ -1771,7 +1772,7 @@ body {
 .comm-av img { width:100%; height:100%; object-fit:cover; }
 .comm-bubble { background:transparent; border:none; border-radius:0; padding:0; max-width:min(720px,100%); flex:1; min-width:0; }
 .comm-bubble .who { font-size:15px; font-weight:600; color:var(--text); margin-bottom:2px; }
-.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:10px; margin-left:6px; text-transform:uppercase; }
+.comm-bubble .who .role { font-weight:500; color:var(--lc-secondary); font-size:12px; margin-left:6px; text-transform:uppercase; }
 .comm-bubble { position:relative; }
 .comm-bubble .body { font-size:15px; line-height:1.375; word-break:break-word; white-space:pre-wrap; color:var(--text); }
 .comm-bubble .body img.comm-gif { max-width:min(280px,70vw); max-height:220px; border-radius:8px; display:block; margin-top:4px; background:var(--bg); }
@@ -1785,8 +1786,8 @@ body {
 .comm-bubble .body .mention.mention-me {
   background:rgba(255,200,60,0.4); color:#fff6d0; box-shadow:0 0 0 1px rgba(255,200,60,0.5);
 }
-.comm-bubble .when { font-size:11px; color:var(--text2); margin-top:4px; opacity:0.8; }
-.comm-msg-time { font-size:11px !important; font-weight:500; color:var(--text2); opacity:0.75; margin-left:6px; }
+.comm-bubble .when { font-size:12px; color:var(--text2); margin-top:4px; opacity:0.8; }
+.comm-msg-time { font-size:12px !important; font-weight:500; color:var(--text2); opacity:0.75; margin-left:6px; }
 .comm-msg-more {
   position:absolute; top:6px; right:6px;
   background:rgba(0,0,0,0.35); border:1px solid var(--border); color:var(--text2);
@@ -1840,7 +1841,7 @@ body {
 .modview-body { flex:1; overflow-y:auto; padding:12px 16px 24px; }
 .modview-sec { margin-bottom:16px; }
 .modview-sec-title {
-  font-size:11px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
+  font-size:12px; font-weight:800; letter-spacing:0.06em; text-transform:uppercase;
   color:var(--text2); margin-bottom:8px;
 }
 .modview-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
@@ -1850,7 +1851,7 @@ body {
 }
 .modview-stat:hover { border-color:var(--lc-primary); }
 .modview-stat .n { font-size:20px; font-weight:800; color:#fff; }
-.modview-stat .l { font-size:11px; color:var(--text2); margin-top:2px; }
+.modview-stat .l { font-size:12px; color:var(--text2); margin-top:2px; }
 .modview-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .modview-actions button {
   appearance:none; border:1px solid var(--border); background:var(--bg); color:var(--text);
@@ -1864,7 +1865,7 @@ body {
   padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.06);
   font-size:13px; color:var(--text); line-height:1.4;
 }
-.modview-history .mh-meta { font-size:11px; color:var(--text2); margin-bottom:4px; }
+.modview-history .mh-meta { font-size:12px; color:var(--text2); margin-bottom:4px; }
 .modview-role-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .modview-role-row select {
   flex:1; min-width:120px; background:var(--bg); border:1px solid var(--border);
@@ -1926,7 +1927,7 @@ body {
 #gif-sheet-backdrop.open { display:block; }
 .gif-sheet-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; border-bottom:1px solid var(--border); }
 .gif-sheet-head h3 { flex:1; margin:0; font-size:16px; font-weight:700; }
-.gif-sheet-attr { font-size:11px; color:var(--text2); padding:6px 14px 12px; text-align:center; }
+.gif-sheet-attr { font-size:12px; color:var(--text2); padding:6px 14px 12px; text-align:center; }
 .chan-list, .dir-list, .evt-list { overflow-y:auto; padding:8px 12px; flex:1; }
 .chan-item, .dir-item, .evt-item { display:flex; align-items:center; gap:12px; padding:14px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
 .chan-item:hover, .dir-item:hover, .evt-item:hover { background:var(--purple-glow); border-color:var(--border); }
@@ -1936,7 +1937,7 @@ body {
 .chan-item .meta .d { font-size:12px; color:var(--text2); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .dir-search { margin:12px 14px; }
 .dir-search input { width:100%; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--text); font-size:15px; font-family:inherit; }
-.dir-section-label { font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text2); padding:14px 12px 6px; }
+.dir-section-label { font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--text2); padding:14px 12px 6px; }
 .dir-item { position:relative; }
 .dir-av-wrap { position:relative; flex-shrink:0; }
 .dir-online-dot { position:absolute; right:-1px; bottom:-1px; width:12px; height:12px; border-radius:50%; background:#23a559; border:2px solid var(--bg); box-sizing:border-box; }
@@ -2267,7 +2268,7 @@ body {
         }
         .garden-embed-author-name { font-weight:700; font-size:13px; color:#fff; }
         .garden-embed-author-bot {
-          font-size:10px; font-weight:700; background:#5865F2; color:#fff; border-radius:3px;
+          font-size:12px; font-weight:700; background:#5865F2; color:#fff; border-radius:3px;
           padding:1px 4px; letter-spacing:0.02em;
         }
         .garden-embed-title-row {
@@ -2289,7 +2290,7 @@ body {
         .garden-art-wrap.thirst-thirsty { filter:saturate(0.72) brightness(0.95); }
         .garden-art-wrap.thirst-wilting { filter:saturate(0.45) brightness(0.82); }
         .garden-thirst-cap {
-          display:none; font-size:11px; font-weight:700; color:#1a3a1a; background:rgba(255,255,255,0.55);
+          display:none; font-size:12px; font-weight:700; color:#1a3a1a; background:rgba(255,255,255,0.55);
           border-radius:3px; padding:2px 8px; margin:4px auto 0; width:fit-content; font-family:inherit;
         }
         .garden-art-wrap.thirst-thirsty .garden-thirst-cap,
@@ -2319,7 +2320,7 @@ body {
           margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);
         }
         .garden-you-card-title {
-          font-size:11px; font-weight:700; color:#b5bac1; text-transform:uppercase;
+          font-size:12px; font-weight:700; color:#b5bac1; text-transform:uppercase;
           letter-spacing:0.04em; margin-bottom:6px;
         }
         .garden-you-card-body { font-size:13px; color:#dbdee1; line-height:1.45; }
@@ -2337,12 +2338,12 @@ body {
         .garden-btn-water:disabled { opacity:0.55; cursor:not-allowed; }
         .garden-btn-refresh { background:#4e5058; color:#fff; }
         .garden-btn-refresh:hover { background:#6d6f78; }
-        .garden-meta { font-size:11px; color:#949ba4; margin-top:8px; }
+        .garden-meta { font-size:12px; color:#949ba4; margin-top:8px; }
         .garden-contrib {
           margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);
         }
         .garden-contrib-title {
-          font-size:11px; font-weight:700; color:#b5bac1; text-transform:uppercase;
+          font-size:12px; font-weight:700; color:#b5bac1; text-transform:uppercase;
           letter-spacing:0.04em; margin-bottom:6px;
         }
         .garden-contrib-list { list-style:none; margin:0; padding:0; }
@@ -2361,7 +2362,7 @@ body {
         }
         .garden-contrib-list li.gc-me .gc-name { color:#57F287; }
         .garden-contrib-list .gc-count { color:#b5bac1; font-variant-numeric:tabular-nums; flex-shrink:0; }
-        .garden-contrib-you { font-size:11px; color:#949ba4; margin-top:6px; }
+        .garden-contrib-you { font-size:12px; color:#949ba4; margin-top:6px; }
         .garden-apple {
           display:none; margin-top:10px; padding:10px; border-radius:4px;
           background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08);
@@ -2510,7 +2511,7 @@ body {
           .comm-reply-bar-x:hover { background:rgba(255,255,255,0.06); color:var(--text); }
           .comm-msg .who { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
           .comm-msg-time {
-            font-size:11px; font-weight:500; color:var(--text2); opacity:0.7;
+            font-size:12px; font-weight:500; color:var(--text2); opacity:0.7;
             margin-left:6px; white-space:nowrap;
           }
           .comm-bubble .who { color:var(--text); }
@@ -2568,7 +2569,7 @@ body {
             </div>
             <span style="flex:1"></span>
             <button type="button" class="comm-gif-btn members-toggle-btn" id="members-toggle-btn" onclick="toggleMembersRail()" title="Members" aria-label="Members" style="height:28px;padding:0 8px;font-size:14px!important;flex-shrink:0">👥</button>
-            <div id="genchat-p2p-status" title="P2P status" style="font-size:11px;font-weight:700;padding:4px 8px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
+            <div id="genchat-p2p-status" title="P2P status" style="font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;background:rgba(91,75,255,0.2);border:1px solid var(--border);color:var(--text2);white-space:nowrap">Relay</div>
           </div>
           <div class="comm-input-row">
             <button type="button" class="comm-gif-btn" onclick="openEmojiStickerSheet('emoji')" title="Emoji">😊</button>
@@ -2606,17 +2607,17 @@ body {
     }
     .members-rail-head-text { flex: 1; min-width: 0; }
     .members-rail-title {
-      font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+      font-size:12px; font-weight: 800; letter-spacing: 0.06em;
       text-transform: uppercase; color: var(--text2);
     }
-    .members-rail-online-sub { font-size: 11px; color: var(--text2); margin-top: 4px; opacity: 0.85; }
+    .members-rail-online-sub { font-size:12px; color: var(--text2); margin-top: 4px; opacity: 0.85; }
     .members-rail-close {
       appearance: none; border: none; background: transparent; color: var(--text2);
       font-size: 16px; cursor: pointer; padding: 2px 6px; line-height: 1; display: none;
     }
     .members-rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 8px 16px; }
     .members-rail-group {
-      font-size: 11px; font-weight: 800; letter-spacing: 0.06em;
+      font-size:12px; font-weight: 800; letter-spacing: 0.06em;
       text-transform: uppercase; color: var(--text2); padding: 12px 8px 4px;
     }
     .members-rail-row {
@@ -2636,7 +2637,7 @@ body {
       flex: 1; min-width: 0; font-size: 14px; font-weight: 600;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .members-rail-role { font-size: 11px; font-weight: 700; flex-shrink: 0; margin-left: 4px; }
+    .members-rail-role { font-size:12px; font-weight: 700; flex-shrink: 0; margin-left: 4px; }
     .members-rail-role.owner, .members-rail-role.admin { color: #f0b232; }
     .members-rail-role.mod { color: #5B4BFF; }
     .members-rail-role.helper { color: #23a559; }
@@ -2722,7 +2723,7 @@ body {
     #comm-search-panel .csp-recent { padding: 6px 12px; border-bottom: 1px solid var(--border); }
     #comm-search-panel .csp-recent:empty { display: none; }
     #comm-search-panel .csp-recent-label {
-      font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
+      font-size:12px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase;
       color: var(--text2); display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
     }
     #comm-search-panel .csp-recent-label button {
@@ -2755,7 +2756,7 @@ body {
     .csp-hit-meta { flex: 1; min-width: 0; }
     .csp-hit-who { font-size: 13px; font-weight: 700; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
     .csp-hit-who .ch { color: var(--text2); font-weight: 600; font-size: 12px; }
-    .csp-hit-who .tm { color: var(--text2); font-weight: 500; font-size: 11px; margin-left: auto; }
+    .csp-hit-who .tm { color: var(--text2); font-weight: 500; font-size:12px; margin-left: auto; }
     .csp-hit-snip { font-size: 13px; color: var(--text2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .csp-hit-snip mark { background: rgba(91,75,255,0.35); color: #fff; border-radius: 3px; padding: 0 2px; }
     #comm-new-msg-pill {
@@ -3038,7 +3039,7 @@ body {
       <div class="chat-header-name" id="chat-header-name"></div>
       <div class="chat-header-wallet" id="chat-header-wallet"></div>
     </div>
-    <div id="dm-p2p-chip" title="DM transport" style="display:none;font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;margin-right:6px;white-space:nowrap">Relay</div>
+    <div id="dm-p2p-chip" title="DM transport" style="display:none;font-size:12px;font-weight:700;padding:5px 9px;border-radius:999px;margin-right:6px;white-space:nowrap">Relay</div>
 <!-- video call buttons removed -->
     <!-- gift removed: LightChat is free / no LCAI transfers -->
     <div id="chat-more-wrap" style="position:relative;display:none">
@@ -3641,7 +3642,7 @@ body {
   </div>
   <div style="padding:12px 14px;overflow-y:auto;flex:1;min-height:0">
     <div style="font-size:14px;color:var(--text2);line-height:1.5;margin-bottom:12px">
-      Paste a Tenor/Giphy <strong style="color:var(--text)">share/view link</strong> or direct <code style="font-size:12px">.gif</code> address, then Send. Example: <code style="font-size:11px">tenor.com/view/…</code> works now.
+      Paste a Tenor/Giphy <strong style="color:var(--text)">share/view link</strong> or direct <code style="font-size:12px">.gif</code> address, then Send. Example: <code style="font-size:12px">tenor.com/view/…</code> works now.
     </div>
     <input class="gif-search-input" id="gif-sheet-url" type="url" placeholder="https://tenor.com/view/… or media .gif" autocomplete="off" style="margin-bottom:10px">
     <button type="button" class="primary-btn" style="width:100%;margin-bottom:14px" onclick="sendGifFromPaste()">Send GIF</button>
@@ -5643,7 +5644,7 @@ function renderContacts() {
       <div class="contact-item" onclick="openChat('${c.wallet}','${(c.handle||'').replace(/'/g,'\\u0027')}')">
         <div class="chat-avatar" style="width:46px;height:46px;font-size:20px">${avatarLetter(c.handle)}</div>
         <div style="flex:1">
-          <div style="font-size:18px;font-weight:600">${stripAt(c.handle) || shortenWallet(c.wallet)}${(c.p2p_local || c.status === 'saved') ? ' <span style="font-size:11px;color:var(--text2)">· P2P</span>' : ''}</div>
+          <div style="font-size:18px;font-weight:600">${stripAt(c.handle) || shortenWallet(c.wallet)}${(c.p2p_local || c.status === 'saved') ? ' <span style="font-size:12px;color:var(--text2)">· P2P</span>' : ''}</div>
           <div style="font-size:14px;color:var(--text2)">${shortenWallet(c.wallet)}</div>
         </div>
         <button onclick="event.stopPropagation();deleteContact('${c.wallet}')" style="background:none;border:none;color:var(--red);font-size:26px;cursor:pointer;padding:8px 12px;margin-left:4px;line-height:1" title="Remove contact">🗑</button>
@@ -5889,7 +5890,7 @@ function appendMessage(msg, senderHandle) {
       + '<div style="font-size:15px;font-weight:700;margin-bottom:4px">' + escapeHtml(sc.title || '') + '</div>'
       + (sc.desc  ? '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">' + escapeHtml(sc.desc) + '</div>' : '')
       + (sc.thumb ? '<img src="' + escapeHtml(sc.thumb) + '" style="width:100%;max-height:160px;object-fit:cover;border-radius:8px;display:block;margin-bottom:8px" loading="lazy">' : '')
-      + (sc.url   ? '<a href="' + escapeHtml(sc.url) + '" target="_blank" rel="noopener" style="display:inline-block;background:var(--purple);color:#fff;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">Open →</a>' : '')
+      + (sc.url   ? '<a href="' + escapeHtml(sc.url) + '" target="_blank" rel="noopener" style="display:inline-block;background:var(--purple);color:var(--on-accent);padding:7px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none">Open →</a>' : '')
       + '</div></div>'
       + '<div class="msg-time">' + time + '</div></div>';
   } else if (t === 'video') {
@@ -6135,7 +6136,7 @@ function openShareModal() {
       + '<div style="font-size:15px;font-weight:700;margin-bottom:4px">' + escapeHtml(_sharePayload.title) + '</div>'
       + (_sharePayload.desc  ? '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">' + escapeHtml(_sharePayload.desc) + '</div>' : '')
       + (_sharePayload.thumb ? '<img src="' + escapeHtml(_sharePayload.thumb) + '" style="width:100%;max-height:120px;object-fit:cover;border-radius:8px;display:block;margin-bottom:8px" loading="lazy">' : '')
-      + (_sharePayload.url   ? '<span style="display:inline-block;background:var(--purple);color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600">Open →</span>' : '')
+      + (_sharePayload.url   ? '<span style="display:inline-block;background:var(--purple);color:var(--on-accent);padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600">Open →</span>' : '')
       + '</div>';
   }
 
@@ -6269,7 +6270,7 @@ function renderMsgBubble(text, isOut) {
       + '<span style="font-size:13px;font-weight:600;line-height:1.2">▶ YouTube Video</span>'
       + '<div style="display:flex;gap:6px;flex-shrink:0">'
       + '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" style="background:#cc0000;color:#fff;padding:5px 12px;border-radius:6px;font-size:12px;font-weight:700;text-decoration:none;-webkit-tap-highlight-color:transparent">▶ Watch</a>'
-      + '<button onclick="startWatchParty(\'' + safeUrl + '\')" style="background:var(--purple);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">👥 Watch Together</button>'
+      + '<button onclick="startWatchParty(\'' + safeUrl + '\')" style="background:var(--purple);color:var(--on-accent);border:none;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent">👥 Watch Together</button>'
       + '</div>'
       + '</div></div>';
   } else if (ttM) {
@@ -10360,7 +10361,7 @@ function renderTicketsList() {
       '<div class="comm-av">' + (open ? '🎫' : '✅') + '</div>' +
       '<div class="meta" style="flex:1;min-width:0">' +
       '<div class="n">' + escapeHtml(t.subject || 'Help') +
-      (open ? ' <span style="color:#23a559;font-size:11px">· open</span>' : ' <span style="color:var(--text2);font-size:11px">· closed</span>') +
+      (open ? ' <span style="color:#23a559;font-size:12px">· open</span>' : ' <span style="color:var(--text2);font-size:12px">· closed</span>') +
       '</div>' +
       '<div class="d">' + escapeHtml(who) + (when ? ' · ' + escapeHtml(when) : '') + '</div>' +
       '</div></div>';
@@ -11138,7 +11139,7 @@ async function loadChannelsList() {
         return `<div class="chan-item" onclick="openCommunityChannel('${escapeHtml(c.slug)}')">
           <div class="hash">#</div>
           <div class="meta">
-            <div class="n">${escapeHtml(c.name)} <span style="font-size:11px;color:var(--text2);font-weight:500">· ${tag}</span></div>
+            <div class="n">${escapeHtml(c.name)} <span style="font-size:12px;color:var(--text2);font-weight:500">· ${tag}</span></div>
             <div class="d">${escapeHtml(c.description||'')}</div>
           </div>
         </div>`;
@@ -12748,7 +12749,7 @@ function renderPinsSheetList() {
     return '<div class="chan-item" style="align-items:flex-start" onclick="jumpToPinnedMsg(\'' + mid + '\')">' +
       '<div class="hash">📌</div>' +
       '<div class="meta" style="flex:1;min-width:0">' +
-      '<div class="n">' + who + (when ? ' <span style="font-size:11px;color:var(--text2);font-weight:500">' + escapeHtml(when) + '</span>' : '') + '</div>' +
+      '<div class="n">' + who + (when ? ' <span style="font-size:12px;color:var(--text2);font-weight:500">' + escapeHtml(when) + '</span>' : '') + '</div>' +
       '<div class="d" style="white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">' + preview + '</div>' +
       '</div>' +
       '<button type="button" title="Unpin" onclick="event.stopPropagation();unpinById(\'' + pid + '\',\'' + mid + '\')" style="background:var(--bg);border:1px solid var(--border);color:var(--text2);border-radius:8px;padding:6px 8px;cursor:pointer;flex-shrink:0">✕</button>' +
@@ -13516,7 +13517,7 @@ async function loadCustomStickers() {
     el.innerHTML = list.map(function (s) {
       const src = BACKEND + s.url;
       const del = (isCommStaff() || (wallet && s.uploader === wallet))
-        ? '<button type="button" onclick="event.stopPropagation();deleteCommunitySticker(\'' + s.id + '\')" style="font-size:11px;margin-top:4px;background:none;border:none;color:var(--red);cursor:pointer">Delete</button>'
+        ? '<button type="button" onclick="event.stopPropagation();deleteCommunitySticker(\'' + s.id + '\')" style="font-size:12px;margin-top:4px;background:none;border:none;color:var(--red);cursor:pointer">Delete</button>'
         : '';
       const kindTag = s.kind === 'emoji' ? ' · emoji' : '';
       return '<button type="button" class="sticker-btn" onclick="pickSheetSticker(\'c:' + s.id + '\')">' +
