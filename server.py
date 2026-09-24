@@ -49,9 +49,14 @@ try:
 except ImportError:
     PUSH_AVAILABLE = False
 
-# Web-push keys — from env only (never hardcode). Push disables cleanly if unset.
+# Web-push keys — env only, never hardcoded. Both must be set together or both absent.
 VAPID_PUBLIC_KEY = (os.environ.get('VAPID_PUBLIC_KEY') or '').strip()
 VAPID_PRIVATE_KEY = (os.environ.get('VAPID_PRIVATE_KEY') or '').strip()
+if bool(VAPID_PUBLIC_KEY) != bool(VAPID_PRIVATE_KEY):
+    raise RuntimeError(
+        'VAPID misconfiguration: VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must both be set or both be absent. '
+        'Set VAPID_PRIVATE_KEY in the deploy environment (e.g. Railway dashboard) — never in committed code.'
+    )
 _vapid_claims_env = (os.environ.get('VAPID_CLAIMS') or '').strip()
 if _vapid_claims_env:
     try:
@@ -63,7 +68,7 @@ else:
     VAPID_CLAIMS = {'sub': 'mailto:noreply@lightchat.app'}
 WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and PUSH_AVAILABLE)
 if not WEB_PUSH_ENABLED:
-    print('[lightchat] web push disabled — set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY (and install pywebpush)', flush=True)
+    print('[lightchat] web push disabled — set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY to enable (and install pywebpush)', flush=True)
 
 app = Flask(__name__)
 # Scoped CORS — override with CORS_ORIGINS env (comma-separated)
