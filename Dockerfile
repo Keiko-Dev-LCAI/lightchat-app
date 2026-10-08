@@ -8,7 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py community.py ./
+COPY server.py community.py aivm_client.py ./
 COPY stickers ./stickers
 COPY brand ./brand
 
